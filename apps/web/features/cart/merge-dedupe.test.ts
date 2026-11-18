@@ -295,7 +295,7 @@ describe("mergeAnonCartIntoCustomer — dedupe por contenido (Paquete H)", () =>
     expect(items[0].qty).toBe(5);
   });
 
-  it("la suma sigue topada a MAX_QTY_PER_ITEM (99)", async () => {
+  it("la suma sigue topada a MAX_QTY_PER_ITEM (100)", async () => {
     const cust = seedCart({
       sessionId: "sess_cust",
       customerId: "cust_1",
@@ -304,7 +304,7 @@ describe("mergeAnonCartIntoCustomer — dedupe por contenido (Paquete H)", () =>
     seedCart({ sessionId: "sess_anon", items: [linea({ cartId: "", qty: 60 })] });
 
     await mergeAnonCartIntoCustomer("sess_anon", "cust_1");
-    expect(itemsDe(cust.id)[0].qty).toBe(99);
+    expect(itemsDe(cust.id)[0].qty).toBe(100);
   });
 });
 

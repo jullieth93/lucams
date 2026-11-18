@@ -154,13 +154,18 @@ export default async function AdminMetricasPage({
         },
         _sum: { refundAmount: true },
       }),
-      prisma.orderItem.groupBy({
-        by: ["variantId"],
-        where: { order: { deletedAt: null, status: { in: PAID_STATUSES } } },
-        _sum: { qty: true },
-        orderBy: { _sum: { qty: "desc" } },
-        take: 10,
-      }),
+      prisma.$queryRaw<Array<{ variantId: string; units: number }>>`
+        SELECT
+          oi."variantId",
+          COALESCE(SUM(oi."qty" * oi."designUnits"), 0)::int AS units
+        FROM "OrderItem" oi
+        JOIN "Order" o ON o."id" = oi."orderId"
+        WHERE o."deletedAt" IS NULL
+          AND o."status" IN ('PAID', 'FULFILLING', 'SHIPPED', 'DELIVERED')
+        GROUP BY oi."variantId"
+        ORDER BY units DESC
+        LIMIT 10
+      `,
     ]),
     getFunnelDashboardReport(funnelFilters, now),
     getCrmBehavioralIntelligence(funnelFilters.days),
@@ -380,7 +385,7 @@ export default async function AdminMetricasPage({
               <AdminCard className="p-5">
                 <AdminHorizontalBars
                   items={topProducts.map((t, idx) => {
-                    const units = t._sum.qty ?? 0;
+                    const units = t.units;
                     return {
                       key: t.variantId,
                       label: t.variant!.product.name,

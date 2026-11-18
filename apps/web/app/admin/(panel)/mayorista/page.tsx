@@ -42,6 +42,10 @@ import {
 import { CountUp } from "@/components/admin/count-up";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  MAX_SELF_SERVICE_PHYSICAL_UNITS,
+  maxSelectorUnitsForProduct,
+} from "@/features/personalization/design-units";
 import { ADMIN_ROLE_SETS, canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
@@ -87,6 +91,9 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
     prisma.wholesaleTier.findMany({
       where: { deletedAt: null },
       include: {
+        variant: {
+          select: { id: true, name: true, sku: true, price: true, attributes: true },
+        },
         product: {
           select: {
             id: true,
@@ -96,9 +103,11 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
             basePrice: true,
             cost: true,
             isActive: true,
+            personalizationKind: true,
+            personalizationSchema: true,
             variants: {
               where: { deletedAt: null, isActive: true },
-              select: { price: true },
+              select: { id: true, name: true, sku: true, price: true, attributes: true },
             },
           },
         },
@@ -111,11 +120,15 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
         id: true,
         name: true,
         sku: true,
+        slug: true,
         basePrice: true,
         cost: true,
+        personalizationKind: true,
+        personalizationSchema: true,
         variants: {
           where: { deletedAt: null, isActive: true },
-          select: { price: true },
+          select: { id: true, name: true, sku: true, price: true, attributes: true },
+          orderBy: { createdAt: "asc" },
         },
       },
       orderBy: { name: "asc" },
@@ -157,8 +170,15 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
   let uncostedOrGlobalCount = 0;
   const inactiveCount = tiers.length - activeTiers.length;
 
+  function tierReferencePrice(t: (typeof tiers)[number]): number | null {
+    if (t.variant) {
+      return t.variant.price ?? t.product?.basePrice ?? null;
+    }
+    return t.productId ? (refPriceByProductId.get(t.productId) ?? null) : null;
+  }
+
   for (const t of activeTiers) {
-    const ref = t.productId ? (refPriceByProductId.get(t.productId) ?? null) : null;
+    const ref = tierReferencePrice(t);
     if (ref !== null && ref > 0 && t.unitPrice < ref) {
       savingsSum += Math.round(((ref - t.unitPrice) / ref) * 100);
       savingsCount += 1;
@@ -181,17 +201,46 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
     ? products.find((p) => p.sku.toLowerCase() === qLower || p.name.toLowerCase() === qLower)
     : undefined;
 
-  const productOptions = products.map((p) => ({
-    id: p.id,
-    name: p.name,
-    sku: p.sku,
-    basePrice: p.basePrice,
-    referencePrice: refPriceByProductId.get(p.id) ?? p.basePrice,
-    cost: p.cost,
-    activeTiers: activeTiers
-      .filter((t) => t.productId === p.id)
-      .map((t) => ({ minQty: t.minQty, unitPrice: t.unitPrice })),
-  }));
+  const productOptions = products.map((p) => {
+    const allAttrs = p.variants.map((v) => v.attributes);
+    const prodCap = maxSelectorUnitsForProduct({
+      slug: p.slug,
+      personalizationKind: p.personalizationKind,
+      personalizationSchema: p.personalizationSchema,
+      variantAttrs: p.variants[0]?.attributes,
+      allVariantsAttrs: allAttrs,
+    });
+    return {
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      basePrice: p.basePrice,
+      referencePrice: refPriceByProductId.get(p.id) ?? p.basePrice,
+      cost: p.cost,
+      maxMinQty: prodCap.maxUnits,
+      unitPlural: prodCap.unitPlural,
+      variants: p.variants.map((v) => {
+        const varCap = maxSelectorUnitsForProduct({
+          slug: p.slug,
+          personalizationKind: p.personalizationKind,
+          personalizationSchema: p.personalizationSchema,
+          variantAttrs: v.attributes,
+          allVariantsAttrs: allAttrs,
+        });
+        return {
+          id: v.id,
+          name: v.name,
+          sku: v.sku,
+          price: v.price ?? p.basePrice,
+          maxMinQty: varCap.maxUnits,
+          unitPlural: varCap.unitPlural,
+        };
+      }),
+      activeTiers: activeTiers
+        .filter((t) => t.productId === p.id)
+        .map((t) => ({ variantId: t.variantId, minQty: t.minQty, unitPrice: t.unitPrice })),
+    };
+  });
 
   // Filtrado por búsqueda y estado/salud
   const filteredTiers = tiers.filter((t) => {
@@ -693,22 +742,43 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
                   </tr>
                 </AdminTableHead>
                 <AdminTableBody>
-                  {group.tiers.map((t) => (
-                    <TierRow
-                      key={t.id}
-                      tier={{
-                        id: t.id,
-                        minQty: t.minQty,
-                        unitPrice: t.unitPrice,
-                        note: t.note,
-                        isActive: t.isActive,
-                        createdLabel: formatDateCO(t.createdAt),
-                      }}
-                      referencePrice={group.referencePrice}
-                      unitCost={group.unitCost}
-                      canEdit={canEdit}
-                    />
-                  ))}
+                  {group.tiers.map((t) => {
+                    const tierCap = t.product
+                      ? maxSelectorUnitsForProduct({
+                          slug: t.product.slug,
+                          personalizationKind: t.product.personalizationKind,
+                          personalizationSchema: t.product.personalizationSchema,
+                          variantAttrs: t.variant?.attributes ?? t.product.variants[0]?.attributes,
+                          allVariantsAttrs: t.product.variants.map((v) => v.attributes),
+                        })
+                      : {
+                          maxUnits: MAX_SELF_SERVICE_PHYSICAL_UNITS,
+                          unitPlural: "unidades",
+                        };
+                    return (
+                      <TierRow
+                        key={t.id}
+                        tier={{
+                          id: t.id,
+                          minQty: t.minQty,
+                          unitPrice: t.unitPrice,
+                          variantLabel: t.variant
+                            ? t.variant.name === "Default"
+                              ? "Única"
+                              : t.variant.name
+                            : null,
+                          note: t.note,
+                          isActive: t.isActive,
+                          createdLabel: formatDateCO(t.createdAt),
+                        }}
+                        referencePrice={tierReferencePrice(t) ?? group.referencePrice}
+                        unitCost={group.unitCost}
+                        maxMinQty={tierCap.maxUnits}
+                        unitPlural={tierCap.unitPlural}
+                        canEdit={canEdit}
+                      />
+                    );
+                  })}
                 </AdminTableBody>
               </AdminTable>
             </section>

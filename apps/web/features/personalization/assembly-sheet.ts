@@ -155,14 +155,14 @@ export async function composeAssemblySheet(opts: {
       // pieza ilegible → deja el marco vacío (se nota en la hoja).
     }
 
-    // Etiqueta + estado.
+    // Etiqueta + estado (maxWidth acotado a la celda para no desbordar columnas).
     ctx.textAlign = "left";
     ctx.fillStyle = "#2A2140";
     ctx.font = `700 24px ${bodyFont}`;
-    ctx.fillText(piece.label, x + 2, y + thumbH + 30);
+    ctx.fillText(piece.label, x + 2, y + thumbH + 30, cellW - 8);
     ctx.fillStyle = st.color;
     ctx.font = `600 20px ${bodyFont}`;
-    ctx.fillText(`● ${st.text}`, x + 2, y + thumbH + 56);
+    ctx.fillText(`● ${st.text}`, x + 2, y + thumbH + 56, cellW - 8);
   }
 
   // Footer / leyenda.

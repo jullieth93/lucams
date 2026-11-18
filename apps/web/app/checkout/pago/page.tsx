@@ -127,13 +127,16 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
     0,
     ctx.cart.subtotal - activeCouponDiscount - activeLoyaltyDiscount + shippingSelection.fleteCop,
   );
-  const ga4Items = ctx.cart.items.map((i) => ({
-    sku: i.variantSku,
-    name: i.productName,
-    variantName: i.variantName,
-    priceCents: i.unitPrice,
-    quantity: i.qty,
-  }));
+  const ga4Items = ctx.cart.items.map((i) => {
+    const du = Math.max(1, i.designUnits ?? 1);
+    return {
+      sku: i.variantSku,
+      name: i.productName,
+      variantName: i.variantName,
+      priceCents: Math.round(i.unitPrice / du),
+      quantity: i.qty * du,
+    };
+  });
   const funnelLines = ctx.cart.items.map((i) => ({
     productSlug: i.productSlug,
     editorKind: i.editorKind,

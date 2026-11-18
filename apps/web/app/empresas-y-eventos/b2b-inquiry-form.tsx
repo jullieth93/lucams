@@ -47,6 +47,8 @@ type Props = {
   initialUtmSource?: string;
   initialUtmMedium?: string;
   initialUtmCampaign?: string;
+  initialUnits?: string;
+  initialProductSlug?: string;
 };
 
 const QUICK_UNIT_TIERS = [25, 50, 100, 250, 500] as const;
@@ -57,13 +59,18 @@ export function B2bInquiryForm({
   initialUtmSource = "",
   initialUtmMedium = "",
   initialUtmCampaign = "",
+  initialUnits,
+  initialProductSlug,
 }: Props) {
   const [state, formAction, pending] = useActionState<B2bPublicActionState, FormData>(
     submitB2bInquiryAction,
     null,
   );
   const [eventType, setEventType] = useState<OpportunityEventType>("CORPORATE_GIFT");
-  const [units, setUnits] = useState<string>("50");
+  const [units, setUnits] = useState<string>(() => {
+    const parsed = initialUnits ? Number.parseInt(initialUnits, 10) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 25 && parsed <= 50_000 ? String(parsed) : "50";
+  });
   const [eventDate, setEventDate] = useState<string>("");
   const [contactName, setContactName] = useState<string>("");
   const [organizationName, setOrganizationName] = useState<string>("");
@@ -75,7 +82,11 @@ export function B2bInquiryForm({
   const [nit, setNit] = useState<string>("");
   const [deptCode, setDeptCode] = useState<string>("");
   const [cityCode, setCityCode] = useState<string>("");
-  const [notes, setNotes] = useState<string>("");
+  const [notes, setNotes] = useState<string>(() =>
+    initialProductSlug && /^[a-z0-9-]+$/i.test(initialProductSlug)
+      ? `Producto de interés: ${initialProductSlug.replace(/-/g, " ")}. `
+      : "",
+  );
   const [acceptHabeasData, setAcceptHabeasData] = useState<boolean>(false);
   const [acceptNewsletter, setAcceptNewsletter] = useState<boolean>(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});

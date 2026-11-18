@@ -319,20 +319,20 @@ describe("addProductToCart — validación de qty contra stock", () => {
     });
   });
 
-  it("el tope 99 queda como límite secundario: stock alto no estorba", async () => {
+  it("el tope 100 queda como límite secundario: stock alto no estorba", async () => {
     seedProduct(150);
     seedCart([]);
     const detail = await addProductToCart({
       sessionId: "sess_1",
       customerId: null,
       productSlug: "iman-nevera",
-      qty: 99,
+      qty: 100,
     });
-    expect(detail.items[0].qty).toBe(99);
+    expect(detail.items[0].qty).toBe(100);
     expect(detail.items[0].stock).toBe(150);
   });
 
-  it("clamp legacy: con stock alto, sumar más allá de 99 se topa en 99", async () => {
+  it("clamp legacy: con stock alto, sumar más allá de 100 se topa en 100", async () => {
     seedProduct(150);
     seedCart([{ qty: 90 }]);
     const detail = await addProductToCart({
@@ -341,11 +341,11 @@ describe("addProductToCart — validación de qty contra stock", () => {
       productSlug: "iman-nevera",
       qty: 50,
     });
-    // 90 + 50 = 140 → clamp a 99 (min(99, stock=150)).
-    expect(detail.items[0].qty).toBe(99);
+    // 90 + 50 = 140 → clamp a 100 (min(100, stock=150)).
+    expect(detail.items[0].qty).toBe(100);
   });
 
-  it("qty > 99 sigue siendo QTY_INVALID aunque haya stock", async () => {
+  it("qty > 100 sigue siendo QTY_INVALID aunque haya stock", async () => {
     seedProduct(200);
     seedCart([]);
     await expect(
@@ -353,7 +353,7 @@ describe("addProductToCart — validación de qty contra stock", () => {
         sessionId: "sess_1",
         customerId: null,
         productSlug: "iman-nevera",
-        qty: 100,
+        qty: 101,
       }),
     ).rejects.toMatchObject({ code: "QTY_INVALID" });
   });
@@ -385,9 +385,9 @@ describe("updateCartItemQty — validación de qty contra stock", () => {
     expect(detail.items[0].qty).toBe(4);
   });
 
-  it("tope 99 secundario: con stock 150, qty 100 es QTY_INVALID (no stock)", async () => {
+  it("tope 100 secundario: con stock 150, qty 101 es QTY_INVALID (no stock)", async () => {
     seedCart([{ qty: 1, stock: 150 }]);
-    await expect(updateCartItemQty("sess_1", "ci_1", 100)).rejects.toMatchObject({
+    await expect(updateCartItemQty("sess_1", "ci_1", 101)).rejects.toMatchObject({
       code: "QTY_INVALID",
     });
   });

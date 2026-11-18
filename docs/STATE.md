@@ -5,9 +5,9 @@
 ## Fotografía ejecutiva
 
 - **Tienda:** `lucamsshop.com` opera exclusivamente en modo **`full`** (`ADR-204`) con Wompi, contraentrega, Aveonline y Envío Lucams Bogotá. Las compras individuales cierran como pedidos y las negociaciones de empresas/eventos siguen como oportunidades B2B; no existe cotización individual por WhatsApp.
-- **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui) y `packages/db` (**75 modelos Prisma**, **32 enums**, **99 migraciones Prisma** + **59 SQL Supabase**). RLS cubre el dominio y `enforce_rls_on_new_table` fija `search_path` vacío e identificadores `%I.%I`.
-- **Integraciones (`ADR-206`):** `/admin/integraciones` usa registro tipado, resolución en vivo y componentes separados para los 7 proveedores actuales; diferencia configuración/conexión/activación/salud y conserva los módulos operativos en sus rutas. No hay orquestador persistente de activación ni toggles para nuevos proveedores; cada uno debe aportar estado, sonda, permisos y módulo propio antes de registrarse.
-- **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) exigen PR y cinco checks: `Typecheck + Lint + Build`, `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`.
+- **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui) y `packages/db` (**75 modelos Prisma**, **32 enums**, **100 migraciones Prisma** + **60 SQL Supabase**). RLS cubre el dominio y `enforce_rls_on_new_table` fija `search_path` vacío e identificadores `%I.%I`.
+- **Integraciones (`ADR-206`):** `/admin/integraciones` usa registro tipado, resolución en vivo y componentes separados para los 7 proveedores actuales; diferencia configuración/conexión/activación/salud y conserva los módulos operativos en sus rutas. No hay orquestador persistente ni toggles ficticios; cada proveedor aporta estado, sonda, permisos y módulo propio antes de registrarse.
+- **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) exigen PR y 5 checks: `Typecheck + Lint + Build`, `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`.
 - **Legal:** paquete **Versión 3** sincronizado en `packages/db/legal-content`, fallbacks, mapa y CMS de STG/PRD; historial intacto.
 
 ## Ambientes y homologación STG ↔ PRD
@@ -22,7 +22,7 @@
 
 - Migraciones, categorías (84 por ambiente), ocasiones, redirects y **168/168 campos CMS** están homologados. El catálogo activo de referencia contiene los 8 productos originales de PRD + `bola-navidena-personalizada` (9); el resto permanece pausado fuera de PRD.
 - PRD conserva el catálogo vigente e históricos archivados (13 productos); STG/LOCAL conservan además el catálogo pausado (54). Plantillas y tramos de `mini-libros-magneticos` existen solo en STG/LOCAL; PRD mantiene nueve galerías archivadas de separadores como auditoría.
-- `nombre-personalizado` está archivado en PRD; `set-fotoimanes-circulares` y `set-fotoimanes-corazon`, en los tres ambientes. Cuadrados tiene 12 variantes `-NOMAG` inactivas. El stock real nunca se sincroniza.
+- `nombre-personalizado` está archivado en PRD; `set-fotoimanes-circulares` y `set-fotoimanes-corazon`, en los tres ambientes. Cuadrados conserva 2 variantes base `-NOMAG` inactivas (`5×5` y `7×7 cm`, `ADR-209`). El stock real nunca se sincroniza.
 - `uptime-monitor-prd` y sus tablas viven solo en STG. Los cinco crons de correo existen en STG/PRD; STG fuerza `CRON_JOBS_DISABLED`, recuperación manual y Lifecycle `DRY_RUN`. `AVEONLINE_WEBHOOK_SECRET` solo está en PRD; `VERCEL_BYPASS_TOKEN`, solo en STG.
 - `pg_net` difiere por versión gestionada de Supabase sin impacto funcional. El cupón de prueba `LOCURA` existe solo en STG.
 
@@ -32,13 +32,13 @@
 
 - Categorías padre/hija, facetas configurables, producto insignia, 16 ocasiones, búsqueda difusa, PDP con escalas mayoristas y zoom, 404 real sobre slugs cacheados, feed Google Merchant y APIs `/api/catalog|cms`.
 - **CMS v2 (`ADR-187`):** 9 contenedores, 30 secciones y 168 campos (105 `BLOCK` + 63 `SETTING`), paridad AST en CI, versionado append-only, publicación programada y tokens legales dinámicos.
-- `/admin/mayorista`: lectura para `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER` y `FINANCE_ANALYST`; escritura para los tres primeros. El bloque «Ahorra llevando más» usa solo ahorro real por volumen.
+- **Opciones base y `/admin/mayorista` (`ADR-209`):** `ProductVariant` modela solo atributos físicos de `1` unidad comercial base (`1` pieza, `1` pack de `6` o `1` set; los multi-pack históricos quedan pausados). `WholesaleTier` centraliza descuentos por volumen (`minQty >= 2`) con sombra `opción > producto > global`; lectura `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER` y `FINANCE_ANALYST`, escritura los tres primeros.
 
 ### Estudio 2D/3D y producción 300 DPI ([`domains/studio-and-production.md`](domains/studio-and-production.md))
 
-- Konva multi-unidad (`ADR-167`/`173`), derivados WebP, lazy-mount, auto-fill, galería, letras e IA. Diez escenas 3D, filtrado `-NOMAG` y reverso de marca (`ADR-190`).
-- Tiras photobooth compuestas para imprenta, previews de packs en grilla, réplica entre unidades y curva de volumen en packs. Portada admite popup tras consentimiento, logo estacional, nieve con movimiento reducido y CTA B2B.
-- **Bola Navideña (`ADR-199`/`201`):** activa en los tres ambientes; inserto plano dúplex de 8 cm en una esfera, cara B obligatoria, máximo 25 unidades. Variantes sin/con imán a $10.000/$11.000 COP; promociones 3 × $27.000 y 5 × $40.000.
+- Konva multi-unidad (`ADR-167`/`173`/`209`), tope de `1..15` diseños por tanda (`1..6` packs, `1..4` calendarios, `1..10` sets de letras, `MAX_DESIGN_SLOTS = 60`) y «Copias iguales de esta tanda» hasta `100` uds. por línea (`16` packs) evaluadas por tanda, sellando `OrderItem.designUnits`. Derivados WebP, lazy-mount, auto-fill, galería, letras, IA, diez escenas 3D, filtrado `-NOMAG` y reverso de marca (`ADR-190`).
+- Tiras photobooth compuestas, previews de packs en grilla y réplica entre unidades. Portada con popup tras consentimiento, logo estacional, nieve con movimiento reducido y CTA B2B (`/empresas-y-eventos` desde 25 uds. con `?unidades=&producto=`).
+- **Bola Navideña (`ADR-199`/`201`/`209`):** activa en los 3 ambientes; inserto dúplex de 8 cm en una esfera, cara B obligatoria, hasta 15 diseños/tanda y copias hasta 100 uds. Sin/con imán a $10.000/$11.000 COP; promos 3 × $27.000 y 5 × $40.000.
 - **Mini Libros (`ADR-200`):** carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán; inactivos fuera del catálogo de referencia. Incluyen plantilla asistida «Reino de cristal» y visor 3D con portada, lomo, contraportada y carátula extendida.
 - Auto-save serial con `clientRev` y `STALE_REVISION`; recuperación de borradores; previews privados por `/api/design-preview/*`; `RenderJob` 300 DPI a sangre y ZIP de taller.
 

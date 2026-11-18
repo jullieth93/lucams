@@ -93,52 +93,53 @@ const withDefaultDims = (p) =>
         ...(p.physicalSpecs ?? {}),
       };
 
-// ── Generadores de matrices de separadores (espejo del dato vivo STG/PRD 2026-11-03) ──
+// ── Generadores de opciones físicas base de separadores (ADR-209: 1 unidad base por tamaño) ──
 const sepSkuSize = (sizeCm) => sizeCm.replace("×", "X").replace(".", "");
-const sepLabel = (sizeCm, qty) => `${sizeCm} cm · ${qty} separador${qty === 1 ? "" : "es"}`;
 
-function sepMagVariants(sizeCm, variantShape, aspectRatio, cornerRadiusPx, prices) {
-  return prices.map((price, i) => {
-    const qty = i + 1;
-    return {
-      sku: `SEP-MAG-${sepSkuSize(sizeCm)}-${qty}`,
-      name: sepLabel(sizeCm, qty),
-      price,
-      attributes: {
-        shape: "rectangle",
-        magnet: true,
-        sizeCm,
-        quantity: qty,
-        photoSlots: qty,
-        aspectRatio,
-        variantShape,
-        cornerRadiusPx,
-      },
-    };
-  });
+function sepMagBaseVariant(sizeCm, variantShape, aspectRatio, cornerRadiusPx, price) {
+  return {
+    sku: `SEP-MAG-${sepSkuSize(sizeCm)}-1`,
+    name: `${sizeCm} cm`,
+    price,
+    attributes: {
+      shape: "rectangle",
+      magnet: true,
+      sizeCm,
+      quantity: 1,
+      photoSlots: 1,
+      aspectRatio,
+      variantShape,
+      cornerRadiusPx,
+    },
+  };
 }
 
-function sepAlrNomagVariants(sizeCm, variantShape, aspectRatio, prices, noFoldQtys) {
-  return prices.map((price, i) => {
-    const qty = i + 1;
-    return {
-      sku: `SEP-ALR-${sepSkuSize(sizeCm)}-${qty}-NOMAG`,
-      name: `${sepLabel(sizeCm, qty)} — Sin imán`,
-      price,
-      attributes: {
-        shape: "rectangle",
-        magnet: false,
-        sizeCm,
-        quantity: qty,
-        photoSlots: qty,
-        aspectRatio,
-        variantShape,
-        cornerRadiusPx: 24,
-        // Quirk del dato vivo: noFold + facesPerUnit solo en estas cantidades.
-        ...(noFoldQtys.includes(qty) ? { noFold: true, facesPerUnit: 2 } : {}),
-      },
-    };
-  });
+function sepMagLegacySkus(sizeCm) {
+  return [2, 3, 4, 5, 6].map((qty) => `SEP-MAG-${sepSkuSize(sizeCm)}-${qty}`);
+}
+
+function sepAlrNomagBaseVariant(sizeCm, variantShape, aspectRatio, price) {
+  return {
+    sku: `SEP-ALR-${sepSkuSize(sizeCm)}-1-NOMAG`,
+    name: `${sizeCm} cm — Sin imán`,
+    price,
+    attributes: {
+      shape: "rectangle",
+      magnet: false,
+      sizeCm,
+      quantity: 1,
+      photoSlots: 1,
+      aspectRatio,
+      variantShape,
+      cornerRadiusPx: 24,
+      noFold: true,
+      facesPerUnit: 2,
+    },
+  };
+}
+
+function sepAlrLegacySkus(sizeCm) {
+  return [2, 3, 4, 5, 6].map((qty) => `SEP-ALR-${sepSkuSize(sizeCm)}-${qty}-NOMAG`);
 }
 
 // Campos que el update SÍ alinea (whitelist — todo lo demás es del admin).
@@ -373,39 +374,20 @@ const productsData = [
     },
     images: [UNSPLASH("1530541930197-ff16ac917b0e"), UNSPLASH("1502920917128-1aa500764cbd")],
     variants: [
-      // Curva de volumen REAL (owner 2026-11-11): el precio por pack baja al
-      // llevar más (−6% / −11% / −15%) y cada presentación lleva su compareAt
-      // proporcional (promo pareja en toda la escala). El seed NUNCA pisa
-      // precios de variantes existentes (son del admin): en LOCAL/STG/PRD los
-      // alinea el one-shot scripts/one-shot/packs-volume-pricing-20261111.mjs.
       {
         sku: "FI-POL-12-V1",
-        name: "1 pack (6 unidades) · 6×8 cm",
+        name: "Pack de 6 unidades · 6×8 cm",
         price: 2250000,
         compareAtPrice: 2750000,
         attributes: { photoSlots: 6, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
       },
-      {
-        sku: "FI-POL-12-V3",
-        name: "2 packs (12 unidades) · 6×8 cm",
-        price: 4230000,
-        compareAtPrice: 5500000,
-        attributes: { photoSlots: 12, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
-      },
-      {
-        sku: "FI-POL-12-V5",
-        name: "3 packs (18 unidades) · 6×8 cm",
-        price: 6010000,
-        compareAtPrice: 8250000,
-        attributes: { photoSlots: 18, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
-      },
-      {
-        sku: "FI-POL-12-V6",
-        name: "4 packs (24 unidades) · 6×8 cm",
-        price: 7650000,
-        compareAtPrice: 11000000,
-        attributes: { photoSlots: 24, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
-      },
+    ],
+    legacyPauseSkus: ["FI-POL-12-V3", "FI-POL-12-V5", "FI-POL-12-V6", "FI-POL-12-V7"],
+    wholesaleTiers: [
+      { minQty: 2, unitPrice: 2110000, note: "Escala pack Polaroid (2+ packs)" },
+      { minQty: 3, unitPrice: 2000000, note: "Escala pack Polaroid (3+ packs)" },
+      { minQty: 4, unitPrice: 1910000, note: "Escala pack Polaroid (4+ packs)" },
+      { minQty: 6, unitPrice: 1800000, note: "Escala pack Polaroid (6 packs)" },
     ],
   },
   {
@@ -417,8 +399,8 @@ const productsData = [
     // Dims reales del paquete en PRD (fuente de verdad comercial, audit 2026-10-22).
     physicalSpecs: { weightGrams: 30, widthCm: 15, heightCm: 10, depthCm: 3 },
     description:
-      "Fotoimanes cuadrados con tus fotos. Si quieres, agrégale un marco de color en el Estudio: blanco, negro o el color exacto que quieras con «Personalizado». Elige el tamaño (4×4, 5×5 o 7×7 cm) y los packs: 1 pack = 6 unidades.",
-    basePrice: 2700000,
+      "Fotoimanes cuadrados con tus fotos. Si quieres, agrégale un marco de color en el Estudio: blanco, negro o el color exacto que quieras con «Personalizado». Elige el tamaño (5×5 o 7×7 cm) y los packs: 1 pack = 6 unidades.",
+    basePrice: 2400000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
     personalizationKind: "PHOTO_PACK",
@@ -427,134 +409,35 @@ const productsData = [
       aspectRatio: "1:1",
       sizeCm: "5×5",
       shape: "rectangle",
-      // Ola 2A — paleta de marcos del Estudio (ver polaroid; bug 2026-09-15).
-      // 2026-10-27 (owner) — Cuadrados se suma a la paleta BINARIA de Polaroid y
-      // Tiras (decisión 2026-10-22): SOLO blanco/negro (+ «Sin Color» y
-      // «Personalizado», fijos del toolbar). El dato en DBs existentes lo alinea
-      // el one-shot frame-options-binary-cuadrados-20261027.mjs.
       frameOptions: ["blanco", "negro"],
-      // 2026-10-29 (owner) — slider «Grosor del borde» del Estudio (ADR-173):
-      // habilitado en las DBs vía /admin/productos la semana del 2026-10-26; el
-      // seed lo declara para que un ambiente fresco nazca homologado (el mismo
-      // dato lo alinea el one-shot border-width-tiras-cuadrados-20261029.mjs).
-      // 2026-11-11 (ADR-203): max alineado al valor vivo de PRD (2, no 2.5).
       borderWidth: { enabled: true, min: 1, max: 2, default: 1 },
-      // Vivos de PRD (referencia comercial, ADR-203).
       facesPerUnit: 1,
       canvasBaseScale: 0.75,
     },
     images: [UNSPLASH("1554080353-a576cf803bda")],
-    // Variants modulares: Tamaño (4×4 / 5×5 / 7×7) × PACKS de 6 (1-4 packs).
-    // Precio pack = 6 × unitario de la tabla: 4×4 $4.000 → $24.000;
-    // 5×5 $4.500 → $27.000; 7×7 $6.000 → $36.000 (múltiplos lineales).
-    // SKUs preservados de la matriz vieja (6/12 unidades → 1/2 packs); los de
-    // 9 unidades (V12/V22/V32) se desactivan con el one-shot de packs.
+    // ADR-209: solo 1 opción base (pack de 6) por tamaño físico vivo en STG/PRD
+    // (FOTOIMANC1 = 5×5 cm $24.000; FOTOIMANC-1 = 7×7 cm $27.000) + sus gemelas
+    // -NOMAG base inactivas. La escala por cantidad de packs vive en WholesaleTier
+    // por variantId de cada tamaño.
     variants: [
-      // ── 4×4 cm ──
       {
-        sku: "FI-CUAD-12-V11",
-        name: "1 pack (6 unidades) · 4×4 cm",
+        sku: "FOTOIMANC1",
+        name: "Pack de 6 unidades · 5×5 cm",
         price: 2400000,
         attributes: {
           photoSlots: 6,
-          sizeCm: "4×4",
+          sizeCm: "5×5",
           aspectRatio: "1:1",
           shape: "rectangle",
           magnet: true,
         },
       },
       {
-        sku: "FI-CUAD-12-V13",
-        name: "2 packs (12 unidades) · 4×4 cm",
-        price: 4510000,
-        attributes: {
-          photoSlots: 12,
-          sizeCm: "4×4",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: true,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V14",
-        name: "3 packs (18 unidades) · 4×4 cm",
-        price: 6410000,
-        attributes: {
-          photoSlots: 18,
-          sizeCm: "4×4",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: true,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V15",
-        name: "4 packs (24 unidades) · 4×4 cm",
-        price: 8160000,
-        attributes: {
-          photoSlots: 24,
-          sizeCm: "4×4",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: true,
-        },
-      },
-      // ── 5×5 cm ──
-      {
-        sku: "FI-CUAD-12-V21",
-        name: "1 pack (6 unidades) · 5×5 cm",
+        sku: "FOTOIMANC-1",
+        name: "Pack de 6 unidades · 7×7 cm",
         price: 2700000,
         attributes: {
           photoSlots: 6,
-          sizeCm: "5×5",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: true,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V23",
-        name: "2 packs (12 unidades) · 5×5 cm",
-        price: 5080000,
-        attributes: {
-          photoSlots: 12,
-          sizeCm: "5×5",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: true,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V24",
-        name: "3 packs (18 unidades) · 5×5 cm",
-        price: 7210000,
-        attributes: {
-          photoSlots: 18,
-          sizeCm: "5×5",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: true,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V25",
-        name: "4 packs (24 unidades) · 5×5 cm",
-        price: 9180000,
-        attributes: {
-          photoSlots: 24,
-          sizeCm: "5×5",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: true,
-        },
-      },
-      // ── 7×7 cm ──
-      {
-        sku: "FI-CUAD-12-V31",
-        name: "1 pack (6 unidades) · 7×7 cm",
-        price: 3600000,
-        attributes: {
-          photoSlots: 6,
           sizeCm: "7×7",
           aspectRatio: "1:1",
           shape: "rectangle",
@@ -562,203 +445,69 @@ const productsData = [
         },
       },
       {
-        sku: "FI-CUAD-12-V33",
-        name: "2 packs (12 unidades) · 7×7 cm",
-        price: 6770000,
-        attributes: {
-          photoSlots: 12,
-          sizeCm: "7×7",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: true,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V34",
-        name: "3 packs (18 unidades) · 7×7 cm",
-        price: 9610000,
-        attributes: {
-          photoSlots: 18,
-          sizeCm: "7×7",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: true,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V35",
-        name: "4 packs (24 unidades) · 7×7 cm",
-        price: 12240000,
-        attributes: {
-          photoSlots: 24,
-          sizeCm: "7×7",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: true,
-        },
-      },
-      // ── Gemelas «Sin imán» INACTIVAS (owner 2026-11-11) ──
-      // Cuadrados se vende hoy únicamente CON imán, pero las 12 gemelas -NOMAG
-      // quedan sembradas INACTIVAS (mismo precio, patrón histórico de tiras /
-      // separadores / cuadrados legacy 6.5 cm) para que activarlas sea un
-      // toggle en /admin/productos cuando el negocio lo decida — sin seed ni
-      // despliegue de por medio. El update del seed nunca toca isActive.
-      {
-        sku: "FI-CUAD-12-V11-NOMAG",
-        name: "1 pack (6 unidades) · 4×4 cm — Sin imán",
+        sku: "FOTOIMANC1-NOMAG",
+        name: "Pack de 6 unidades · 5×5 cm — Sin imán",
         price: 2400000,
         isActive: false,
         attributes: {
           photoSlots: 6,
-          sizeCm: "4×4",
+          sizeCm: "5×5",
           aspectRatio: "1:1",
           shape: "rectangle",
           magnet: false,
         },
       },
       {
-        sku: "FI-CUAD-12-V13-NOMAG",
-        name: "2 packs (12 unidades) · 4×4 cm — Sin imán",
-        price: 4510000,
-        isActive: false,
-        attributes: {
-          photoSlots: 12,
-          sizeCm: "4×4",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: false,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V14-NOMAG",
-        name: "3 packs (18 unidades) · 4×4 cm — Sin imán",
-        price: 6410000,
-        isActive: false,
-        attributes: {
-          photoSlots: 18,
-          sizeCm: "4×4",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: false,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V15-NOMAG",
-        name: "4 packs (24 unidades) · 4×4 cm — Sin imán",
-        price: 8160000,
-        isActive: false,
-        attributes: {
-          photoSlots: 24,
-          sizeCm: "4×4",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: false,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V21-NOMAG",
-        name: "1 pack (6 unidades) · 5×5 cm — Sin imán",
+        sku: "FOTOIMANC-1-NOMAG",
+        name: "Pack de 6 unidades · 7×7 cm — Sin imán",
         price: 2700000,
         isActive: false,
         attributes: {
           photoSlots: 6,
-          sizeCm: "5×5",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: false,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V23-NOMAG",
-        name: "2 packs (12 unidades) · 5×5 cm — Sin imán",
-        price: 5080000,
-        isActive: false,
-        attributes: {
-          photoSlots: 12,
-          sizeCm: "5×5",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: false,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V24-NOMAG",
-        name: "3 packs (18 unidades) · 5×5 cm — Sin imán",
-        price: 7210000,
-        isActive: false,
-        attributes: {
-          photoSlots: 18,
-          sizeCm: "5×5",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: false,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V25-NOMAG",
-        name: "4 packs (24 unidades) · 5×5 cm — Sin imán",
-        price: 9180000,
-        isActive: false,
-        attributes: {
-          photoSlots: 24,
-          sizeCm: "5×5",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: false,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V31-NOMAG",
-        name: "1 pack (6 unidades) · 7×7 cm — Sin imán",
-        price: 3600000,
-        isActive: false,
-        attributes: {
-          photoSlots: 6,
           sizeCm: "7×7",
           aspectRatio: "1:1",
           shape: "rectangle",
           magnet: false,
         },
       },
-      {
-        sku: "FI-CUAD-12-V33-NOMAG",
-        name: "2 packs (12 unidades) · 7×7 cm — Sin imán",
-        price: 6770000,
-        isActive: false,
-        attributes: {
-          photoSlots: 12,
-          sizeCm: "7×7",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: false,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V34-NOMAG",
-        name: "3 packs (18 unidades) · 7×7 cm — Sin imán",
-        price: 9610000,
-        isActive: false,
-        attributes: {
-          photoSlots: 18,
-          sizeCm: "7×7",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: false,
-        },
-      },
-      {
-        sku: "FI-CUAD-12-V35-NOMAG",
-        name: "4 packs (24 unidades) · 7×7 cm — Sin imán",
-        price: 12240000,
-        isActive: false,
-        attributes: {
-          photoSlots: 24,
-          sizeCm: "7×7",
-          aspectRatio: "1:1",
-          shape: "rectangle",
-          magnet: false,
-        },
-      },
+    ],
+    legacyPauseSkus: [
+      "FOTOI2",
+      "FOTI",
+      "FOTOIM7",
+      "FOTOI7",
+      "FI-CUAD-12-V11",
+      "FI-CUAD-12-V13",
+      "FI-CUAD-12-V14",
+      "FI-CUAD-12-V15",
+      "FI-CUAD-12-V21",
+      "FI-CUAD-12-V23",
+      "FI-CUAD-12-V24",
+      "FI-CUAD-12-V25",
+      "FI-CUAD-12-V31",
+      "FI-CUAD-12-V33",
+      "FI-CUAD-12-V34",
+      "FI-CUAD-12-V35",
+      "FI-CUAD-12-V11-NOMAG",
+      "FI-CUAD-12-V13-NOMAG",
+      "FI-CUAD-12-V14-NOMAG",
+      "FI-CUAD-12-V15-NOMAG",
+      "FI-CUAD-12-V21-NOMAG",
+      "FI-CUAD-12-V23-NOMAG",
+      "FI-CUAD-12-V24-NOMAG",
+      "FI-CUAD-12-V25-NOMAG",
+      "FI-CUAD-12-V31-NOMAG",
+      "FI-CUAD-12-V33-NOMAG",
+      "FI-CUAD-12-V34-NOMAG",
+      "FI-CUAD-12-V35-NOMAG",
+    ],
+    wholesaleTiers: [
+      { variantSku: "FOTOIMANC1", minQty: 2, unitPrice: 2250000, note: "5×5 cm · 2+ packs" },
+      { variantSku: "FOTOIMANC1", minQty: 3, unitPrice: 2160000, note: "5×5 cm · 3+ packs" },
+      { variantSku: "FOTOIMANC1", minQty: 6, unitPrice: 2050000, note: "5×5 cm · 6 packs" },
+      { variantSku: "FOTOIMANC-1", minQty: 2, unitPrice: 2400000, note: "7×7 cm · 2+ packs" },
+      { variantSku: "FOTOIMANC-1", minQty: 3, unitPrice: 2260000, note: "7×7 cm · 3+ packs" },
+      { variantSku: "FOTOIMANC-1", minQty: 6, unitPrice: 2150000, note: "7×7 cm · 6 packs" },
     ],
   },
   {
@@ -1104,24 +853,20 @@ const productsData = [
       cornerRadiusPx: 20,
       canvasBaseScale: 1,
       gridColsOverride: 3,
+      freeUnitDesign: true,
+      volumePricingByPhysicalUnit: true,
     },
     physicalSpecs: { weightGrams: 12, widthCm: 2, heightCm: 6, depthCm: 1 },
     images: [UNSPLASH("1544716278-ca5e3f4abd8c")],
     variants: [
-      ...sepMagVariants(
-        "2×6",
-        "2x6",
-        "1:3",
-        18,
-        [300000, 600000, 800000, 1200000, 1400000, 1600000],
-      ),
-      ...sepMagVariants(
-        "4×4.2",
-        "4x4-2",
-        "20:21",
-        24,
-        [300000, 600000, 800000, 1200000, 1400000, 1600000],
-      ),
+      sepMagBaseVariant("2×6", "2x6", "1:3", 18, 300000),
+      sepMagBaseVariant("4×4.2", "4x4-2", "20:21", 24, 300000),
+    ],
+    legacyPauseSkus: [...sepMagLegacySkus("2×6"), ...sepMagLegacySkus("4×4.2")],
+    wholesaleTiers: [
+      { minQty: 3, unitPrice: 270000, note: "Escala separadores magnéticos (3+ uds)" },
+      { minQty: 5, unitPrice: 260000, note: "Escala separadores magnéticos (5+ uds)" },
+      { minQty: 12, unitPrice: 240000, note: "Escala separadores magnéticos (12+ uds)" },
     ],
   },
   {
@@ -1145,25 +890,20 @@ const productsData = [
       cornerRadiusPx: 20,
       canvasBaseScale: 0.75,
       gridColsOverride: 3,
+      freeUnitDesign: true,
+      volumePricingByPhysicalUnit: true,
     },
     physicalSpecs: { weightGrams: 12, widthCm: 4, heightCm: 12, depthCm: 1 },
     images: [UNSPLASH("1544716278-ca5e3f4abd8c")],
     variants: [
-      // Solo gemelas NOMAG activas en STG/PRD (dato vivo 2026-11-03).
-      ...sepAlrNomagVariants(
-        "4×12",
-        "4x12",
-        "1:3",
-        [400000, 800000, 1000000, 1600000, 1800000, 2000000],
-        [2, 4], // noFold + facesPerUnit solo en estas cantidades (dato vivo)
-      ),
-      ...sepAlrNomagVariants(
-        "4×15",
-        "4x15",
-        "4:15",
-        [400000, 800000, 1000000, 1600000, 1800000, 2000000],
-        [1, 2, 4],
-      ),
+      sepAlrNomagBaseVariant("4×12", "4x12", "1:3", 400000),
+      sepAlrNomagBaseVariant("4×15", "4x15", "4:15", 400000),
+    ],
+    legacyPauseSkus: [...sepAlrLegacySkus("4×12"), ...sepAlrLegacySkus("4×15")],
+    wholesaleTiers: [
+      { minQty: 3, unitPrice: 350000, note: "Escala separadores largos (3+ uds)" },
+      { minQty: 5, unitPrice: 340000, note: "Escala separadores largos (5+ uds)" },
+      { minQty: 12, unitPrice: 320000, note: "Escala separadores largos (12+ uds)" },
     ],
   },
 
@@ -1504,6 +1244,7 @@ async function run(db, write) {
     const {
       categorySlug,
       variants: declaredVariants,
+      legacyPauseSkus,
       wholesaleTiers: declaredWholesaleTiers,
       ...rest
     } = p;
@@ -1553,29 +1294,6 @@ async function run(db, write) {
       }
     }
 
-    if (Array.isArray(declaredWholesaleTiers)) {
-      for (const tier of declaredWholesaleTiers) {
-        const existingTier = productId
-          ? await db.wholesaleTier.findFirst({
-              where: { productId, minQty: tier.minQty, deletedAt: null },
-              select: { id: true },
-            })
-          : null;
-        if (existingTier) continue;
-        console.log(`  + ${p.name}: promoción desde ${tier.minQty} unidades`);
-        if (write && productId) {
-          await db.wholesaleTier.create({
-            data: {
-              productId,
-              ...tier,
-              createdBy: "system:seed-catalog-canonical",
-              updatedBy: "system:seed-catalog-canonical",
-            },
-          });
-        }
-      }
-    }
-
     // ── Variantes ──
     if (Array.isArray(declaredVariants) && declaredVariants.length > 0) {
       const declaredSkus = new Set(declaredVariants.map((v) => v.sku));
@@ -1590,11 +1308,9 @@ async function run(db, write) {
                 name: v.name,
                 sku: v.sku,
                 price: v.price ?? null,
+                compareAtPrice: v.compareAtPrice ?? null,
                 stock: p.isPersonalizable ? MADE_TO_ORDER_STOCK : 0,
                 attributes: v.attributes ?? {},
-                // Gemelas -NOMAG sembradas INACTIVAS (p. ej. cuadrados,
-                // 2026-11-11): nacen listas para un toggle del admin. El
-                // UPDATE sigue sin tocar isActive (VARIANT_UPDATE_FIELDS).
                 isActive: v.isActive ?? true,
               },
             });
@@ -1624,10 +1340,72 @@ async function run(db, write) {
           });
         }
       }
-      // Variantes huérfanas (ya no declaradas) → solo se archivan con --prune.
+
+      // ADR-209 — Pausar variantes históricas multi-cantidad (`isActive: false`,
+      // jamás borrado físico ni `deletedAt`) migrando antes sus portadas (`images`)
+      // a la opción física base del mismo tamaño/imán si esta no tenía propias.
+      if (productId && Array.isArray(legacyPauseSkus) && legacyPauseSkus.length > 0) {
+        const activeLegacy = await db.productVariant.findMany({
+          where: { productId, sku: { in: legacyPauseSkus }, deletedAt: null, isActive: true },
+          select: { id: true, sku: true, images: true, compareAtPrice: true, attributes: true },
+        });
+        if (activeLegacy.length > 0) {
+          console.log(
+            `    ⏸ ${p.name}: pausando ${activeLegacy.length} variante(s) multi-cantidad históricas (${activeLegacy.map((x) => x.sku).join(", ")})`,
+          );
+          if (write) {
+            const baseActiveRows = await db.productVariant.findMany({
+              where: { productId, sku: { in: Array.from(declaredSkus) }, deletedAt: null },
+              select: { id: true, images: true, compareAtPrice: true, attributes: true },
+            });
+            for (const baseRow of baseActiveRows) {
+              if (baseRow.images.length > 0) continue;
+              const baseSize = baseRow.attributes?.sizeCm ?? "";
+              const baseMag = baseRow.attributes?.magnet ?? true;
+              const donor = activeLegacy.find(
+                (leg) =>
+                  (leg.attributes?.sizeCm ?? "") === baseSize &&
+                  (leg.attributes?.magnet ?? true) === baseMag &&
+                  leg.images.length > 0,
+              );
+              if (donor) {
+                await db.productVariant.update({
+                  where: { id: baseRow.id },
+                  data: { images: donor.images },
+                });
+              }
+            }
+            await db.productVariant.updateMany({
+              where: { id: { in: activeLegacy.map((x) => x.id) } },
+              data: { isActive: false },
+            });
+            const cheapestActive = await db.productVariant.findFirst({
+              where: { productId, deletedAt: null, isActive: true, price: { not: null } },
+              orderBy: { price: "asc" },
+              select: { price: true, compareAtPrice: true },
+            });
+            if (cheapestActive?.price != null) {
+              await db.product.update({
+                where: { id: productId },
+                data: {
+                  basePrice: cheapestActive.price,
+                  compareAtPrice:
+                    cheapestActive.compareAtPrice != null &&
+                    cheapestActive.compareAtPrice > cheapestActive.price
+                      ? cheapestActive.compareAtPrice
+                      : null,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      // Variantes huérfanas (ya no declaradas ni en legacyPauseSkus) → solo se archivan con --prune.
       if (productId) {
+        const knownSkus = [...declaredSkus, ...(legacyPauseSkus ?? [])];
         const orphans = await db.productVariant.findMany({
-          where: { productId, sku: { notIn: Array.from(declaredSkus) }, deletedAt: null },
+          where: { productId, sku: { notIn: knownSkus }, deletedAt: null },
           select: { id: true, sku: true, name: true },
         });
         for (const o of orphans) {
@@ -1670,6 +1448,92 @@ async function run(db, write) {
           where: { sku: variantSku, stock: 0 },
           data: { stock: MADE_TO_ORDER_STOCK },
         });
+      }
+    }
+
+    // ── Escalas mayoristas (ADR-209: por producto o por opción `variantSku`) ──
+    if (Array.isArray(declaredWholesaleTiers) && declaredWholesaleTiers.length > 0) {
+      const schemaObj = p.personalizationSchema ?? {};
+      const isLetterSetSeed = schemaObj.letterSet === "full" || schemaObj.letterSet === "vowels";
+      const isPackOfSixSeed =
+        p.slug === "set-fotoimanes-polaroid" ||
+        p.slug === "set-fotoimanes-cuadrados" ||
+        ((p.personalizationKind ?? "NONE") !== "NONE" &&
+          schemaObj.facesPerUnit !== 2 &&
+          schemaObj.freeUnitDesign !== true &&
+          schemaObj.photoSlots === 6);
+      const maxSeedMinQty = isLetterSetSeed
+        ? 10
+        : p.personalizationKind === "CALENDAR_PHOTO_MONTH"
+          ? 4
+          : isPackOfSixSeed
+            ? 6
+            : (p.personalizationKind ?? "NONE") !== "NONE"
+              ? 15
+              : 100;
+
+      if (write && productId) {
+        // Limpiar cualquier escala del seed apuntando a una opción archivada/pausada
+        // o cuyo minQty supere el tope vigente del selector del producto.
+        await db.wholesaleTier.updateMany({
+          where: {
+            productId,
+            deletedAt: null,
+            createdBy: "system:seed-catalog-canonical",
+            OR: [
+              {
+                variantId: { not: null },
+                variant: { OR: [{ deletedAt: { not: null } }, { isActive: false }] },
+              },
+              { minQty: { gt: maxSeedMinQty } },
+            ],
+          },
+          data: {
+            isActive: false,
+            deletedAt: new Date(),
+            deletedBy: "system:seed-catalog-canonical",
+          },
+        });
+      }
+      for (const tierSpec of declaredWholesaleTiers) {
+        const { variantSku, ...tierFields } = tierSpec;
+        let variantId = null;
+        if (variantSku) {
+          const targetVar = await db.productVariant.findFirst({
+            where: { sku: variantSku, deletedAt: null, isActive: true },
+            select: { id: true },
+          });
+          variantId = targetVar?.id ?? null;
+          if (!variantId) {
+            if (write) {
+              console.warn(
+                `    ⚠ ${p.name}: opción activa ${variantSku} no encontrada para escala ${tierFields.minQty}+`,
+              );
+            }
+            continue;
+          }
+        }
+        const existingTier = productId
+          ? await db.wholesaleTier.findFirst({
+              where: { productId, variantId, minQty: tierFields.minQty, deletedAt: null },
+              select: { id: true },
+            })
+          : null;
+        if (existingTier) continue;
+        console.log(
+          `  + ${p.name}${variantSku ? ` (${variantSku})` : ""}: escala mayorista desde ${tierFields.minQty} unidades`,
+        );
+        if (write && productId) {
+          await db.wholesaleTier.create({
+            data: {
+              productId,
+              variantId,
+              ...tierFields,
+              createdBy: "system:seed-catalog-canonical",
+              updatedBy: "system:seed-catalog-canonical",
+            },
+          });
+        }
       }
     }
   }

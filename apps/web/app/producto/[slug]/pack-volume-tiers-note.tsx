@@ -1,50 +1,52 @@
 "use client";
 
 /*
- * PackVolumeTiersNote — escala de ahorro de las familias vendidas por PACKS
- * (polaroid/cuadrados, ADR-101) con el MISMO bloque «Ahorra llevando más» de
- * los WholesaleTier reales (VolumeTiersNote; owner 2026-11-10 — antes el
- * descuento de estas familias solo se insinuaba con un tachado/chip y el
- * cliente no entendía cuánto ahorraba por presentación).
+ * VariantVolumeTiersNote — bloque «Ahorra llevando más…» reactivo a la opción
+ * elegida en la PDP (ADR-209).
  *
- * Los grupos (tamaño × imán) llegan precalculados del server; la nota sigue la
- * variante elegida vía SelectedVariantProvider (cuadrados: cambia de tamaño y
- * la escala cambia con ella).
+ * Resuelve la escala efectiva (`WholesaleTier`) de la variante seleccionada en
+ * `SelectedVariantProvider` (p. ej. Fotoimanes Cuadrados `4×4` vs `7×7` cm) y
+ * adapta el sustantivo comercial (`packs` / `c/pack` vs `unid.` / `c/u`).
  */
 
 import { useSelectedVariant } from "./variant-actions";
 import { VolumeTiersNote } from "@/components/volume-tiers-note";
-import type { PackVolumeTierGroup } from "@/features/cart/volume-pricing";
+import { formatVolumeTierQtyLabel, type VisibleVolumeTier } from "@/features/cart/volume-pricing";
 
-export function PackVolumeTiersNote({
-  groups,
-  groupKeyByVariantId,
+export function VariantVolumeTiersNote({
+  tiersByVariantId,
+  fallbackTiers,
+  isPack = false,
+  maxQty,
+  maxQtyByVariantId,
   className,
 }: {
-  groups: PackVolumeTierGroup[];
-  /** variantId → clave de grupo de derivePackVolumeTiers. */
-  groupKeyByVariantId: Record<string, string>;
+  tiersByVariantId: Record<string, VisibleVolumeTier[]>;
+  fallbackTiers: VisibleVolumeTier[];
+  isPack?: boolean;
+  maxQty?: number;
+  maxQtyByVariantId?: Record<string, number>;
   className?: string;
 }) {
   const { selectedId } = useSelectedVariant();
-  if (groups.length === 0) return null;
-  const selectedKey = selectedId ? groupKeyByVariantId[selectedId] : undefined;
-  const group = groups.find((g) => g.key === selectedKey) ?? groups[0]!;
-  const isPack = group.noun === "pack";
+  const tiers = (selectedId ? tiersByVariantId[selectedId] : undefined) ?? fallbackTiers;
+  const effectiveMax = (selectedId ? maxQtyByVariantId?.[selectedId] : undefined) ?? maxQty ?? null;
+  if (!tiers || tiers.length === 0) return null;
+
   return (
     <VolumeTiersNote
       className={className}
       title={
         isPack
-          ? "Ahorra llevando más packs (el descuento ya viene en el precio de cada presentación)"
-          : "Ahorra llevando más unidades (el descuento ya viene en el precio de cada presentación)"
+          ? "Ahorra llevando más packs (se aplica automáticamente en tu carrito)"
+          : "Ahorra llevando más unidades (se aplica automáticamente en tu carrito)"
       }
-      items={group.tiers.map((t) => ({
-        key: String(t.units),
-        qtyLabel: isPack ? `${t.units} ${t.units === 1 ? "pack" : "packs"}` : `${t.units} unid.`,
-        unitPrice: t.unitPrice,
+      items={tiers.map((vt) => ({
+        key: String(vt.minQty),
+        qtyLabel: formatVolumeTierQtyLabel(vt.minQty, { maxQty: effectiveMax, isPack }),
+        unitPrice: vt.unitPrice,
         priceSuffix: isPack ? "c/pack" : "c/u",
-        savingsPct: t.savingsPct,
+        savingsPct: vt.savingsPct,
       }))}
     />
   );

@@ -51,7 +51,6 @@ export function VariantForm({
   // Estado controlado para SUGERIR el nombre en vivo desde las características (D3).
   const [name, setName] = useState(variant?.name ?? "");
   const [photoSlots, setPhotoSlots] = useState(attrs.photoSlots?.toString() ?? "");
-  const [quantity, setQuantity] = useState(attrs.quantity?.toString() ?? "");
   const [sizeCm, setSizeCm] = useState(attrs.sizeCm ?? "");
   const [color, setColor] = useState(attrs.color ?? "");
   // ¿Con imán? (2026-09-08b): select controlado — default del valor actual para
@@ -60,7 +59,7 @@ export function VariantForm({
     attrs.magnet === true ? "true" : attrs.magnet === false ? "false" : "",
   );
 
-  const suggestedName = buildSuggestedName({ photoSlots, quantity, sizeCm, color, magnet });
+  const suggestedName = buildSuggestedName({ photoSlots, sizeCm, color, magnet });
 
   return (
     <form action={formAction} className="space-y-4">
@@ -72,6 +71,11 @@ export function VariantForm({
       <input type="hidden" name="attr_shape" value={attrs.shape ?? ""} />
       <input type="hidden" name="attr_finish" value={attrs.finish ?? ""} />
       <input type="hidden" name="attr_aspectRatio" value={attrs.aspectRatio ?? ""} />
+      <input
+        type="hidden"
+        name="attr_quantity"
+        value={attrs.quantity != null ? String(attrs.quantity) : ""}
+      />
 
       {state?.error && <AdminNotice tone="error">{state.error}</AdminNotice>}
 
@@ -166,27 +170,19 @@ export function VariantForm({
           ¿En qué se diferencia esta opción?
         </h4>
         <p className="text-brand-muted mt-0.5 mb-3 text-xs">
-          Llena solo lo que aplique. Con esto armamos la sugerencia de nombre y, en productos
-          personalizables, sabemos cuántas fotos pedirle al cliente.
+          Define solo los atributos físicos de la unidad comercial base (tamaño, espacios de foto
+          por unidad/pack, color o imán). Los descuentos por llevar varias unidades se administran
+          en Precios al por mayor.
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field
-            label="¿Cuántas fotos lleva?"
+            label="¿Cuántas fotos lleva cada unidad o pack base?"
             name="attr_photoSlots"
             type="number"
             value={photoSlots}
             onChange={setPhotoSlots}
-            placeholder="Ej: 12"
-            hint="Espacios para fotos que sube el cliente."
-          />
-          <Field
-            label="¿Cuántas unidades trae?"
-            name="attr_quantity"
-            type="number"
-            value={quantity}
-            onChange={setQuantity}
-            placeholder="Ej: 6"
-            hint="Para packs o sets ya armados."
+            placeholder="Ej: 1 (pieza) o 6 (pack)"
+            hint="Fotos por unidad comercial base (p. ej. 1 en separadores, 6 en pack de fotoimanes)."
           />
           <Field
             label="Tamaño"
@@ -269,15 +265,15 @@ export function VariantForm({
 /** Sugerencia de nombre de opción a partir de sus características (D3). */
 function buildSuggestedName(a: {
   photoSlots: string;
-  quantity: string;
   sizeCm: string;
   color: string;
   magnet: string;
 }): string {
   const parts: string[] = [];
-  if (a.photoSlots.trim()) parts.push(`${a.photoSlots.trim()} fotos`);
-  if (a.quantity.trim()) parts.push(`${a.quantity.trim()} unidades`);
   if (a.sizeCm.trim()) parts.push(a.sizeCm.trim());
+  if (a.photoSlots.trim() && Number(a.photoSlots.trim()) > 1) {
+    parts.push(`${a.photoSlots.trim()} fotos`);
+  }
   if (a.color.trim()) parts.push(a.color.trim());
   if (a.magnet === "true") parts.push("Con imán");
   if (a.magnet === "false") parts.push("Sin imán");

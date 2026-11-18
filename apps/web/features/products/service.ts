@@ -686,8 +686,8 @@ async function assertProductsQuotable(
     );
   }
   const missing = products.filter((p) => {
-    // Sin variantes vivas, evaluamos solo las dims base (una Default implícita).
-    const variants = p.variants.length > 0 ? p.variants : [{ attributes: {} }];
+    const activeVariants = p.variants.filter((variant) => variant.isActive);
+    const variants = activeVariants.length > 0 ? activeVariants : [{ attributes: {} }];
     return variants.some((v) => getEffectiveShippingDims(p.physicalSpecs, v.attributes) === null);
   });
   if (missing.length > 0) {
@@ -898,6 +898,29 @@ export async function updateVariant(input: VariantUpdateInput, updatedBy: string
       select: { id: true },
     });
     if (conflict) throw new VariantValidationError("sku", `SKU "${rest.sku}" ya existe`);
+  }
+
+  if (rest.isActive === false) {
+    const current = await prisma.productVariant.findUnique({
+      where: { id },
+      select: { productId: true, product: { select: { isActive: true, deletedAt: true } } },
+    });
+    if (current && current.product.isActive && !current.product.deletedAt) {
+      const otherActiveCount = await prisma.productVariant.count({
+        where: {
+          productId: current.productId,
+          deletedAt: null,
+          isActive: true,
+          id: { not: id },
+        },
+      });
+      if (otherActiveCount === 0) {
+        throw new VariantValidationError(
+          "general",
+          "No puedes pausar la última opción activa de un producto publicado. Pausa primero el producto o activa otra opción.",
+        );
+      }
+    }
   }
 
   const updated = await prisma.productVariant.update({

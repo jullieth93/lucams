@@ -106,7 +106,11 @@ export function OrderSummary({
                   </p>
                 )}
                 {item.isPersonalizable && item.designPreviewUrl && (
-                  <p className="text-brand-muted text-[10px]">{texts.personalized}</p>
+                  <p className="text-brand-muted text-[10px]">
+                    {item.designUnits && (item.designUnits > 1 || item.qty > 1)
+                      ? `${item.designUnits} ${item.designUnits === 1 ? item.unitNoun.singular : item.unitNoun.plural} × ${item.qty} ${item.qty === 1 ? "copia" : "copias"} (${item.designUnits * item.qty} ${item.designUnits * item.qty === 1 ? item.unitNoun.singular : item.unitNoun.plural})`
+                      : texts.personalized}
+                  </p>
                 )}
                 {item.borderNote && (
                   <p className="text-brand-muted text-[10px]">{item.borderNote}</p>

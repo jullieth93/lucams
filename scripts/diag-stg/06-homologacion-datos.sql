@@ -143,9 +143,12 @@ FROM "LetterTile" t JOIN "LetterTileSet" s ON s.id = t."setId"
 
 UNION ALL
 SELECT 'WholesaleTier|' || count(*) || '|' || coalesce(md5(string_agg(
-  coalesce(p.slug,'') || "minQty"::text || "unitPrice"::text || coalesce(note,'') || w."isActive"::text,
-  '|' ORDER BY coalesce(p.slug,''), "minQty")),'')
-FROM "WholesaleTier" w LEFT JOIN "Product" p ON p.id = w."productId"
+  coalesce(p.slug,'') || coalesce(v.sku,'') || w."minQty"::text || w."unitPrice"::text ||
+  coalesce(w.note,'') || w."isActive"::text || coalesce(w."deletedAt"::text,''),
+  '|' ORDER BY coalesce(p.slug,''), coalesce(v.sku,''), w."minQty")),'')
+FROM "WholesaleTier" w
+LEFT JOIN "Product" p ON p.id = w."productId"
+LEFT JOIN "ProductVariant" v ON v.id = w."variantId"
 
 UNION ALL SELECT 'Review|' || count(*) || '|' || '' FROM "Review"
 UNION ALL SELECT 'Order|' || count(*) || '|' || '' FROM "Order"

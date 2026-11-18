@@ -64,11 +64,10 @@ export async function ProductVariantsPanel({
   const editingVariant = editingId ? (variants.find((v) => v.id === editingId) ?? null) : null;
   const newOpen = searchParams.new === "1";
 
-  // Producto por packs (alguna opción con attributes.quantity): el stock de
-  // cada fila son packs de ESA cantidad, no unidades sueltas — se aclara UNA
-  // vez sobre la tabla + en el encabezado de la columna (Lucy 2026-08).
-  const isPackBased = variants.some(
-    (v) => parseVariantAttributes(v.attributes).quantity !== undefined,
+  const activeVariantsList = variants.filter((v) => v.isActive);
+  const pausedVariantsList = variants.filter((v) => !v.isActive);
+  const isPackBased = activeVariantsList.some(
+    (v) => (parseVariantAttributes(v.attributes).quantity ?? 1) > 1,
   );
   // Lucy 2026-06-27: al crear/editar mostramos SOLO el form (no la tabla con su
   // encabezado flotando encima — se veía como un "error de UI").
@@ -76,11 +75,9 @@ export async function ProductVariantsPanel({
   const errorMsg = typeof searchParams.error === "string" ? searchParams.error : null;
 
   // Portadas por DISEÑO (Lucy 2026-08-25): la opción en edición comparte sus
-  // fotos con las opciones de la misma firma visual (attributes sin
-  // quantity/photoSlots/pricePerTile). Si el grupo tiene fotos distintas entre
-  // opciones (datos viejos), VariantImages muestra el aviso para unificarlas.
+  // fotos con las opciones ACTIVAS de la misma firma visual.
   const editingCoverGroup = editingVariant
-    ? (groupVariantsByCoverSignature(variants).get(
+    ? (groupVariantsByCoverSignature(activeVariantsList).get(
         variantCoverSignature(parseVariantAttributes(editingVariant.attributes)),
       ) ?? [editingVariant])
     : [];
@@ -93,11 +90,13 @@ export async function ProductVariantsPanel({
       {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
 
       <AdminNotice tone="info">
-        <strong>¿Qué son las opciones?</strong> Permiten ofrecer el mismo producto en distintas
-        cantidades, tamaños o colores. Ejemplo: el &quot;Set Polaroid&quot; con opciones de 6, 9 y
-        12 fotos. El cliente elige en la tienda, el precio se ajusta solo, y al ir al estudio de
-        personalización se le piden los espacios correctos. Si dejas el precio vacío, hereda el del
-        producto base.
+        <strong>¿Qué son las opciones?</strong> Definen únicamente atributos físicos del producto
+        (tamaño, si lleva imán o no, color o idioma) sobre su unidad comercial base (1 unidad o 1
+        pack de 6). Los descuentos automáticos por llevar varias unidades viven exclusivamente en{" "}
+        <Link href="/admin/mayorista" className="font-semibold underline underline-offset-2">
+          Precios al por mayor
+        </Link>
+        .
       </AdminNotice>
 
       {!formMode && (
@@ -218,7 +217,7 @@ export async function ProductVariantsPanel({
                 </tr>
               </AdminTableHead>
               <AdminTableBody>
-                {variants.map((v) => {
+                {activeVariantsList.map((v) => {
                   const attrs = parseVariantAttributes(v.attributes);
                   const label = generateVariantLabel(attrs);
                   const effectivePrice = v.price ?? basePrice;
@@ -303,6 +302,45 @@ export async function ProductVariantsPanel({
                 })}
               </AdminTableBody>
             </AdminTable>
+
+            {pausedVariantsList.length > 0 && (
+              <details className="border-brand-purple/15 rounded-xl border bg-slate-50/70 p-4">
+                <summary className="text-brand-muted hover:text-brand-purple-dark cursor-pointer text-xs font-semibold">
+                  Opciones históricas pausadas ({pausedVariantsList.length}) — conservadas para
+                  pedidos anteriores, ocultas en tienda
+                </summary>
+                <div className="mt-3">
+                  <AdminTable>
+                    <AdminTableBody>
+                      {pausedVariantsList.map((v) => {
+                        const visibleName = v.name === "Default" ? "Única" : v.name;
+                        return (
+                          <AdminTableRow key={v.id} className="opacity-75">
+                            <td className="px-4 py-2.5 text-xs font-medium">{visibleName}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs">{v.sku}</td>
+                            <td className="px-4 py-2.5 text-right text-xs tabular-nums">
+                              {formatCOP(v.price ?? basePrice)}
+                            </td>
+                            <td className="px-4 py-2.5 text-center">
+                              <AdminBadge tone="slate">Pausada</AdminBadge>
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <Link
+                                href={`/admin/productos/${productId}?section=opciones&edit=${v.id}`}
+                                className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                                Ver / Editar
+                              </Link>
+                            </td>
+                          </AdminTableRow>
+                        );
+                      })}
+                    </AdminTableBody>
+                  </AdminTable>
+                </div>
+              </details>
+            )}
           </>
         ))}
     </section>

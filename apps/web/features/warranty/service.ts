@@ -616,6 +616,7 @@ export interface AdminWarrantyCaseRow {
   productName: string;
   productSlug: string;
   qty: number;
+  designUnits: number;
   lineTotal: number;
   warrantyMonths: number;
   warrantyEndsAt: Date | null;
@@ -753,6 +754,7 @@ export async function listWarrantyClaimsAdmin(opts: {
         orderItem: {
           select: {
             qty: true,
+            designUnits: true,
             unitPrice: true,
             warrantyMonths: true,
             customDesign: true,
@@ -904,6 +906,7 @@ export async function listWarrantyClaimsAdmin(opts: {
       productName: r.orderItem.variant.product.name,
       productSlug: r.orderItem.variant.product.slug,
       qty: r.orderItem.qty,
+      designUnits: r.orderItem.designUnits,
       lineTotal: r.orderItem.unitPrice * r.orderItem.qty,
       warrantyMonths: r.orderItem.warrantyMonths,
       warrantyEndsAt: ord.deliveredAt

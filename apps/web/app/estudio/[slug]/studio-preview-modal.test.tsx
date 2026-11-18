@@ -51,54 +51,55 @@ function baseProps() {
   };
 }
 
-describe("StudioPreviewModal — sin stepper de copias (regla 2026-09-08b)", () => {
-  it("NO muestra stepper ni grupo 'Copias' (la cantidad viene de la PDP)", () => {
-    render(<StudioPreviewModal {...baseProps()} initialCopies={4} />);
-    expect(screen.queryByRole("group", { name: "Copias" })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Aumentar copias")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Disminuir copias")).not.toBeInTheDocument();
-  });
-
-  it("con 1 copia (default): total = precio unitario, sin desglose de copias ni c/u", () => {
-    render(<StudioPreviewModal {...baseProps()} />);
-    expect(screen.getByText(cop(UNIT_PRICE))).toBeInTheDocument();
-    expect(screen.queryByText(/c\/u/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/copias idénticas/)).not.toBeInTheDocument();
-  });
-
-  it("con N copias de la PDP: total = unitario × N, con c/u y el dato de copias", () => {
-    render(<StudioPreviewModal {...baseProps()} initialCopies={4} />);
-    expect(screen.getByText(cop(UNIT_PRICE * 4))).toBeInTheDocument();
-    expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
-    expect(screen.getByText(/4 copias idénticas de tu diseño/)).toBeInTheDocument();
-    // 2026-09-25 — la nota ya no dice "ajusta la cantidad en el carrito"
-    // (las líneas personalizadas no tienen stepper en el carrito).
-    expect(
-      screen.getByText("La cantidad la elegiste en la página del producto."),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/ajustar la cantidad en el carrito/i)).not.toBeInTheDocument();
-  });
-
-  it("onConfirm recibe las copias de la PDP (van como qty al carrito)", () => {
+describe("StudioPreviewModal — copias iguales de esta tanda (ADR-209)", () => {
+  it("muestra el grupo 'Copias iguales de esta tanda' y permite subir/bajar copias", () => {
     const props = baseProps();
-    render(<StudioPreviewModal {...props} initialCopies={3} />);
+    render(<StudioPreviewModal {...props} unitCount={1} />);
+    expect(screen.getByRole("group", { name: "Copias iguales de esta tanda" })).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Aumentar copias iguales"));
+    fireEvent.click(screen.getByLabelText("Aumentar copias iguales"));
+    expect(screen.getByText(cop(UNIT_PRICE * 3))).toBeInTheDocument();
+    expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
     expect(props.onConfirm).toHaveBeenCalledWith(3, { qualityAcknowledged: false });
   });
 
-  it("sin initialCopies, onConfirm recibe 1 (default del carrito)", () => {
-    const props = baseProps();
-    render(<StudioPreviewModal {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
-    expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: false });
+  it("con 1 copia (default): total = precio unitario, sin c/u", () => {
+    render(<StudioPreviewModal {...baseProps()} />);
+    expect(screen.getByText(cop(UNIT_PRICE))).toBeInTheDocument();
+    expect(screen.queryByText(/c\/u/)).not.toBeInTheDocument();
   });
 
-  it("acota initialCopies fuera de rango a 1..99 (la URL la puede editar cualquiera)", () => {
+  it("con N copias iniciales (path nombre / edición desde carrito): total = unitario × N", () => {
+    const props = baseProps();
+    render(<StudioPreviewModal {...props} initialCopies={4} />);
+    expect(screen.getByText(cop(UNIT_PRICE * 4))).toBeInTheDocument();
+    expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
+    expect(screen.getByText(/1 diseño × 4 copias = 4 unidades/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
+    expect(props.onConfirm).toHaveBeenCalledWith(4, { qualityAcknowledged: false });
+  });
+
+  it("acota copias fuera de rango a 1..100 (o floor(100 / piezas_por_unidad))", () => {
     const propsAlto = baseProps();
     const { unmount } = render(<StudioPreviewModal {...propsAlto} initialCopies={150} />);
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
-    expect(propsAlto.onConfirm).toHaveBeenCalledWith(99, { qualityAcknowledged: false });
+    expect(propsAlto.onConfirm).toHaveBeenCalledWith(100, { qualityAcknowledged: false });
     unmount();
+
+    const propsPack = baseProps();
+    const { unmount: unmountPack } = render(
+      <StudioPreviewModal
+        {...propsPack}
+        unitCount={2}
+        initialOrderCopies={50}
+        piecesPerCommercialUnit={6}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
+    // 2 packs × 6 = 12 imanes por copia → floor(100/12) = 8 copias máx (96 imanes)
+    expect(propsPack.onConfirm).toHaveBeenCalledWith(8, { qualityAcknowledged: false });
+    unmountPack();
 
     const propsBajo = baseProps();
     render(<StudioPreviewModal {...propsBajo} initialCopies={0} />);
@@ -108,17 +109,12 @@ describe("StudioPreviewModal — sin stepper de copias (regla 2026-09-08b)", () 
 });
 
 describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades van EN el diseño)", () => {
-  it("con N unidades: total = unitario × N, dato de unidades y onConfirm recibe 1 (qty del carrito)", () => {
+  it("con N unidades y 1 copia default: total = unitario × N y onConfirm recibe 1", () => {
     const props = baseProps();
     render(<StudioPreviewModal {...props} unitCount={2} />);
     expect(screen.getByText(cop(UNIT_PRICE * 2))).toBeInTheDocument();
     expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
-    // La línea dice unidades DISEÑADAS, no "copias idénticas" (concepto eliminado).
     expect(screen.getByText(/2 unidades — cada una con su propio diseño/)).toBeInTheDocument();
-    expect(screen.queryByText(/copias idénticas/)).not.toBeInTheDocument();
-    // 2026-09-25 — sin nota "ajusta en el carrito": las líneas personalizadas ya
-    // no tienen stepper; las unidades se cambian en el editor («Volver a editar»).
-    expect(screen.queryByText(/cantidad/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
     expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: false });
   });
@@ -127,8 +123,6 @@ describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades va
     render(<StudioPreviewModal {...baseProps()} unitCount={1} />);
     expect(screen.getByText(cop(UNIT_PRICE))).toBeInTheDocument();
     expect(screen.queryByText(/c\/u/)).not.toBeInTheDocument();
-    // 2026-10-12 — la línea se muestra TAMBIÉN con 1 unidad (singular); sin
-    // prop unitNoun cae al sustantivo histórico "unidad".
     expect(screen.getByText("1 unidad — cada una con su propio diseño")).toBeInTheDocument();
     expect(screen.queryByText(/unidades — cada una/)).not.toBeInTheDocument();
   });

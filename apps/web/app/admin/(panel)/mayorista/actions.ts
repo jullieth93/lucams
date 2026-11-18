@@ -21,6 +21,10 @@ import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { validateWholesaleTierCandidate } from "@/features/cart/volume-pricing";
+import {
+  MAX_SELF_SERVICE_PHYSICAL_UNITS,
+  maxSelectorUnitsForProduct,
+} from "@/features/personalization/design-units";
 import { prisma } from "@/lib/db";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
@@ -31,16 +35,22 @@ import { logger } from "@/lib/logger";
 
 export type TierActionState = {
   error?: string;
-  fieldErrors?: Partial<Record<"productId" | "minQty" | "unitPrice" | "note", string[]>>;
+  fieldErrors?: Partial<
+    Record<"productId" | "variantId" | "minQty" | "unitPrice" | "note", string[]>
+  >;
 };
 
 const TierCreateSchema = z.object({
   productId: z.string().min(1).nullable(),
+  variantId: z.string().min(1).nullable(),
   minQty: z
     .number()
     .int("La cantidad mínima debe ser un número entero.")
     .min(2, "La cantidad mínima debe ser al menos 2 unidades.")
-    .max(100_000, "La cantidad mínima no puede superar 100.000 unidades."),
+    .max(
+      MAX_SELF_SERVICE_PHYSICAL_UNITS,
+      `La cantidad mínima en compra directa no puede superar ${MAX_SELF_SERVICE_PHYSICAL_UNITS} unidades (usa Empresas y Eventos para pedidos mayores).`,
+    ),
   unitPrice: z
     .number()
     .int("El precio por unidad debe ser un valor entero.")
@@ -50,13 +60,21 @@ const TierCreateSchema = z.object({
   isActive: z.boolean(),
 });
 
-const TierUpdateSchema = TierCreateSchema.omit({ productId: true, isActive: true });
+const TierUpdateSchema = TierCreateSchema.omit({
+  productId: true,
+  variantId: true,
+  isActive: true,
+});
 
 function parsePayload(formData: FormData) {
   const productIdRaw = String(formData.get("productId") ?? "").trim();
+  const variantIdRaw = String(formData.get("variantId") ?? "").trim();
+  const productId = productIdRaw === "" ? null : productIdRaw;
+  const variantId = productId && variantIdRaw !== "" ? variantIdRaw : null;
   const unitPricePesos = Number(formData.get("unitPricePesos") ?? 0);
   return {
-    productId: productIdRaw === "" ? null : productIdRaw,
+    productId,
+    variantId,
     minQty: Number(formData.get("minQty") ?? 0),
     unitPrice: Math.round(unitPricePesos * 100),
     note: String(formData.get("note") ?? "").trim() || null,
@@ -77,23 +95,32 @@ function revalidateWholesaleCaches() {
 
 async function checkTierScaleCoherence(opts: {
   productId: string | null;
+  variantId: string | null;
   minQty: number;
   unitPrice: number;
   willBeActive: boolean;
   excludeId?: string;
 }): Promise<TierActionState | null> {
-  const { productId, minQty, unitPrice, willBeActive, excludeId } = opts;
+  const { productId, variantId, minQty, unitPrice, willBeActive, excludeId } = opts;
 
   let referencePrice: number | null = null;
+  let maxAllowedQty: number = MAX_SELF_SERVICE_PHYSICAL_UNITS;
+  let unitPlural = "unidades";
+  let productNameForMsg = "el catálogo";
+
   if (productId) {
     const product = await prisma.product.findFirst({
       where: { id: productId, deletedAt: null },
       select: {
         id: true,
+        name: true,
+        slug: true,
         basePrice: true,
+        personalizationKind: true,
+        personalizationSchema: true,
         variants: {
-          where: { deletedAt: null, isActive: true },
-          select: { price: true },
+          where: { deletedAt: null },
+          select: { id: true, price: true, isActive: true, attributes: true },
         },
       },
     });
@@ -103,15 +130,47 @@ async function checkTierScaleCoherence(opts: {
         fieldErrors: { productId: ["El producto seleccionado ya no existe."] },
       };
     }
-    referencePrice =
-      product.variants.length > 0
-        ? Math.min(...product.variants.map((v) => v.price ?? product.basePrice))
-        : product.basePrice;
+    productNameForMsg = `«${product.name}»`;
+    const activeVars = product.variants.filter((v) => v.isActive);
+    if (variantId) {
+      const targetVariant = product.variants.find((v) => v.id === variantId);
+      if (!targetVariant) {
+        return {
+          error: "La opción seleccionada no pertenece a este producto.",
+          fieldErrors: { variantId: ["La opción seleccionada no pertenece a este producto."] },
+        };
+      }
+      referencePrice = targetVariant.price ?? product.basePrice;
+      const cap = maxSelectorUnitsForProduct({
+        slug: product.slug,
+        personalizationKind: product.personalizationKind,
+        personalizationSchema: product.personalizationSchema,
+        variantAttrs: targetVariant.attributes,
+        allVariantsAttrs: activeVars.map((v) => v.attributes),
+      });
+      maxAllowedQty = cap.maxUnits;
+      unitPlural = cap.unitPlural;
+    } else {
+      referencePrice =
+        activeVars.length > 0
+          ? Math.min(...activeVars.map((v) => v.price ?? product.basePrice))
+          : product.basePrice;
+      const cap = maxSelectorUnitsForProduct({
+        slug: product.slug,
+        personalizationKind: product.personalizationKind,
+        personalizationSchema: product.personalizationSchema,
+        variantAttrs: activeVars[0]?.attributes,
+        allVariantsAttrs: activeVars.map((v) => v.attributes),
+      });
+      maxAllowedQty = cap.maxUnits;
+      unitPlural = cap.unitPlural;
+    }
   }
 
   const activeSiblings = await prisma.wholesaleTier.findMany({
     where: {
       productId,
+      variantId,
       deletedAt: null,
       isActive: true,
       ...(excludeId ? { id: { not: excludeId } } : {}),
@@ -125,9 +184,15 @@ async function checkTierScaleCoherence(opts: {
     willBeActive,
     referencePrice,
     activeSiblings,
+    maxAllowedQty,
   });
 
   if (!violation) return null;
+
+  if (violation.kind === "EXCEEDS_MAX_UNITS") {
+    const msg = `Para ${productNameForMsg} el selector permite máximo ${violation.maxAllowedQty} ${unitPlural}; la cantidad mínima debe estar entre 2 y ${violation.maxAllowedQty} (para 25+ usa Empresas y Eventos).`;
+    return { error: msg, fieldErrors: { minQty: [msg] } };
+  }
 
   if (violation.kind === "ABOVE_OR_EQUAL_BASE") {
     const msg = `El precio mayorista (${formatCOP(unitPrice)}) debe ser menor al precio base de venta del producto (${formatCOP(violation.referencePrice)}).`;
@@ -161,7 +226,12 @@ export async function createWholesaleTierAction(
 
   try {
     const duplicate = await prisma.wholesaleTier.findFirst({
-      where: { productId: data.productId, minQty: data.minQty, deletedAt: null },
+      where: {
+        productId: data.productId,
+        variantId: data.variantId,
+        minQty: data.minQty,
+        deletedAt: null,
+      },
       select: { id: true },
     });
     if (duplicate) {
@@ -173,6 +243,7 @@ export async function createWholesaleTierAction(
 
     const coherenceError = await checkTierScaleCoherence({
       productId: data.productId,
+      variantId: data.variantId,
       minQty: data.minQty,
       unitPrice: data.unitPrice,
       willBeActive: data.isActive,
@@ -189,6 +260,7 @@ export async function createWholesaleTierAction(
       entityId: tier.id,
       metadata: {
         productId: tier.productId,
+        variantId: tier.variantId,
         minQty: tier.minQty,
         unitPrice: tier.unitPrice,
         isActive: tier.isActive,
@@ -232,13 +304,21 @@ export async function updateWholesaleTierAction(
   try {
     const tier = await prisma.wholesaleTier.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, productId: true, minQty: true, unitPrice: true, isActive: true },
+      select: {
+        id: true,
+        productId: true,
+        variantId: true,
+        minQty: true,
+        unitPrice: true,
+        isActive: true,
+      },
     });
     if (!tier) return { error: "El nivel ya no existe." };
 
     const duplicate = await prisma.wholesaleTier.findFirst({
       where: {
         productId: tier.productId,
+        variantId: tier.variantId,
         minQty: data.minQty,
         deletedAt: null,
         id: { not: tier.id },
@@ -254,6 +334,7 @@ export async function updateWholesaleTierAction(
 
     const coherenceError = await checkTierScaleCoherence({
       productId: tier.productId,
+      variantId: tier.variantId,
       minQty: data.minQty,
       unitPrice: data.unitPrice,
       willBeActive: tier.isActive,
@@ -303,7 +384,14 @@ export async function toggleWholesaleTierAction(formData: FormData): Promise<voi
   try {
     const tier = await prisma.wholesaleTier.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, productId: true, minQty: true, unitPrice: true, isActive: true },
+      select: {
+        id: true,
+        productId: true,
+        variantId: true,
+        minQty: true,
+        unitPrice: true,
+        isActive: true,
+      },
     });
     if (!tier) redirect(`/admin/mayorista?error=${encodeURIComponent("Nivel no encontrado.")}`);
 
@@ -311,6 +399,7 @@ export async function toggleWholesaleTierAction(formData: FormData): Promise<voi
     if (nextActive) {
       const coherenceError = await checkTierScaleCoherence({
         productId: tier.productId,
+        variantId: tier.variantId,
         minQty: tier.minQty,
         unitPrice: tier.unitPrice,
         willBeActive: true,

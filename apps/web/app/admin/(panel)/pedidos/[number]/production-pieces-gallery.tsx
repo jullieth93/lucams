@@ -42,9 +42,11 @@ const TRANSPARENCY_GRID = {
 export function ProductionPiecesGallery({
   pieces,
   groups,
+  copies = 1,
 }: {
   pieces: ProductionPieceItem[];
   groups: ProductionPieceGroupView[] | null;
+  copies?: number;
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const current = openIndex !== null ? pieces[openIndex] : null;
@@ -103,6 +105,7 @@ export function ProductionPiecesGallery({
                 <h4 className="text-brand-purple-dark text-xs font-bold">{g.title}</h4>
                 <span className="text-brand-muted text-[11px]">
                   {g.pieceIndexes.length} archivo(s)
+                  {copies > 1 ? ` · ×${copies} copias` : ""}
                   {g.note ? ` · ${g.note}` : ""}
                 </span>
               </div>

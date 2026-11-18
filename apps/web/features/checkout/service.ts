@@ -241,10 +241,19 @@ export async function assertCheckoutAvailability(ctx: CheckoutContext): Promise<
  * unitPrice porque el valor declarado asegurado mueve el precio del flete.
  */
 export function fingerprintCartItems(
-  items: ReadonlyArray<{ variantId: string; qty: number; unitPrice: number }>,
+  items: ReadonlyArray<{
+    variantId: string;
+    qty: number;
+    unitPrice: number;
+    inventoryUnits?: number;
+  }>,
 ): string {
   return items
-    .map((it) => `${it.variantId}x${it.qty}@${it.unitPrice}`)
+    .map((it) =>
+      it.inventoryUnits != null
+        ? `${it.variantId}x${it.qty}:${it.inventoryUnits}@${it.unitPrice}`
+        : `${it.variantId}x${it.qty}@${it.unitPrice}`,
+    )
     .sort()
     .join("|");
 }
@@ -260,13 +269,19 @@ export function destinationKeyOf(address: NonNullable<CheckoutState["address"]>)
  * producto agotado en la carrera de stock COD, cuando la saga no confirmó.
  */
 async function firstShortItemName(
-  items: ReadonlyArray<{ variantId: string; qty: number; productName: string }>,
+  items: ReadonlyArray<{
+    variantId: string;
+    qty: number;
+    inventoryUnits?: number;
+    productName: string;
+  }>,
 ): Promise<string | null> {
   const totals = new Map<string, { qty: number; productName: string }>();
   for (const it of items) {
+    const units = it.inventoryUnits ?? it.qty;
     const acc = totals.get(it.variantId);
-    if (acc) acc.qty += it.qty;
-    else totals.set(it.variantId, { qty: it.qty, productName: it.productName });
+    if (acc) acc.qty += units;
+    else totals.set(it.variantId, { qty: units, productName: it.productName });
   }
   const variants = await prisma.productVariant.findMany({
     where: { id: { in: [...totals.keys()] } },

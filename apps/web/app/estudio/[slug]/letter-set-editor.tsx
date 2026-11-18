@@ -372,6 +372,8 @@ export function LetterSetEditor({
   initialTheme,
   stylesByLanguage,
   initialUnits,
+  initialOrderCopies,
+  volumeTiers,
   initialStyleId,
   initialUnitStyles,
   initialWithBorder,
@@ -408,6 +410,8 @@ export function LetterSetEditor({
    * Tope MAX_LETTER_SET_UNITS.
    */
   initialUnits?: number;
+  initialOrderCopies?: number;
+  volumeTiers?: readonly import("@/features/cart/volume-pricing").VisibleVolumeTier[];
   /** Al re-abrir (?designId=): estilo ilustrado persistido (metadata.styleSetId).
    *  null explícito = «Solo letra» (manda sobre la preselección de la PDP).
    *  2026-10-19 — aplica al set 1 y de default a los sets sin estilo propio
@@ -954,7 +958,8 @@ export function LetterSetEditor({
    * con sus colores por ficha en metadata) → la línea del carrito es UNA con qty=1
    * y el precio = variante × N lo deriva el servidor (letterSetUnitCount).
    */
-  async function handleConfirmAddToCart() {
+  async function handleConfirmAddToCart(copies = 1) {
+    const orderCopies = Math.max(1, Math.trunc(copies) || 1);
     if (submitting || !previewBlobs || previewBlobs.length === 0) return;
     setSubmitting(true);
     setPreviewError(null);
@@ -1056,7 +1061,7 @@ export function LetterSetEditor({
       }
       const added = await addPersonalizedToCartAction({
         designId: created.designId,
-        qty: 1,
+        qty: orderCopies,
         variantId: currentVariantId,
         // Edición desde el carrito: la línea vieja se reemplaza en sitio (no duplicar).
         replaceDesignId: replacesCartDesignId ?? undefined,
@@ -1675,17 +1680,14 @@ export function LetterSetEditor({
         // usa previewVariantLabel y no el variantLabel del header).
         variantLabel={previewVariantLabel}
         unitPrice={unitPriceCents}
-        // Multi-unidad (2026-09-09): el diseño contiene TODOS los sets → total =
-        // precio del set × N y la línea del carrito es UNA (qty 1).
+        volumeTiers={volumeTiers}
         unitCount={unitCount}
-        // 2026-10-12 — sustantivo de la unidad para la línea de la modal
-        // ("2 sets — cada uno con su propio diseño", nunca "N unidades"): el
-        // MISMO del pager de sets (textos CMS unidades.nombreSet).
+        initialOrderCopies={initialOrderCopies}
         unitNoun={{ one: texts.unidades.nombreSet.toLowerCase(), many: "sets" }}
         isFinalizing={submitting}
         errorMessage={previewError}
         onEdit={handleClosePreview}
-        onConfirm={handleConfirmAddToCart}
+        onConfirm={(copies) => void handleConfirmAddToCart(copies)}
       />
 
       {/* Ola 2B — Modal del tablero memo 3D con las fichas (lazy, client-only). */}

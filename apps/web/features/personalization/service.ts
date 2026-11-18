@@ -45,7 +45,12 @@ import { hashBearerToken } from "@/lib/token-hash";
 import { parsePhotoProductConfig } from "./schemas";
 import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
-import { unitCountOf, letterSetUnitCount, MAX_LETTER_SET_UNITS } from "./design-units";
+import {
+  unitCountOf,
+  maxUnitsForProduct,
+  letterSetUnitCount,
+  MAX_LETTER_SET_UNITS,
+} from "./design-units";
 import { readProductExperience } from "./product-experience";
 import { PREVIEW_ALLOWED_MIME, previewExtensionForMime, type PreviewMime } from "./sharp-safe";
 import {
@@ -1398,12 +1403,16 @@ export async function createClientSlotUploadTickets(opts: {
     canvasData.version === 2
       ? (canvasData as CanvasDataV2).slotCount
       : letterSetUnitCount(design.metadata);
-  const declaredUnits = canvasData.version === 2 ? unitCountOf(canvasData as CanvasDataV2) : 1;
   const { productConfig, effectiveVariant, metadataVariantId } =
     await loadEffectiveProductConfig(design);
   const allowed = productConfig.photoSlots;
-  // `facesPerUnit: 2` (separadores) manda 2 snapshots por unidad: el tope es por CARA, no por pieza.
+  // `facesPerUnit: 2` (separadores / bola dúplex) manda 2 snapshots por unidad: el tope es por CARA, no por pieza.
   const faces = productConfig.facesPerUnit ?? 1;
+  const maxAllowedUnits = maxUnitsForProduct(allowed * faces);
+  const declaredUnits =
+    canvasData.version === 2
+      ? Math.min(maxAllowedUnits, unitCountOf(canvasData as CanvasDataV2, allowed))
+      : 1;
   const maxSlots = Math.max(1, allowed * faces * declaredUnits);
   // La guarda de tope solo aplica a canvas V2: en productos de fichas (v1)
   // photoSlots no existe en el schema y el conteo legítimo sale de la metadata.

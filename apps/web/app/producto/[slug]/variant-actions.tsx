@@ -81,7 +81,7 @@ export function SelectedVariantProvider({
   );
 
   const setCopies = useCallback((n: number) => {
-    setCopiesState(Math.min(99, Math.max(1, Math.trunc(n) || 1)));
+    setCopiesState(Math.min(100, Math.max(1, Math.trunc(n) || 1)));
   }, []);
 
   return (

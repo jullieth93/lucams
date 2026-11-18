@@ -164,6 +164,8 @@ const centsToPesos = (cents: number) => Math.round(cents / 100);
  *    del carrier inflaba el flete ~$10.000).
  * Cotización y guía usan EL MISMO modelo → el flete cotizado == el facturado.
  */
+const MAX_LINEAR_STACK_CM = 60;
+
 export function computePackedPackage(items: ShipmentItem[]): {
   altoCm: number;
   anchoCm: number;
@@ -174,6 +176,7 @@ export function computePackedPackage(items: ShipmentItem[]): {
 } {
   let pesoGramos = 0;
   let espesorCm = 0;
+  let volumenCm3 = 0;
   let caraMayorCm = 0;
   let caraMediaCm = 0;
   let valorCop = 0;
@@ -182,13 +185,31 @@ export function computePackedPackage(items: ShipmentItem[]): {
     caraMayorCm = Math.max(caraMayorCm, mayor);
     caraMediaCm = Math.max(caraMediaCm, media);
     espesorCm += menor * i.qty;
+    volumenCm3 += menor * media * mayor * i.qty;
     pesoGramos += i.weightGrams * i.qty;
     valorCop += i.declaredValueCop * i.qty;
   }
+
+  let altoCm = caraMayorCm;
+  let anchoCm = caraMediaCm;
+  let largoCm = Math.round(espesorCm * 10) / 10;
+
+  // ADR-209: en pedidos por volumen (60–100 uds), apilar en 1D genera cajas irreales
+  // (p. ej. 100 adornos de 8 cm = 800 cm de largo) que las transportadoras rechazan.
+  // Si la pila supera MAX_LINEAR_STACK_CM, redistribuimos el MISMO volumen total en una
+  // caja cúbica 3D realista conservando el peso volumétrico exacto.
+  if (espesorCm > MAX_LINEAR_STACK_CM && volumenCm3 > 0) {
+    const ladoCubo = Math.ceil(Math.cbrt(volumenCm3));
+    altoCm = Math.max(caraMayorCm, ladoCubo);
+    anchoCm = Math.max(caraMediaCm, ladoCubo);
+    const baseArea = Math.max(1, altoCm * anchoCm);
+    largoCm = Math.max(1, Math.round((volumenCm3 / baseArea) * 10) / 10);
+  }
+
   return {
-    altoCm: caraMayorCm,
-    anchoCm: caraMediaCm,
-    largoCm: Math.round(espesorCm * 10) / 10,
+    altoCm,
+    anchoCm,
+    largoCm,
     pesoKg: Math.max(0.1, Math.round((pesoGramos / 1000) * 10) / 10),
     valorDeclaradoPesos: Math.max(MIN_DECLARED_VALUE_COP, centsToPesos(valorCop)),
     nombre:

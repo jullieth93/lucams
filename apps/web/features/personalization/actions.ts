@@ -345,8 +345,8 @@ export async function finalizeDesignAction(formData: FormData): Promise<
   }
 
   const slotCountRaw = Number(formData.get("slotCount") ?? 0);
-  if (!Number.isInteger(slotCountRaw) || slotCountRaw < 1 || slotCountRaw > 50) {
-    return { ok: false, code: "VALIDATION", message: "slotCount inválido (1-50)" };
+  if (!Number.isInteger(slotCountRaw) || slotCountRaw < 1 || slotCountRaw > 60) {
+    return { ok: false, code: "VALIDATION", message: "slotCount inválido (1-60)" };
   }
 
   const previewBlob = formData.get("preview");

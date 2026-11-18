@@ -39,9 +39,9 @@ import { formatCOP } from "@/lib/format";
 import { useSelectedVariant } from "./variant-actions";
 import { unitPriceWithVolumeTier, type VisibleVolumeTier } from "@/features/cart/volume-pricing";
 
-// Mismo rango que AddToCartSchema (min 1, max 99 "Máximo 99 por agregada").
+// Tope general de compra directa en tienda (ADR-209).
 const MIN_COPIES = 1;
-const MAX_COPIES = 99;
+const MAX_COPIES = 100;
 
 /**
  * B2 (2026-09-15) — presentación del stepper como PACKS (sets de letras:
@@ -71,49 +71,33 @@ export function CopiesQtyInput({
   packLabel,
   unitNoun,
   volumeTiers,
+  volumeTiersByVariantId,
 }: {
-  /** Tope del stepper (productos con tope de diseño propio; default 99). */
+  /** Tope del stepper (productos con tope de diseño propio; default 100). */
   max?: number;
   unitNoun?: { one: string; many: string; label: string };
-  /** Nota bajo el stepper. La compra directa pasa su propio texto
-   *  ("Copias idénticas del mismo producto"). */
+  /** Nota bajo el stepper. */
   hint?: string;
-  /**
-   * A2 (2026-09-15) — precio unitario VIVO por variante: el total ×N junto al
-   * stepper sigue al chip elegido (antes el ×N solo se veía en la modal de
-   * vista previa y en el carrito). Llave = variantId.
-   */
   unitPriceByVariantId?: Record<string, number>;
   /** Unitario cuando no hay variante elegida (precio del header de la ficha). */
   fallbackUnitPrice?: number;
-  /** B2 — modo PACKS (sets de letras). undefined = stepper "Unidades" clásico. */
+  /** Modo PACKS (sets de letras o packs de 6 fotoimanes). undefined = stepper "Unidades". */
   packLabel?: CopiesPackLabel;
-  /**
-   * 2026-11-07 (bug owner) — escala de descuentos por volumen VISIBLE de la
-   * ficha (resolveVisibleVolumeTiers): el total ×N refleja la promo desde el
-   * stepper (bola: 3×$27.000 / 5×$40.000), no solo en el carrito. Solo lo
-   * pasan las superficies donde la cantidad del stepper ES la que el servidor
-   * evalúa contra los niveles (compra directa: qty; diseños multi-unidad con
-   * volumePricingByPhysicalUnit: unidades físicas).
-   */
   volumeTiers?: readonly VisibleVolumeTier[];
+  volumeTiersByVariantId?: Record<string, readonly VisibleVolumeTier[]>;
 }) {
-  // Estado compartido del buy-box (H12): la compra directa lo lee vía el hidden
-  // input de abajo; la rama personalizable lo lee el EstudioCtaLink (?copies=N).
-  const { copies, setCopies, selectedId } = useSelectedVariant();
+  const { copies: rawCopies, setCopies, selectedId } = useSelectedVariant();
   const clampedMax = Math.max(MIN_COPIES, Math.trunc(max) || MAX_COPIES);
+  const copies = Math.min(clampedMax, Math.max(MIN_COPIES, rawCopies));
   const canDecrease = copies > MIN_COPIES;
   const canIncrease = copies < clampedMax;
 
-  // A2 — unitario vivo: la variante elegida en el selector manda; sin selección
-  // cae al precio visible del header (coherente con lo que ya ve el cliente).
   const unitPrice =
     (selectedId ? unitPriceByVariantId?.[selectedId] : undefined) ?? fallbackUnitPrice ?? null;
-  // 2026-11-07 — el total refleja el descuento por volumen (promo por
-  // cantidad) cuando el producto lo tiene: mismo unitario que cobrará el
-  // carrito al cruzar el umbral (bola: 3+ → $9.000 c/u, 5+ → $8.000 c/u).
+  const activeVolumeTiers =
+    (selectedId ? volumeTiersByVariantId?.[selectedId] : undefined) ?? volumeTiers;
   const effectiveUnitPrice =
-    unitPrice != null ? unitPriceWithVolumeTier(unitPrice, copies, volumeTiers) : null;
+    unitPrice != null ? unitPriceWithVolumeTier(unitPrice, copies, activeVolumeTiers) : null;
   const tierApplied =
     unitPrice != null && effectiveUnitPrice != null && effectiveUnitPrice < unitPrice;
 
