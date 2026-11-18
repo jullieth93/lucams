@@ -64,8 +64,8 @@
 1. **Facturación electrónica DIAN:** faltan NIT/RUT de facturador, acompañamiento contador/abogado y proveedor tecnológico; `BILLING_DOCUMENT_ENABLED = false`. La vigilancia de umbrales ya opera.
 2. **SEO post-indexación:** revisar Search Console y confirmar aprobación del feed en Merchant Center.
 3. **Núcleo omnicanal de stock (`ADR-208`):** migración aditiva y dominio activos (`MADE_TO_ORDER` vs `PHYSICAL_STOCK`, `publishedOnStorefront`, `safetyStock` y kardex por canal); tras desplegar en STG y PRD resta normalizar a `0` el stock legado de `MADE_TO_ORDER` y retirar `MADE_TO_ORDER_STOCK` del seed.
-4. **Mercado Libre (`ADR-205`):** integración directa no implementada en [`integrations/mercadolibre.md`](integrations/mercadolibre.md) (contexto aislado `ChannelPack`/`ChannelOrder`, precios modulares `FORMULA`/`MANUAL`, `ME2` + Flex Bogotá, posventa y retenciones `MCO`). Fase actual: **0 (validación externa de cuenta `MCO`)** en paralelo con la Fase 1 de `ADR-208`.
-5. **Meta (`ADR-207`):** integración no implementada en [`integrations/meta.md`](integrations/meta.md) (catálogo con paridad de precios frente a tienda, Instagram/Facebook, Pixel/CAPI y campañas). Fase actual: **0 (validar activos, elegibilidad y permisos de la cuenta)** antes de codificar.
+4. **Mercado Libre (`ADR-205`):** arquitectura aprobada en pausa en [`integrations/mercadolibre.md`](integrations/mercadolibre.md) (solo `PHYSICAL_STOCK`, `ChannelPack`/`ChannelOrder`, precios `FORMULA`/`MANUAL`, `ME2` + Flex Bogotá y retenciones `MCO`). Pendiente habilitación de creación de App en DevCenter `MCO` para retomar Fase 0.
+5. **Meta (`ADR-207`):** arquitectura aprobada en pausa en [`integrations/meta.md`](integrations/meta.md) (`Meta Catalog` exclusivo `PHYSICAL_STOCK` con paridad de precios y `sale_price`, `System User` `v25.0`, Pixel + CAPI deduplicados 1:1 con `MetaOrderAttribution` y actualización previa Ley 1581). Pendiente Fase M0 al retomar.
 
 ### Higiene técnica diferida (no bloqueante)
 
