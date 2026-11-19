@@ -102,23 +102,53 @@ function timelineProgress(status: string): number {
   return -1;
 }
 
+type ShippingIssueSummary = {
+  kind: "returned" | "exception";
+  detail: string;
+};
+
+function isConfirmedReturnIssue(
+  order: { needsReconciliation: boolean; reconciliationReason: string | null },
+  latestEventStatus: string | undefined,
+): boolean {
+  if (latestEventStatus === "RETURNED") return true;
+  if (!order.needsReconciliation) return false;
+  return /devuelto|devoluci[oó]n/i.test(order.reconciliationReason ?? "");
+}
+
+function isOperationalDeliveryException(
+  latestEvent: { status: string; carrierStatusRaw: string } | undefined,
+): boolean {
+  if (latestEvent?.status !== "EXCEPTION") return false;
+  return !/anulad|cancel/i.test(latestEvent.carrierStatusRaw);
+}
+
 /**
- * Revalidación 2026-10-20 / ajuste LCM-2026-0006 — el timeline solo cubre el
- * happy path (Pagado→Entregado). Cuando el carrier confirma DEVOLUCIÓN real al
- * remitente (`RETURNED` → `reconciliationReason` con `DEVUELTO`), mostramos el
- * aviso honesto al comprador. Las novedades operativas de ruta (`EXCEPTION` /
- * `NOVEDAD`) NO prenden reconciliación ni pintan banners alarmistas en cliente.
+ * Diferenciación asertiva entre `EXCEPTION` (`NOVEDAD` operativa en reparto, el paquete
+ * sigue con la transportadora para reintento) y `RETURNED` (`DEVOLUCIÓN` confirmada al
+ * remitente). Solo aplica mientras la orden sigue activa en tránsito (`PAID | FULFILLING | SHIPPED`):
+ * apenas el carrier retoma `EN REPARTO` (`IN_TRANSIT`) o marca `DELIVERED`, el aviso superior
+ * desaparece automáticamente mientras el hito histórico permanece trazado abajo.
  */
-function shippingIssueKind(order: {
-  status: string;
-  trackingNumber: string | null;
-  needsReconciliation: boolean;
-  reconciliationReason: string | null;
-}): "returned" | null {
-  if (!order.needsReconciliation || !order.trackingNumber) return null;
+function resolveShippingIssue(
+  order: {
+    status: string;
+    trackingNumber: string | null;
+    needsReconciliation: boolean;
+    reconciliationReason: string | null;
+  },
+  shipmentEvents: Array<{ status: string; carrierStatusRaw: string; description: string }>,
+): ShippingIssueSummary | null {
+  if (!order.trackingNumber) return null;
   if (!["PAID", "FULFILLING", "SHIPPED"].includes(order.status)) return null;
-  const reason = order.reconciliationReason ?? "";
-  if (/devuelto|devoluci[oó]n/i.test(reason)) return "returned";
+
+  const latestEvent = shipmentEvents[shipmentEvents.length - 1];
+  if (isConfirmedReturnIssue(order, latestEvent?.status)) {
+    return { kind: "returned", detail: latestEvent?.description ?? "" };
+  }
+  if (isOperationalDeliveryException(latestEvent)) {
+    return { kind: "exception", detail: latestEvent?.description ?? "" };
+  }
   return null;
 }
 
@@ -132,20 +162,8 @@ type ShippingAddrSnapshot = {
   notes?: string;
 };
 
-export default async function PublicOrderPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ token: string }>;
-  searchParams: Promise<{ nueva?: string }>;
-}) {
-  const { token } = await params;
-  const { nueva } = await searchParams;
-
-  // Validación token: debe ser 32 hex chars (anti-fuzzing, evita query DB con basura).
-  if (!/^[a-f0-9]{32}$/.test(token)) notFound();
-
-  const order = await prisma.order.findFirst({
+async function loadPublicOrderByToken(token: string) {
+  return prisma.order.findFirst({
     where: { publicAccessTokenHash: hashBearerToken(token), deletedAt: null },
     include: {
       items: {
@@ -170,10 +188,6 @@ export default async function PublicOrderPage({
             },
           },
           design: {
-            // 2026-10-13 — sellos de artefactos watermark: el pedido público
-            // exhibe la versión con marca de agua (y sus páginas por unidad).
-            // 2026-10-22 — canvasData: rótulos por unidad del pager (metadata
-            // ya se seleccionaba para la nota de borde).
             select: {
               previewUrl: true,
               metadata: true,
@@ -186,72 +200,181 @@ export default async function PublicOrderPage({
       },
     },
   });
+}
+
+type PublicOrderRecord = NonNullable<Awaited<ReturnType<typeof loadPublicOrderByToken>>>;
+type PublicOrderItem = PublicOrderRecord["items"][number];
+type PublicShipmentEvent = Awaited<ReturnType<typeof listShipmentEvents>>[number];
+type PublicRetractableItem = Awaited<ReturnType<typeof getRetractableItemsByOrderToken>>[number];
+type PublicWarrantyItem = Awaited<ReturnType<typeof getWarrantyItemsByOrderToken>>[number];
+type PublicAccountTexts = Awaited<ReturnType<typeof getAccountTexts>> | null;
+
+const DEFAULT_REORDER_TEXTS: ReorderTexts = {
+  cta: "Volver a pedir",
+  pending: "Armando tu carrito…",
+  addedTitle: "Agregamos a tu carrito:",
+  needsPhotosTitle: "Para repetir estos, sube las fotos de nuevo:",
+  needsPhotosNote:
+    "Por privacidad borramos las fotos de los pedidos entregados hace más de 90 días.",
+  photosCta: "Crearlo de nuevo",
+  unavailableTitle: "Ya no pudimos agregar:",
+  goToCart: "Ir al carrito",
+  priceNow: "ahora {precio}",
+  priceWas: "antes {precio}",
+};
+
+function resolvePublicOrderStatusText(params: {
+  status: string;
+  isCod: boolean;
+  isInternalDelivery: boolean;
+}): string {
+  if (params.isCod && params.status === "PAID") return "Confirmado";
+  if (params.isInternalDelivery && params.status === "SHIPPED") {
+    return "En camino con nuestro equipo";
+  }
+  return STATUS_LABEL[params.status] ?? params.status;
+}
+
+function resolveShipmentEventDotTone(status: string, idx: number): string {
+  if (status === "DELIVERED") return "bg-emerald-500";
+  if (status === "RETURNED" || status === "EXCEPTION") return "bg-amber-500";
+  if (idx === 0) return "bg-brand-purple";
+  return "bg-brand-purple/30";
+}
+
+function resolveItemPreviewUrl(
+  it: PublicOrderItem,
+  token: string,
+  disp: ReturnType<typeof designPreviewDisplay> | null,
+): string | null {
+  if (disp?.watermarked) return disp.displayUrl;
+  const fallbackRef = it.designAssetUrl ?? it.design?.previewUrl ?? null;
+  if (!fallbackRef) return null;
+  return previewRefToAuthorizedUrl(fallbackRef, { name: "ot", value: token });
+}
+
+function formatDesignUnitsPrefix(it: PublicOrderItem, unitNounPlural: string): string {
+  if (!it.design || it.designUnits <= 1) return "";
+  const copyWord = it.qty === 1 ? "copia" : "copias";
+  const totalUnits = it.designUnits * it.qty;
+  return `${it.designUnits} diseños × ${it.qty} ${copyWord} (${totalUnits} ${unitNounPlural}) · `;
+}
+
+async function loadPostSaleContext(params: {
+  token: string;
+  orderNumber: string;
+  status: string;
+  isCancelled: boolean;
+}) {
+  const isDelivered = params.status === "DELIVERED";
+  const [waUrl, retractable, warrantyItems, accountTexts] = await Promise.all([
+    params.isCancelled
+      ? null
+      : buildWhatsAppUrl({ kind: "order", orderNumber: params.orderNumber }),
+    isDelivered ? getRetractableItemsByOrderToken(params.token) : [],
+    isDelivered ? getWarrantyItemsByOrderToken(params.token) : [],
+    isDelivered ? getAccountTexts() : null,
+  ]);
+  return {
+    waUrl,
+    retractByItem: new Map(retractable.map((r) => [r.orderItemId, r])),
+    warrantyByItem: new Map(warrantyItems.map((w) => [w.orderItemId, w])),
+    accountTexts,
+  };
+}
+
+async function loadPublicShipmentEvents(
+  orderId: string,
+  trackingNumber: string | null,
+  isInternalDelivery: boolean,
+): Promise<PublicShipmentEvent[]> {
+  if (!trackingNumber || isInternalDelivery) return [];
+  return listShipmentEvents(orderId);
+}
+
+export default async function PublicOrderPage({
+  params,
+  searchParams,
+}: Readonly<{
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ nueva?: string }>;
+}>) {
+  const { token } = await params;
+  const { nueva } = await searchParams;
+
+  // Validación token: debe ser 32 hex chars (anti-fuzzing, evita query DB con basura).
+  if (!/^[a-f0-9]{32}$/.test(token)) notFound();
+
+  const order = await loadPublicOrderByToken(token);
   if (!order) notFound();
 
-  const ship = order.shippingAddress as ShippingAddrSnapshot;
-  const progress = timelineProgress(order.status);
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
-  // Historial granular del carrier (ShipmentEvent, 2026-11-04): hitos reales de la
-  // guía con fecha/hora de Colombia y descripción — enriquece la barra de progreso.
-  // Solo aplica a guías de transportadora (nunca a "Envío Lucams" INTERNO-*).
-  const shipmentEvents =
-    order.trackingNumber && order.shippingCarrier !== LUCAMS_CARRIER
-      ? await listShipmentEvents(order.id)
-      : [];
-  // Entrega propia "Envío Lucams" (trackingNumber INTERNO-*): NO hay guía de
-  // transportadora ni rastreo externo — el estado se muestra en lenguaje claro
-  // con los datos internos (nunca se consulta Aveonline para estas órdenes).
-  const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
-  // #2 — contraentrega: el cliente aún NO ha pagado (paga en efectivo al recibir). No mostrar
-  // "Pagado"; usar "Confirmado" + un aviso persistente del monto a pagar hasta que se entregue.
-  const isCod = order.paymentMethod === "COD";
-  const statusText =
-    isCod && order.status === "PAID"
-      ? "Confirmado"
-      : isInternalDelivery && order.status === "SHIPPED"
-        ? "En camino con nuestro equipo"
-        : (STATUS_LABEL[order.status] ?? order.status);
-  const showCodBanner = isCod && !isCancelled && order.status !== "DELIVERED";
-  // #5 — PENDING_PAYMENT no es un callejón sin salida: en vez del timeline gris mudo, un banner
-  // ámbar que explica ("estamos confirmando tu pago") + salida a WhatsApp para resolver.
   const isPending = order.status === "PENDING_PAYMENT";
-  // Novedad/devolución del carrier: la orden no retrocede de estado (decisión de
-  // la saga) pero el cliente SÍ debe ver que algo pasa — banner honesto con salida
-  // a WhatsApp, al lado del timeline que de otro modo quedaría "En camino" eterno.
-  const shippingIssue = shippingIssueKind(order);
-  // [CX-01] — mantener canal de ayuda activo en todos los estados no cancelados (incluido
-  // `DELIVERED`, donde antes `waUrl` era null y el comprador invitado quedaba sin salida posventa).
-  const [waUrl, retractable, warrantyItems, accountTexts] = await Promise.all([
-    !isCancelled ? buildWhatsAppUrl({ kind: "order", orderNumber: order.number }) : null,
-    order.status === "DELIVERED" ? getRetractableItemsByOrderToken(token) : [],
-    order.status === "DELIVERED" ? getWarrantyItemsByOrderToken(token) : [],
-    order.status === "DELIVERED" ? getAccountTexts() : null,
-  ]);
-  const retractByItem = new Map(retractable.map((r) => [r.orderItemId, r]));
-  const warrantyByItem = new Map(warrantyItems.map((w) => [w.orderItemId, w]));
+  const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
+  const isCod = order.paymentMethod === "COD";
 
-  const itemsHeading = `Lo que pediste (${order.items.length})`;
+  const [shipmentEvents, postSale] = await Promise.all([
+    loadPublicShipmentEvents(order.id, order.trackingNumber, isInternalDelivery),
+    loadPostSaleContext({
+      token,
+      orderNumber: order.number,
+      status: order.status,
+      isCancelled,
+    }),
+  ]);
+  const statusText = resolvePublicOrderStatusText({
+    status: order.status,
+    isCod,
+    isInternalDelivery,
+  });
+  const shippingIssue = resolveShippingIssue(order, shipmentEvents);
+
+  return (
+    <PublicOrderLayout
+      order={order}
+      token={token}
+      isNewOrder={nueva === "1"}
+      isCancelled={isCancelled}
+      isPending={isPending}
+      isInternalDelivery={isInternalDelivery}
+      isCod={isCod}
+      statusText={statusText}
+      shippingIssue={shippingIssue}
+      shipmentEvents={shipmentEvents}
+      postSale={postSale}
+    />
+  );
+}
+
+function PublicOrderLayout({
+  order,
+  token,
+  isNewOrder,
+  isCancelled,
+  isPending,
+  isInternalDelivery,
+  isCod,
+  statusText,
+  shippingIssue,
+  shipmentEvents,
+  postSale,
+}: Readonly<{
+  order: PublicOrderRecord;
+  token: string;
+  isNewOrder: boolean;
+  isCancelled: boolean;
+  isPending: boolean;
+  isInternalDelivery: boolean;
+  isCod: boolean;
+  statusText: string;
+  shippingIssue: ShippingIssueSummary | null;
+  shipmentEvents: PublicShipmentEvent[];
+  postSale: Awaited<ReturnType<typeof loadPostSaleContext>>;
+}>) {
+  const showActiveTracking = !isCancelled && !isPending;
+  const showCodBanner = isCod && !isCancelled && order.status !== "DELIVERED";
   const accountCtaBody =
     "Crea una cuenta con el email {email} y vas a tener historial, direcciones guardadas y descuentos exclusivos.";
-  const codBanner = "Pagas {total} en efectivo cuando el mensajero te entregue el pedido.";
-
-  // Paquete I — textos del "Volver a pedir" (mismos defaults es-CO que mi-cuenta).
-  const showReorder = !isCancelled && !isPending;
-  const reorderTexts: ReorderTexts | null = showReorder
-    ? {
-        cta: "Volver a pedir",
-        pending: "Armando tu carrito…",
-        addedTitle: "Agregamos a tu carrito:",
-        needsPhotosTitle: "Para repetir estos, sube las fotos de nuevo:",
-        needsPhotosNote:
-          "Por privacidad borramos las fotos de los pedidos entregados hace más de 90 días.",
-        photosCta: "Crearlo de nuevo",
-        unavailableTitle: "Ya no pudimos agregar:",
-        goToCart: "Ir al carrito",
-        priceNow: "ahora {precio}",
-        priceWas: "antes {precio}",
-      }
-    : null;
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -274,86 +397,14 @@ export default async function PublicOrderPage({
 
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">
         <div className="mx-auto max-w-3xl">
-          {nueva === "1" && !isCancelled && (
-            <>
-              {/* GA4 purchase ([ANA-01] / S06): las compras COD redirigen acá con ?nueva=1
-                  y nunca pasan por /checkout/gracias. Idempotente por order.number en
-                  localStorage y sin un solo dato personal ni token en el evento. */}
-              {!isPending && (
-                <TrackPurchase
-                  transactionId={order.number}
-                  valueCents={order.total}
-                  shippingCents={order.shipping}
-                  taxCents={order.tax}
-                  items={order.items.map((it) => {
-                    const du = Math.max(1, it.designUnits);
-                    return {
-                      sku: it.variant.sku || it.variant.product.sku,
-                      name: it.variant.product.name,
-                      variantName: it.variant.name,
-                      priceCents: Math.round(it.unitPrice / du),
-                      quantity: it.qty * du,
-                    };
-                  })}
-                  funnelLines={order.items.map((it) => ({
-                    productSlug: it.variant.product.slug,
-                    editorKind: resolveFunnelEditorKind({
-                      isPersonalizable: it.variant.product.isPersonalizable,
-                      personalizationKind: it.variant.product.personalizationKind,
-                      productSchema: it.variant.product.personalizationSchema,
-                      variantAttrs: it.variant.attributes,
-                      designMetadata: it.design?.metadata,
-                    }),
-                  }))}
-                />
-              )}
-              <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                <p className="font-display text-lg font-bold text-emerald-900">
-                  🎉 ¡Pedido confirmado!
-                </p>
-                <p className="mt-0.5 text-sm text-emerald-800">
-                  {/* #2 — el detalle COD lo lleva el aviso persistente de abajo; aquí solo el saludo. */}
-                  Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!
-                </p>
-              </div>
-            </>
-          )}
-
-          {/* #5 — pago en verificación (PSE/transferencia async, o webhook demorado): explica y da
-            salida a WhatsApp, en vez de dejar el timeline gris mudo. */}
-          {isPending && (
-            <div role="note" className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-semibold text-amber-900">Estamos confirmando tu pago</p>
-              <p className="mt-1 text-xs text-amber-800">
-                Esto puede tardar unos minutos (algunos métodos como PSE o transferencia son así).
-                Cuando lo confirmemos te llega un correo y aquí verás el avance. ¿Tienes dudas?
-              </p>
-              {waUrl && (
-                <a
-                  href={waUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
-                >
-                  Escríbenos por WhatsApp
-                </a>
-              )}
-            </div>
-          )}
-
-          {/* #2 — aviso de contraentrega persistente (no depende de ?nueva=1): recuerda que el pago
-            es en efectivo al recibir, para no confundir "Confirmado" con "ya pagado". */}
-          {showCodBanner && (
-            <div
-              role="note"
-              className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4"
-            >
-              <Wallet className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-700" aria-hidden />
-              <p className="text-sm text-amber-900">
-                {withStrong(codBanner, "{total}", formatCOP(order.total))}
-              </p>
-            </div>
-          )}
+          <PublicOrderTopBanners
+            order={order}
+            isNewOrder={isNewOrder}
+            isCancelled={isCancelled}
+            isPending={isPending}
+            showCodBanner={showCodBanner}
+            waUrl={postSale.waUrl}
+          />
 
           <header className="mb-6">
             <p className="text-brand-muted text-xs tracking-wider uppercase">Tu pedido</p>
@@ -365,409 +416,36 @@ export default async function PublicOrderPage({
             </p>
           </header>
 
-          {!isCancelled && !isPending && (
-            <div className="border-brand-purple/15 mb-6 rounded-2xl border bg-white p-5 shadow-sm">
-              <h2 className="text-brand-purple-dark mb-4 text-sm font-bold">Estado de tu pedido</h2>
-              {/* Novedad/devolución del carrier (revalidación 2026-10-20): el timeline
-                  no retrocede, pero el cliente debe VER que hay un problema logístico
-                  en vez de un "En camino" eterno. */}
-              {shippingIssue && (
-                <div
-                  role="alert"
-                  className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4"
-                >
-                  <p className="text-sm font-semibold text-amber-900">
-                    Tu pedido viene de vuelta con nosotros
-                  </p>
-                  <p className="mt-1 text-xs text-amber-800">
-                    La transportadora nos reportó la devolución del paquete. Apenas lo recibamos te
-                    contactaremos para acordar el reenvío o la devolución del dinero; si quieres
-                    escribirnos antes, estamos atentos.
-                  </p>
-                  {waUrl && (
-                    <a
-                      href={waUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
-                    >
-                      Escríbenos por WhatsApp
-                    </a>
-                  )}
-                </div>
-              )}
-              <ol className="flex justify-between">
-                {TIMELINE_STEPS.map((s, i) => {
-                  const done = progress >= i;
-                  const active = progress === i;
-                  // #2 — en COD el primer paso es "Confirmado" (no "Pagado": aún no pagó).
-                  const label = i === 0 && isCod ? "Confirmado" : s.label;
-                  return (
-                    <li key={s.key} className="flex flex-1 flex-col items-center">
-                      <div
-                        className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
-                          done ? "bg-brand-purple text-white" : "bg-slate-100 text-slate-400"
-                        } ${active ? "ring-brand-purple/30 ring-4" : ""}`}
-                      >
-                        {i + 1}
-                      </div>
-                      <span
-                        className={`mt-2 text-center text-[10px] font-medium ${
-                          done ? "text-brand-purple-dark" : "text-brand-muted"
-                        }`}
-                      >
-                        {label}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ol>
-
-              {/* Historial granular del carrier (ShipmentEvent, 2026-11-04): hitos
-                  reales de la guía con fecha/hora de Colombia y descripción de la
-                  transportadora — más reciente primero. */}
-              {shipmentEvents.length > 0 && (
-                <div className="border-brand-purple/10 mt-5 border-t pt-4">
-                  <p className="text-brand-muted mb-3 text-[11px] font-semibold tracking-wider uppercase">
-                    Movimientos de la guía
-                  </p>
-                  <ol className="relative space-y-3">
-                    {[...shipmentEvents].reverse().map((ev, idx) => {
-                      const tone =
-                        ev.status === "DELIVERED"
-                          ? "bg-emerald-500"
-                          : ev.status === "RETURNED" || ev.status === "EXCEPTION"
-                            ? "bg-amber-500"
-                            : idx === 0
-                              ? "bg-brand-purple"
-                              : "bg-brand-purple/30";
-                      return (
-                        <li key={ev.id} className="flex items-start gap-3">
-                          <span
-                            aria-hidden="true"
-                            className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${tone} ${
-                              idx === 0 ? "ring-brand-purple/25 ring-4" : ""
-                            }`}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-brand-purple-dark text-xs leading-snug font-semibold">
-                              {ev.description ||
-                                friendlyCarrierEventLabel(ev.carrierStatusRaw) ||
-                                SHIPMENT_EVENT_LABEL[ev.status]}
-                              {ev.description && ev.carrierStatusRaw ? (
-                                <span className="text-brand-muted font-normal">
-                                  {" "}
-                                  · {friendlyCarrierEventLabel(ev.carrierStatusRaw)}
-                                </span>
-                              ) : null}
-                            </p>
-                            <p className="text-brand-muted mt-0.5 text-[11px]">
-                              {formatDateTimeCO(ev.occurredAt)}
-                            </p>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
-              )}
-            </div>
+          {showActiveTracking && (
+            <PublicOrderStatusSection
+              status={order.status}
+              isCod={isCod}
+              shippingIssue={shippingIssue}
+              shipmentEvents={shipmentEvents}
+              waUrl={postSale.waUrl}
+            />
           )}
 
-          {isCancelled && (
-            <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4">
-              <p className="text-sm font-semibold text-rose-900">
-                {order.status === "REFUNDED"
-                  ? "Este pedido fue reembolsado."
-                  : "Este pedido fue cancelado."}
-              </p>
-              <p className="mt-1 text-xs text-rose-800">Si tienes dudas escríbenos por WhatsApp.</p>
-            </div>
-          )}
+          {isCancelled && <PublicOrderCancelledBanner status={order.status} />}
 
-          <Card icon={<Package className="h-4 w-4" />} title={itemsHeading}>
-            <ul className="divide-brand-purple/10 divide-y">
-              {order.items.map((it) => {
-                // 2026-10-13 — exhibición CON marca de agua cuando el artefacto
-                // existe (preview-wm.webp / wm/pages/NN.webp); el snapshot limpio
-                // (designAssetUrl) queda de fallback (diseño sin artefactos o ya
-                // purgado — el snapshot sobrevive al borrado del diseño).
-                // LUC-SEC-001 (2026-10-30): todas las URLs salen por el handler
-                // autorizado con la capacidad ?ot= del token del pedido (solo
-                // variantes watermark; el fallback limpio solo carga para
-                // dueño/admin — fail-closed para el visitante por token).
-                const cap = { name: "ot" as const, value: token };
-                const disp = it.design ? designPreviewDisplay(it.design, cap) : null;
-                const fallbackRef = it.designAssetUrl ?? it.design?.previewUrl ?? null;
-                const previewUrl = disp?.watermarked
-                  ? disp.displayUrl
-                  : fallbackRef
-                    ? previewRefToAuthorizedUrl(fallbackRef, cap)
-                    : null; // ADR-070 — snapshot primero
-                // Opciones de diseño del set de letras ("Sin borde") — el PNG las refleja, pero el
-                // texto evita que el cliente tenga que deducirlas de la miniatura (2026-09-05).
-                const borderNote = letterSetBorderNote(it.design?.metadata);
-                // 2026-10-22 — rótulo por página del pager ("Set 2 · con borde").
-                const pageLabels = designPreviewPageLabels(
-                  it.design,
-                  unitNounForLine(
-                    it.variant.product.personalizationKind,
-                    it.variant.name,
-                    it.variant.product.personalizationSchema,
-                  ),
-                );
-                // 2026-10-26 — sustantivo kind-aware del badge «N …» ("tiras",
-                // "sets"…); el bloque CMS publicado manda sobre este fallback.
-                const unitNounPlural = unitCountNounForLine({
-                  personalizationKind: it.variant.product.personalizationKind,
-                  variantName: it.variant.name,
-                  designMetadata: it.design?.metadata,
-                  isBookmark: isBookmarkGalleryTag(it.variant.product.slug),
-                  productSchema: it.variant.product.personalizationSchema,
-                }).plural;
-                // Paquete F (2026-10-02) — desglose estructurado de la variante (el
-                // nombre libre no siempre informa Con/Sin imán, tamaño, idioma…).
-                const variantBreakdown = describeVariantAttributes(
-                  parseVariantAttributes(it.variant.attributes),
-                  it.variant.product.personalizationSchema,
-                );
-                return (
-                  <li key={it.id} className="flex items-start gap-3 py-3">
-                    {previewUrl ? (
-                      // 2026-10-13 — la miniatura también abre el lightbox
-                      // (además del botón «Ver»: Radix admite un solo trigger
-                      // por Dialog, así que es una 2ª instancia con trigger
-                      // personalizado).
-                      <DesignPreviewDialog
-                        previewUrl={previewUrl}
-                        pages={disp?.pageUrls ?? null}
-                        pageLabels={pageLabels}
-                        watermarkNote={
-                          disp?.watermarked
-                            ? "Vista previa con marca de agua — tu impresión final no la lleva."
-                            : null
-                        }
-                        productName={it.variant.product.name}
-                        trigger={
-                          <button
-                            type="button"
-                            aria-label={`Ver el diseño de ${it.variant.product.name}`}
-                            className="bg-brand-purple/5 focus-visible:ring-brand-turquoise relative h-14 w-14 flex-shrink-0 cursor-zoom-in overflow-hidden rounded-lg focus-visible:ring-2 focus-visible:outline-none"
-                          >
-                            <Image
-                              src={previewUrl}
-                              alt=""
-                              fill
-                              sizes="56px"
-                              className="object-cover"
-                              unoptimized
-                            />
-                            {/* 2026-10-13 — «N <sustantivo>» cuando el diseño pagina. */}
-                            <DesignUnitsBadge
-                              count={disp?.pageUrls?.length ?? 0}
-                              label={unitNounPlural}
-                            />
-                          </button>
-                        }
-                        title="Tu diseño ·"
-                        description="Vista previa ampliada del diseño personalizado de esta línea del pedido."
-                      />
-                    ) : (
-                      <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
-                        <div className="text-brand-muted flex h-full w-full items-center justify-center text-[10px]">
-                          {it.qty}×
-                        </div>
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="text-brand-purple-dark text-sm font-semibold">
-                        {it.variant.product.name}
-                      </div>
-                      <div className="text-brand-muted text-xs">
-                        {it.variant.name} ·{" "}
-                        {it.design && it.designUnits > 1
-                          ? `${it.designUnits} diseños × ${it.qty} ${it.qty === 1 ? "copia" : "copias"} (${it.designUnits * it.qty} ${unitNounPlural}) · `
-                          : ""}
-                        {it.qty} × {formatCOP(it.unitPrice)}
-                      </div>
-                      {variantBreakdown.length > 0 && (
-                        <div className="text-brand-purple-dark/70 text-xs">
-                          {variantBreakdown.join(" · ")}
-                        </div>
-                      )}
-                      {borderNote && <div className="text-brand-muted text-xs">{borderNote}</div>}
-                      {/* Zoom del diseño (fix QA STG 2026-10): la miniatura de
-                          56px no deja revisar el diseño — el botón abre el MISMO
-                          lightbox con zoom del carrito (DesignPreviewDialog:
-                          rueda anclada, pinch, doble-tap, botones +/−). */}
-                      {previewUrl && (
-                        <div className="mt-1.5">
-                          <DesignPreviewDialog
-                            previewUrl={previewUrl}
-                            // 2026-10-13 — páginas por unidad (watermark) cuando
-                            // el diseño las tiene: el "Ver" pagina por unidad.
-                            pages={disp?.pageUrls ?? null}
-                            pageLabels={pageLabels}
-                            watermarkNote={
-                              disp?.watermarked
-                                ? "Vista previa con marca de agua — tu impresión final no la lleva."
-                                : null
-                            }
-                            productName={it.variant.product.name}
-                            triggerLabel="Ver"
-                            title="Tu diseño ·"
-                            description="Vista previa ampliada del diseño personalizado de esta línea del pedido."
-                          />
-                        </div>
-                      )}
-                      {accountTexts && retractByItem.has(it.id) && (
-                        <RetractControl
-                          item={retractByItem.get(it.id)!}
-                          texts={accountTexts.retract}
-                          guestToken={token}
-                          actionOverride={requestGuestRetractAction}
-                        />
-                      )}
-                      {accountTexts && warrantyByItem.has(it.id) && (
-                        <WarrantyControl
-                          item={warrantyByItem.get(it.id)!}
-                          texts={accountTexts.warranty}
-                          guestToken={token}
-                          actionOverride={requestGuestWarrantyAction}
-                        />
-                      )}
-                    </div>
-                    <div className="text-brand-purple-dark flex-shrink-0 text-right text-sm font-semibold tabular-nums">
-                      {formatCOP(it.unitPrice * it.qty)}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-            {/* 2026-10-13 — aviso de marca de agua cuando algún diseño exhibido la lleva. */}
-            {order.items.some((it) =>
-              it.design ? designPreviewDisplay(it.design)?.watermarked === true : false,
-            ) && (
-              <p className="text-brand-muted mt-2 text-[11px]">
-                Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la
-                lleva.
-              </p>
-            )}
-            <dl className="border-brand-purple/10 mt-3 space-y-1 border-t pt-3 text-sm">
-              <Row label="Subtotal" value={formatCOP(order.subtotal)} />
-              <Row label="Envío" value={formatCOP(order.shipping)} />
-              {order.discount > 0 && (
-                <Row
-                  label="Descuento"
-                  value={<span className="text-emerald-700">−{formatCOP(order.discount)}</span>}
-                />
-              )}
-              {/* Puntos Lucams (2026-10-12) — línea propia para que el desglose
-                  cuadre con el total cobrado. */}
-              {order.loyaltyDiscount > 0 && (
-                <Row
-                  label={`Puntos Lucams (${order.loyaltyPointsRedeemed.toLocaleString("es-CO")} pts)`}
-                  value={
-                    <span className="text-emerald-700">−{formatCOP(order.loyaltyDiscount)}</span>
-                  }
-                />
-              )}
-              <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-2">
-                <dt className="text-brand-purple-dark font-bold">Total</dt>
-                <dd className="text-brand-purple-dark font-bold tabular-nums">
-                  {formatCOP(order.total)}
-                </dd>
-              </div>
-            </dl>
-          </Card>
+          <PublicOrderItemsCard
+            order={order}
+            token={token}
+            accountTexts={postSale.accountTexts}
+            retractByItem={postSale.retractByItem}
+            warrantyByItem={postSale.warrantyByItem}
+          />
 
-          <Card icon={<MapPin className="h-4 w-4" />} title="Dirección de envío">
-            {/* #16 — esta vista es pública por token (link reenviable). Minimización PII
-                (Ley 1581) PERO con certeza para el comprador: nombre + ciudad visibles y la
-                dirección completa bajo un desplegable "Ver dirección exacta" (feedback Lucy
-                2026-08-11 — el correo de confirmación YA la incluye, así que ocultarla solo
-                acá era inconsistente; el desplegable cubre el hombro curioso). */}
-            <p className="text-brand-purple-dark text-sm">
-              {ship.fullName ?? ""}
-              {ship.fullName && <br />}
-              {ship.city}, {ship.department}
-            </p>
-            {/* FLUJO REGALO — destinatario distinto ("compro yo, lo recibe otra
-                persona"): el comprador confirma a nombre de quién sale la guía.
-                El teléfono de quien recibe queda bajo el desplegable (vista
-                pública por token, link reenviable — minimización PII Ley 1581). */}
-            {order.recipientName && (
-              <p className="text-brand-purple-dark mt-2 text-sm">
-                Recibe: <strong>{order.recipientName}</strong>
-                {order.isGift ? " 🎁" : ""}
-              </p>
-            )}
-            <details className="group mt-1">
-              <summary className="text-brand-purple-dark hover:text-brand-purple cursor-pointer text-xs font-semibold underline underline-offset-2">
-                Ver dirección exacta
-              </summary>
-              <p className="text-brand-purple-dark mt-1 text-sm">
-                {[ship.addressLine1, ship.addressLine2].filter(Boolean).join(", ")}
-                {ship.zip ? ` · ${ship.zip}` : ""}
-              </p>
-              {order.recipientPhone && (
-                <p className="text-brand-purple-dark mt-1 text-sm">
-                  Tel. de quien recibe: {order.recipientPhone}
-                </p>
-              )}
-            </details>
-          </Card>
+          <PublicOrderAddressCard order={order} />
 
           {order.trackingNumber && (
-            <Card icon={<Truck className="h-4 w-4" />} title="Envío">
-              <Row label="Transportadora" value={carrierDisplayName(order.shippingCarrier)} />
-              <Row
-                label={isInternalDelivery ? "Referencia" : "Número de guía"}
-                value={
-                  <span className="text-brand-purple-dark/85 font-mono text-xs">
-                    {order.trackingNumber}
-                  </span>
-                }
-              />
-              {isInternalDelivery && (
-                <p className="text-brand-muted mt-2 text-xs">
-                  {order.status === "DELIVERED"
-                    ? "Tu pedido fue entregado por nuestro equipo Lucams."
-                    : "Tu pedido va con nuestro equipo Lucams — la entrega se estima para el mismo día del despacho, sujeta a las condiciones de la ruta."}
-                </p>
-              )}
-              {/* Rastreo (feedback owner 2026-10-20): esta vista YA es el
-                  seguimiento en Lucams — el botón "Seguir estado en LUCAMS" era
-                  redundante acá y se eliminó (sigue teniendo sentido en los
-                  emails). Quedan como BOTONES el portal oficial de la
-                  transportadora (el cliente digita la guía ahí) y el documento
-                  de guía PDF que archiva Aveonline. El número de guía va visible
-                  arriba para copiarlo. */}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {carrierTrackingPageUrl(order.shippingCarrier) && (
-                  <a
-                    href={carrierTrackingPageUrl(order.shippingCarrier)!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm"
-                  >
-                    <Truck aria-hidden className="h-3.5 w-3.5" />
-                    Rastrear en el portal de la transportadora
-                  </a>
-                )}
-                {order.trackingUrl && (
-                  <a
-                    href={order.trackingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm"
-                  >
-                    <Package aria-hidden className="h-3.5 w-3.5" />
-                    Documento de guía (PDF)
-                  </a>
-                )}
-              </div>
-            </Card>
+            <PublicOrderShippingCard
+              status={order.status}
+              trackingNumber={order.trackingNumber}
+              trackingUrl={order.trackingUrl}
+              shippingCarrier={order.shippingCarrier}
+              isInternalDelivery={isInternalDelivery}
+            />
           )}
 
           {!isCancelled && (
@@ -775,20 +453,18 @@ export default async function PublicOrderPage({
               token={token}
               orderNumber={order.number}
               maskedEmail={maskEmail(order.email)}
-              waUrl={waUrl}
+              waUrl={postSale.waUrl}
               isDelivered={order.status === "DELIVERED"}
               action={submitGuestOrderSupportAction}
             />
           )}
 
-          {/* Paquete I — "Volver a pedir" (invitado): el token del link autoriza el reorder;
-              el resumen inline dice qué entró al carrito, qué requiere fotos y qué ya no está. */}
-          {reorderTexts && (
+          {showActiveTracking && (
             <div className="border-brand-purple/15 mb-4 rounded-2xl border bg-white p-5 text-center shadow-sm">
               <ReorderControl
                 action={reorderGuestAction}
                 hiddenField={{ name: "token", value: token }}
-                texts={reorderTexts}
+                texts={DEFAULT_REORDER_TEXTS}
               />
             </div>
           )}
@@ -798,8 +474,6 @@ export default async function PublicOrderPage({
               ¿Quieres ver todos tus pedidos?
             </p>
             <p className="text-brand-muted mt-1 text-xs">
-              {/* #13/#16 — email ENMASCARADO (link público reenviable) y NO viaja en el href del CTA
-                  (antes ?email= lo dejaba en claro en la URL/HTML). Ley 1581. */}
               {withStrong(accountCtaBody, "{email}", maskEmail(order.email))}
             </p>
             <Link
@@ -815,15 +489,604 @@ export default async function PublicOrderPage({
   );
 }
 
+function PublicOrderTopBanners({
+  order,
+  isNewOrder,
+  isCancelled,
+  isPending,
+  showCodBanner,
+  waUrl,
+}: Readonly<{
+  order: PublicOrderRecord;
+  isNewOrder: boolean;
+  isCancelled: boolean;
+  isPending: boolean;
+  showCodBanner: boolean;
+  waUrl: string | null;
+}>) {
+  const codBanner = "Pagas {total} en efectivo cuando el mensajero te entregue el pedido.";
+  return (
+    <>
+      {isNewOrder && !isCancelled && (
+        <PublicOrderNewConfirmation order={order} isPending={isPending} />
+      )}
+
+      {isPending && (
+        <div role="note" className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-900">Estamos confirmando tu pago</p>
+          <p className="mt-1 text-xs text-amber-800">
+            Esto puede tardar unos minutos (algunos métodos como PSE o transferencia son así).
+            Cuando lo confirmemos te llega un correo y aquí verás el avance. ¿Tienes dudas?
+          </p>
+          {waUrl && (
+            <a
+              href={waUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+            >
+              Escríbenos por WhatsApp
+            </a>
+          )}
+        </div>
+      )}
+
+      {showCodBanner && (
+        <div
+          role="note"
+          className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4"
+        >
+          <Wallet className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-700" aria-hidden />
+          <p className="text-sm text-amber-900">
+            {withStrong(codBanner, "{total}", formatCOP(order.total))}
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
+function PublicOrderNewConfirmation({
+  order,
+  isPending,
+}: Readonly<{
+  order: PublicOrderRecord;
+  isPending: boolean;
+}>) {
+  return (
+    <>
+      {!isPending && (
+        <TrackPurchase
+          transactionId={order.number}
+          valueCents={order.total}
+          shippingCents={order.shipping}
+          taxCents={order.tax}
+          items={order.items.map((it) => {
+            const du = Math.max(1, it.designUnits);
+            return {
+              sku: it.variant.sku || it.variant.product.sku,
+              name: it.variant.product.name,
+              variantName: it.variant.name,
+              priceCents: Math.round(it.unitPrice / du),
+              quantity: it.qty * du,
+            };
+          })}
+          funnelLines={order.items.map((it) => ({
+            productSlug: it.variant.product.slug,
+            editorKind: resolveFunnelEditorKind({
+              isPersonalizable: it.variant.product.isPersonalizable,
+              personalizationKind: it.variant.product.personalizationKind,
+              productSchema: it.variant.product.personalizationSchema,
+              variantAttrs: it.variant.attributes,
+              designMetadata: it.design?.metadata,
+            }),
+          }))}
+        />
+      )}
+      <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+        <p className="font-display text-lg font-bold text-emerald-900">🎉 ¡Pedido confirmado!</p>
+        <p className="mt-0.5 text-sm text-emerald-800">
+          Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!
+        </p>
+      </div>
+    </>
+  );
+}
+
+function PublicShippingIssueAlert({
+  shippingIssue,
+  waUrl,
+}: Readonly<{
+  shippingIssue: ShippingIssueSummary;
+  waUrl: string | null;
+}>) {
+  const isReturned = shippingIssue.kind === "returned";
+  const boxClass = isReturned ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50";
+  const titleClass = isReturned ? "text-rose-900" : "text-amber-900";
+  const ctaClass = isReturned ? "bg-rose-600 hover:bg-rose-700" : "bg-amber-600 hover:bg-amber-700";
+
+  return (
+    <div role="alert" className={`mb-4 rounded-xl border p-4 ${boxClass}`}>
+      <p className={`text-sm font-semibold ${titleClass}`}>
+        {isReturned
+          ? "Tu pedido viene de vuelta con nosotros"
+          : "Novedad operativa en el intento de entrega"}
+      </p>
+      {isReturned ? (
+        <p className="mt-1 text-xs text-rose-800">
+          La transportadora nos reportó la devolución del paquete. Apenas lo recibamos te
+          contactaremos para acordar el reenvío o la devolución del dinero; si quieres escribirnos
+          antes, estamos atentos.
+        </p>
+      ) : (
+        <p className="mt-1 text-xs text-amber-800">
+          {shippingIssue.detail ? `Reporte de la transportadora: ${shippingIssue.detail}. ` : ""}
+          Tu paquete no ha sido devuelto: permanece con la transportadora en tu ciudad para
+          programar un nuevo intento de reparto en el siguiente día hábil. Si necesitas confirmar
+          algún dato de tu dirección o portería, escríbenos por WhatsApp.
+        </p>
+      )}
+      {waUrl && (
+        <a
+          href={waUrl}
+          target="_blank"
+          rel="noreferrer"
+          className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold text-white ${ctaClass}`}
+        >
+          Escríbenos por WhatsApp
+        </a>
+      )}
+    </div>
+  );
+}
+
+function PublicCarrierMovementsList({
+  shipmentEvents,
+}: Readonly<{
+  shipmentEvents: PublicShipmentEvent[];
+}>) {
+  return (
+    <div className="border-brand-purple/10 mt-5 border-t pt-4">
+      <p className="text-brand-muted mb-3 text-[11px] font-semibold tracking-wider uppercase">
+        Movimientos de la guía
+      </p>
+      <ol className="relative space-y-3">
+        {[...shipmentEvents].reverse().map((ev, idx) => {
+          const tone = resolveShipmentEventDotTone(ev.status, idx);
+          const friendlyStatus = friendlyCarrierEventLabel(ev.carrierStatusRaw);
+          const headline = ev.description || friendlyStatus || SHIPMENT_EVENT_LABEL[ev.status];
+          const showSecondaryTag = Boolean(ev.description && ev.carrierStatusRaw);
+          return (
+            <li key={ev.id} className="flex items-start gap-3">
+              <span
+                aria-hidden="true"
+                className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${tone} ${
+                  idx === 0 ? "ring-brand-purple/25 ring-4" : ""
+                }`}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-brand-purple-dark text-xs leading-snug font-semibold">
+                  {headline}
+                  {showSecondaryTag ? (
+                    <span className="text-brand-muted font-normal"> · {friendlyStatus}</span>
+                  ) : null}
+                </p>
+                <p className="text-brand-muted mt-0.5 text-[11px]">
+                  {formatDateTimeCO(ev.occurredAt)}
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function PublicOrderStatusSection({
+  status,
+  isCod,
+  shippingIssue,
+  shipmentEvents,
+  waUrl,
+}: Readonly<{
+  status: string;
+  isCod: boolean;
+  shippingIssue: ShippingIssueSummary | null;
+  shipmentEvents: PublicShipmentEvent[];
+  waUrl: string | null;
+}>) {
+  const progress = timelineProgress(status);
+  return (
+    <div className="border-brand-purple/15 mb-6 rounded-2xl border bg-white p-5 shadow-sm">
+      <h2 className="text-brand-purple-dark mb-4 text-sm font-bold">Estado de tu pedido</h2>
+      {shippingIssue && <PublicShippingIssueAlert shippingIssue={shippingIssue} waUrl={waUrl} />}
+      <ol className="flex justify-between">
+        {TIMELINE_STEPS.map((s, i) => {
+          const done = progress >= i;
+          const active = progress === i;
+          const label = i === 0 && isCod ? "Confirmado" : s.label;
+          return (
+            <li key={s.key} className="flex flex-1 flex-col items-center">
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+                  done ? "bg-brand-purple text-white" : "bg-slate-100 text-slate-400"
+                } ${active ? "ring-brand-purple/30 ring-4" : ""}`}
+              >
+                {i + 1}
+              </div>
+              <span
+                className={`mt-2 text-center text-[10px] font-medium ${
+                  done ? "text-brand-purple-dark" : "text-brand-muted"
+                }`}
+              >
+                {label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      {shipmentEvents.length > 0 && <PublicCarrierMovementsList shipmentEvents={shipmentEvents} />}
+    </div>
+  );
+}
+
+function PublicOrderCancelledBanner({ status }: Readonly<{ status: string }>) {
+  return (
+    <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4">
+      <p className="text-sm font-semibold text-rose-900">
+        {status === "REFUNDED" ? "Este pedido fue reembolsado." : "Este pedido fue cancelado."}
+      </p>
+      <p className="mt-1 text-xs text-rose-800">Si tienes dudas escríbenos por WhatsApp.</p>
+    </div>
+  );
+}
+
+function PublicOrderItemThumbnail({
+  previewUrl,
+  pageUrls,
+  pageLabels,
+  watermarkNote,
+  productName,
+  unitNounPlural,
+  qty,
+}: Readonly<{
+  previewUrl: string | null;
+  pageUrls: string[] | null;
+  pageLabels: string[] | null;
+  watermarkNote: string | null;
+  productName: string;
+  unitNounPlural: string;
+  qty: number;
+}>) {
+  if (!previewUrl) {
+    return (
+      <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
+        <div className="text-brand-muted flex h-full w-full items-center justify-center text-[10px]">
+          {qty}×
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <DesignPreviewDialog
+      previewUrl={previewUrl}
+      pages={pageUrls}
+      pageLabels={pageLabels}
+      watermarkNote={watermarkNote}
+      productName={productName}
+      trigger={
+        <button
+          type="button"
+          aria-label={`Ver el diseño de ${productName}`}
+          className="bg-brand-purple/5 focus-visible:ring-brand-turquoise relative h-14 w-14 flex-shrink-0 cursor-zoom-in overflow-hidden rounded-lg focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <Image src={previewUrl} alt="" fill sizes="56px" className="object-cover" unoptimized />
+          <DesignUnitsBadge count={pageUrls?.length ?? 0} label={unitNounPlural} />
+        </button>
+      }
+      title="Tu diseño ·"
+      description="Vista previa ampliada del diseño personalizado de esta línea del pedido."
+    />
+  );
+}
+
+function PublicOrderItemPostSaleControls({
+  token,
+  accountTexts,
+  retractItem,
+  warrantyItem,
+}: Readonly<{
+  token: string;
+  accountTexts: PublicAccountTexts;
+  retractItem: PublicRetractableItem | undefined;
+  warrantyItem: PublicWarrantyItem | undefined;
+}>) {
+  if (!accountTexts) return null;
+  return (
+    <>
+      {retractItem && (
+        <RetractControl
+          item={retractItem}
+          texts={accountTexts.retract}
+          guestToken={token}
+          actionOverride={requestGuestRetractAction}
+        />
+      )}
+      {warrantyItem && (
+        <WarrantyControl
+          item={warrantyItem}
+          texts={accountTexts.warranty}
+          guestToken={token}
+          actionOverride={requestGuestWarrantyAction}
+        />
+      )}
+    </>
+  );
+}
+
+function resolvePublicItemPreviewContext(it: PublicOrderItem, token: string) {
+  const cap = { name: "ot" as const, value: token };
+  const disp = it.design ? designPreviewDisplay(it.design, cap) : null;
+  const previewUrl = resolveItemPreviewUrl(it, token, disp);
+  const pageUrls = disp?.pageUrls ?? null;
+  const borderNote = letterSetBorderNote(it.design?.metadata);
+  const pageLabels = designPreviewPageLabels(
+    it.design,
+    unitNounForLine(
+      it.variant.product.personalizationKind,
+      it.variant.name,
+      it.variant.product.personalizationSchema,
+    ),
+  );
+  const unitNounPlural = unitCountNounForLine({
+    personalizationKind: it.variant.product.personalizationKind,
+    variantName: it.variant.name,
+    designMetadata: it.design?.metadata,
+    isBookmark: isBookmarkGalleryTag(it.variant.product.slug),
+    productSchema: it.variant.product.personalizationSchema,
+  }).plural;
+  const watermarkNote = disp?.watermarked
+    ? "Vista previa con marca de agua — tu impresión final no la lleva."
+    : null;
+
+  return { previewUrl, pageUrls, borderNote, pageLabels, unitNounPlural, watermarkNote };
+}
+
+function PublicOrderItemRow({
+  it,
+  token,
+  accountTexts,
+  retractItem,
+  warrantyItem,
+}: Readonly<{
+  it: PublicOrderItem;
+  token: string;
+  accountTexts: PublicAccountTexts;
+  retractItem: PublicRetractableItem | undefined;
+  warrantyItem: PublicWarrantyItem | undefined;
+}>) {
+  const { previewUrl, pageUrls, borderNote, pageLabels, unitNounPlural, watermarkNote } =
+    resolvePublicItemPreviewContext(it, token);
+  const variantBreakdown = describeVariantAttributes(
+    parseVariantAttributes(it.variant.attributes),
+    it.variant.product.personalizationSchema,
+  );
+  const designUnitsPrefix = formatDesignUnitsPrefix(it, unitNounPlural);
+
+  return (
+    <li className="flex items-start gap-3 py-3">
+      <PublicOrderItemThumbnail
+        previewUrl={previewUrl}
+        pageUrls={pageUrls}
+        pageLabels={pageLabels}
+        watermarkNote={watermarkNote}
+        productName={it.variant.product.name}
+        unitNounPlural={unitNounPlural}
+        qty={it.qty}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-brand-purple-dark text-sm font-semibold">
+          {it.variant.product.name}
+        </div>
+        <div className="text-brand-muted text-xs">
+          {it.variant.name} · {designUnitsPrefix}
+          {it.qty} × {formatCOP(it.unitPrice)}
+        </div>
+        {variantBreakdown.length > 0 && (
+          <div className="text-brand-purple-dark/70 text-xs">{variantBreakdown.join(" · ")}</div>
+        )}
+        {borderNote && <div className="text-brand-muted text-xs">{borderNote}</div>}
+        {previewUrl && (
+          <div className="mt-1.5">
+            <DesignPreviewDialog
+              previewUrl={previewUrl}
+              pages={pageUrls}
+              pageLabels={pageLabels}
+              watermarkNote={watermarkNote}
+              productName={it.variant.product.name}
+              triggerLabel="Ver"
+              title="Tu diseño ·"
+              description="Vista previa ampliada del diseño personalizado de esta línea del pedido."
+            />
+          </div>
+        )}
+        <PublicOrderItemPostSaleControls
+          token={token}
+          accountTexts={accountTexts}
+          retractItem={retractItem}
+          warrantyItem={warrantyItem}
+        />
+      </div>
+      <div className="text-brand-purple-dark flex-shrink-0 text-right text-sm font-semibold tabular-nums">
+        {formatCOP(it.unitPrice * it.qty)}
+      </div>
+    </li>
+  );
+}
+
+function PublicOrderItemsCard({
+  order,
+  token,
+  accountTexts,
+  retractByItem,
+  warrantyByItem,
+}: Readonly<{
+  order: PublicOrderRecord;
+  token: string;
+  accountTexts: PublicAccountTexts;
+  retractByItem: Map<string, PublicRetractableItem>;
+  warrantyByItem: Map<string, PublicWarrantyItem>;
+}>) {
+  const hasWatermarkedPreview = order.items.some((it) =>
+    it.design ? designPreviewDisplay(it.design)?.watermarked === true : false,
+  );
+  return (
+    <Card icon={<Package className="h-4 w-4" />} title={`Lo que pediste (${order.items.length})`}>
+      <ul className="divide-brand-purple/10 divide-y">
+        {order.items.map((it) => (
+          <PublicOrderItemRow
+            key={it.id}
+            it={it}
+            token={token}
+            accountTexts={accountTexts}
+            retractItem={retractByItem.get(it.id)}
+            warrantyItem={warrantyByItem.get(it.id)}
+          />
+        ))}
+      </ul>
+      {hasWatermarkedPreview && (
+        <p className="text-brand-muted mt-2 text-[11px]">
+          Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva.
+        </p>
+      )}
+      <dl className="border-brand-purple/10 mt-3 space-y-1 border-t pt-3 text-sm">
+        <Row label="Subtotal" value={formatCOP(order.subtotal)} />
+        <Row label="Envío" value={formatCOP(order.shipping)} />
+        {order.discount > 0 && (
+          <Row
+            label="Descuento"
+            value={<span className="text-emerald-700">−{formatCOP(order.discount)}</span>}
+          />
+        )}
+        {order.loyaltyDiscount > 0 && (
+          <Row
+            label={`Puntos Lucams (${order.loyaltyPointsRedeemed.toLocaleString("es-CO")} pts)`}
+            value={<span className="text-emerald-700">−{formatCOP(order.loyaltyDiscount)}</span>}
+          />
+        )}
+        <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-2">
+          <dt className="text-brand-purple-dark font-bold">Total</dt>
+          <dd className="text-brand-purple-dark font-bold tabular-nums">
+            {formatCOP(order.total)}
+          </dd>
+        </div>
+      </dl>
+    </Card>
+  );
+}
+
+function PublicOrderAddressCard({ order }: Readonly<{ order: PublicOrderRecord }>) {
+  const ship = order.shippingAddress as ShippingAddrSnapshot;
+  return (
+    <Card icon={<MapPin className="h-4 w-4" />} title="Dirección de envío">
+      <p className="text-brand-purple-dark text-sm">
+        {ship.fullName ?? ""}
+        {ship.fullName && <br />}
+        {ship.city}, {ship.department}
+      </p>
+      {order.recipientName && (
+        <p className="text-brand-purple-dark mt-2 text-sm">
+          Recibe: <strong>{order.recipientName}</strong>
+          {order.isGift ? " 🎁" : ""}
+        </p>
+      )}
+      <details className="group mt-1">
+        <summary className="text-brand-purple-dark hover:text-brand-purple cursor-pointer text-xs font-semibold underline underline-offset-2">
+          Ver dirección exacta
+        </summary>
+        <p className="text-brand-purple-dark mt-1 text-sm">
+          {[ship.addressLine1, ship.addressLine2].filter(Boolean).join(", ")}
+          {ship.zip ? ` · ${ship.zip}` : ""}
+        </p>
+        {order.recipientPhone && (
+          <p className="text-brand-purple-dark mt-1 text-sm">
+            Tel. de quien recibe: {order.recipientPhone}
+          </p>
+        )}
+      </details>
+    </Card>
+  );
+}
+
+function PublicOrderShippingCard({
+  status,
+  trackingNumber,
+  trackingUrl,
+  shippingCarrier,
+  isInternalDelivery,
+}: Readonly<{
+  status: string;
+  trackingNumber: string;
+  trackingUrl: string | null;
+  shippingCarrier: string | null;
+  isInternalDelivery: boolean;
+}>) {
+  const trackingPortalUrl = carrierTrackingPageUrl(shippingCarrier);
+  return (
+    <Card icon={<Truck className="h-4 w-4" />} title="Envío">
+      <Row label="Transportadora" value={carrierDisplayName(shippingCarrier)} />
+      <Row
+        label={isInternalDelivery ? "Referencia" : "Número de guía"}
+        value={
+          <span className="text-brand-purple-dark/85 font-mono text-xs">{trackingNumber}</span>
+        }
+      />
+      {isInternalDelivery && (
+        <p className="text-brand-muted mt-2 text-xs">
+          {status === "DELIVERED"
+            ? "Tu pedido fue entregado por nuestro equipo Lucams."
+            : "Tu pedido va con nuestro equipo Lucams — la entrega se estima para el mismo día del despacho, sujeta a las condiciones de la ruta."}
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {trackingPortalUrl && (
+          <a
+            href={trackingPortalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm"
+          >
+            <Truck aria-hidden className="h-3.5 w-3.5" />
+            Rastrear en el portal de la transportadora
+          </a>
+        )}
+        {trackingUrl && (
+          <a
+            href={trackingUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm"
+          >
+            <Package aria-hidden className="h-3.5 w-3.5" />
+            Documento de guía (PDF)
+          </a>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function Card({
   icon,
   title,
   children,
-}: {
+}: Readonly<{
   icon: React.ReactNode;
   title: React.ReactNode;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <section className="border-brand-purple/15 mb-4 rounded-2xl border bg-white p-5 shadow-sm">
       <h2 className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-bold">
@@ -835,7 +1098,7 @@ function Card({
   );
 }
 
-function Row({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
+function Row({ label, value }: Readonly<{ label: React.ReactNode; value: React.ReactNode }>) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
       <dt className="text-brand-muted text-xs">{label}</dt>
@@ -850,5 +1113,7 @@ function Row({ label, value }: { label: React.ReactNode; value: React.ReactNode 
 function withStrong(text: string, placeholder: string, value: string): React.ReactNode {
   const parts = text.split(placeholder);
   if (parts.length === 1) return text;
-  return parts.flatMap((part, i) => (i === 0 ? [part] : [<strong key={i}>{value}</strong>, part]));
+  return parts.flatMap((part, i) =>
+    i === 0 ? [part] : [<strong key={`${placeholder}-${i}`}>{value}</strong>, part],
+  );
 }
