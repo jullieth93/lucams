@@ -1,9 +1,10 @@
 /*
  * Template: pedido devuelto por la transportadora (N-22b).
  *
- * Enviado cuando el webhook Aveonline reporta RETURNED/EXCEPTION: el paquete
- * viene de vuelta (dirección no encontrada, cliente no recibió, novedad en
- * transporte). La orden NO se transiciona automáticamente — queda marcada
+ * Enviado ÚNICAMENTE cuando Aveonline confirma RETURNED (devolución real al
+ * remitente tras agotar intentos o rechazo definitivo). Las novedades operativas
+ * de ruta (`EXCEPTION` / `NOVEDAD`) solo alertan al admin y jamás disparan este
+ * correo. La orden NO se transiciona automáticamente — queda marcada
  * "necesita atención" para que el negocio decida (reenvío / reembolso /
  * reposición de stock).
  *

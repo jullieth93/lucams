@@ -103,26 +103,22 @@ function timelineProgress(status: string): number {
 }
 
 /**
- * Revalidación 2026-10-20 (feedback owner en /pedido) — el timeline solo cubre el
- * happy path (Pagado→Entregado), pero una orden puede quedar SHIPPED/FULFILLING
- * con una NOVEDAD o DEVOLUCIÓN del carrier (la saga no auto-transiciona esos
- * estados: los marca needsReconciliation + avisa al admin, decisión humana). Sin
- * este banner el cliente veía "En camino" para siempre sin señal del problema.
- * Deriva el tipo desde reconciliationReason (texto que escribe NUESTRA saga:
- * "Envío DEVUELTO (…)" / "Envío con novedad (…)") — solo aplica a órdenes ya
- * pagadas con guía (una reconciliación de pago NO debe pintar banner de envío).
+ * Revalidación 2026-10-20 / ajuste LCM-2026-0006 — el timeline solo cubre el
+ * happy path (Pagado→Entregado). Cuando el carrier confirma DEVOLUCIÓN real al
+ * remitente (`RETURNED` → `reconciliationReason` con `DEVUELTO`), mostramos el
+ * aviso honesto al comprador. Las novedades operativas de ruta (`EXCEPTION` /
+ * `NOVEDAD`) NO prenden reconciliación ni pintan banners alarmistas en cliente.
  */
 function shippingIssueKind(order: {
   status: string;
   trackingNumber: string | null;
   needsReconciliation: boolean;
   reconciliationReason: string | null;
-}): "returned" | "exception" | null {
+}): "returned" | null {
   if (!order.needsReconciliation || !order.trackingNumber) return null;
   if (!["PAID", "FULFILLING", "SHIPPED"].includes(order.status)) return null;
   const reason = order.reconciliationReason ?? "";
   if (/devuelto|devoluci[oó]n/i.test(reason)) return "returned";
-  if (/novedad/i.test(reason)) return "exception";
   return null;
 }
 
@@ -381,13 +377,12 @@ export default async function PublicOrderPage({
                   className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4"
                 >
                   <p className="text-sm font-semibold text-amber-900">
-                    {shippingIssue === "returned"
-                      ? "Tu pedido viene de vuelta con nosotros"
-                      : "Tu envío tiene una novedad"}
+                    Tu pedido viene de vuelta con nosotros
                   </p>
                   <p className="mt-1 text-xs text-amber-800">
-                    La transportadora reportó un inconveniente con la entrega. Ya lo estamos
-                    gestionando y te contactaremos; si quieres escribirnos antes, estamos atentos.
+                    La transportadora nos reportó la devolución del paquete. Apenas lo recibamos te
+                    contactaremos para acordar el reenvío o la devolución del dinero; si quieres
+                    escribirnos antes, estamos atentos.
                   </p>
                   {waUrl && (
                     <a

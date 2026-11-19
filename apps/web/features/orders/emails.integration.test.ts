@@ -17,7 +17,11 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { sendOrderPaymentDeclined, notifyOrderReturned } from "./emails";
+import {
+  sendOrderPaymentDeclined,
+  notifyOrderReturned,
+  notifyOrderShippingException,
+} from "./emails";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const RUN = `eml${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
@@ -84,7 +88,14 @@ describe.skipIf(!hasDb)(
       };
       await safe(() =>
         prisma.notification.deleteMany({
-          where: { dedupKey: { in: createdOrderIds.map((id) => `order-returned-${id}`) } },
+          where: {
+            dedupKey: {
+              in: createdOrderIds.flatMap((id) => [
+                `order-returned-${id}`,
+                `order-exception-${id}`,
+              ]),
+            },
+          },
         }),
       );
       await safe(() =>
@@ -182,6 +193,55 @@ describe.skipIf(!hasDb)(
       await expect(
         notifyOrderReturned({ orderId: `${RUN}-nope`, carrierStatusRaw: "DEVUELTA" }),
       ).resolves.toBeUndefined();
+    });
+
+    it("notifyOrderShippingException: alerta solo al admin, enriquece con polling y no recrea tras marcar leída", async () => {
+      const orderId = await makeOrder({ status: "SHIPPED" });
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { trackingNumber: `${RUN}-TRK-EXC`, shippingCarrier: "envia" },
+      });
+
+      // 1) Webhook llega sin timestamp ni descripción → crea 1 aviso interno de novedad (no devolución).
+      await notifyOrderShippingException({ orderId, carrierStatusRaw: "NOVEDAD" });
+      const first = await prisma.notification.findFirst({
+        where: { dedupKey: `order-exception-${orderId}` },
+      });
+      expect(first).not.toBeNull();
+      expect(first!.title).toContain("Novedad de entrega");
+      expect(first!.title).not.toContain("devuelto");
+
+      // 2) Polling llega con descripción + aclaración del mismo incidente → enriquece en sitio sin duplicar.
+      const occurredAt = new Date("2026-11-18T23:31:00.000Z");
+      await notifyOrderShippingException({
+        orderId,
+        carrierStatusRaw: "NOVEDAD",
+        carrierDescription: "ENTREGA NO EFECTUADA POR INCONVENIENTES OPERATIVOS",
+        carrierClarification: "18:30 : NOMBRE: 2986 ACLARACION:por tiempo",
+        occurredAt,
+      });
+      expect(
+        await prisma.notification.count({ where: { dedupKey: `order-exception-${orderId}` } }),
+      ).toBe(1);
+      const enriched = await prisma.notification.findUnique({ where: { id: first!.id } });
+      expect(enriched!.detail).toContain("INCONVENIENTES OPERATIVOS");
+      expect(enriched!.detail).toContain("por tiempo");
+
+      // 3) Admin marca como leída → corridas siguientes de tracking-sync del mismo minuto son no-op.
+      const readAt = new Date();
+      await prisma.notification.update({ where: { id: first!.id }, data: { readAt } });
+      await notifyOrderShippingException({
+        orderId,
+        carrierStatusRaw: "NOVEDAD",
+        carrierDescription: "ENTREGA NO EFECTUADA POR INCONVENIENTES OPERATIVOS",
+        carrierClarification: "18:30 : NOMBRE: 2986 ACLARACION:por tiempo",
+        occurredAt,
+      });
+      expect(
+        await prisma.notification.count({ where: { dedupKey: `order-exception-${orderId}` } }),
+      ).toBe(1);
+      const stillRead = await prisma.notification.findUnique({ where: { id: first!.id } });
+      expect(stillRead!.readAt).not.toBeNull();
     });
   },
 );

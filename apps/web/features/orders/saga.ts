@@ -24,6 +24,7 @@ import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { formatCOPExact } from "@/lib/format";
 import { getShippingProvider } from "@/features/shipping/provider";
+import { isVoidedGuideStatus } from "@/features/shipping/aveonline";
 import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
 import { getSettingValue } from "@/lib/cms";
 import { invalidateCatalogListings } from "@/lib/catalog";
@@ -50,6 +51,7 @@ import {
   sendOrderCancelled,
   sendOrderRefunded,
   notifyOrderReturned,
+  notifyOrderShippingException,
 } from "./emails";
 import { issueReferralRewardsIfFirstPaidOrder } from "@/features/referrals/service";
 import { awardLoyaltyPointsForPaidOrder } from "@/features/loyalty/service";
@@ -1016,8 +1018,8 @@ export async function processPaidOrder(
  *   - `IN_TRANSIT` / `DISPATCHED` desde FULFILLING → SHIPPED
  *   - `DELIVERED` desde SHIPPED → DELIVERED
  *   - `DELIVERED` desde FULFILLING → SHIPPED + DELIVERED (skip intermedio)
- *   - `RETURNED` / `EXCEPTION` → log warn (no transición automática; admin
- *     decide CANCEL/REFUND manualmente)
+ *   - `RETURNED` → marca `needsReconciliation` + alerta admin + correo honesto de devolución al cliente
+ *   - `EXCEPTION` (`NOVEDAD` operativa) → alerta SOLO al admin (sin `needsReconciliation` ni correo falso al cliente; si es guía `ANULADA`, marca reconciliación sin correo al cliente)
  *   - Estados no mapeables → no-op + log
  */
 /**
@@ -1035,8 +1037,17 @@ function canonicalTrackingNumber(raw: string): string {
   return stripped || trimmed;
 }
 
+const LOGISTICS_RECONCILIATION_REASON_RE = /^(Envío |Guía anulada|Webhook Aveonline:)/i;
+
 async function findOrderByTrackingNumber(trackingNumber: string) {
-  const select = { id: true, number: true, status: true } as const;
+  const select = {
+    id: true,
+    number: true,
+    status: true,
+    needsReconciliation: true,
+    reconciliationReason: true,
+    reconciledAt: true,
+  } as const;
   const exact = await prisma.order.findFirst({
     where: { trackingNumber, deletedAt: null },
     select,
@@ -1055,13 +1066,113 @@ async function findOrderByTrackingNumber(trackingNumber: string) {
   const match = candidates.find(
     (c) => c.trackingNumber && canonicalTrackingNumber(c.trackingNumber) === canonical,
   );
-  return match ? { id: match.id, number: match.number, status: match.status } : null;
+  return match
+    ? {
+        id: match.id,
+        number: match.number,
+        status: match.status,
+        needsReconciliation: match.needsReconciliation,
+        reconciliationReason: match.reconciliationReason,
+        reconciledAt: match.reconciledAt,
+      }
+    : null;
+}
+
+type TrackingMatchedOrder = NonNullable<Awaited<ReturnType<typeof findOrderByTrackingNumber>>>;
+
+async function clearLogisticsReconciliationOnDelivery(order: TrackingMatchedOrder): Promise<void> {
+  if (!order.needsReconciliation) return;
+  if (!LOGISTICS_RECONCILIATION_REASON_RE.test(order.reconciliationReason ?? "")) return;
+  await prisma.order
+    .updateMany({
+      where: { id: order.id, needsReconciliation: true },
+      data: {
+        needsReconciliation: false,
+        reconciliationNote:
+          "Cerrada automáticamente al confirmarse la entrega por la transportadora.",
+        reconciledAt: new Date(),
+      },
+    })
+    .catch(() => null);
+}
+
+async function handleReturnedTrackingUpdate(
+  order: TrackingMatchedOrder,
+  input: {
+    carrierStatusRaw: string;
+    carrierDescription?: string;
+    carrierClarification?: string;
+  },
+): Promise<void> {
+  const alreadyReconciledReturn = Boolean(
+    !order.needsReconciliation &&
+    order.reconciledAt &&
+    /DEVUELTO/i.test(order.reconciliationReason ?? ""),
+  );
+  if (!order.needsReconciliation && !alreadyReconciledReturn) {
+    const actionSuffix = order.status === "DELIVERED" ? " y reembolso" : " / reenvío";
+    await markNeedsReconciliation(
+      order.id,
+      `Envío DEVUELTO (${input.carrierStatusRaw}) — revisar stock${actionSuffix}`,
+    );
+  }
+  await notifyOrderReturned({
+    orderId: order.id,
+    carrierStatusRaw: input.carrierStatusRaw,
+    carrierDescription: input.carrierDescription,
+    carrierClarification: input.carrierClarification,
+  });
+  logger.warn({
+    event: "order.saga.tracking.returned",
+    orderNumber: order.number,
+    carrierRaw: input.carrierStatusRaw,
+  });
+}
+
+async function handleExceptionTrackingUpdate(
+  order: TrackingMatchedOrder,
+  input: {
+    carrierStatusRaw: string;
+    carrierDescription?: string;
+    carrierClarification?: string;
+    occurredAt?: Date;
+  },
+): Promise<void> {
+  const voidedGuide = isVoidedGuideStatus(input.carrierStatusRaw);
+  const alreadyReconciledVoided = Boolean(
+    !order.needsReconciliation &&
+    order.reconciledAt &&
+    /Guía anulada/i.test(order.reconciliationReason ?? ""),
+  );
+  if (voidedGuide && !order.needsReconciliation && !alreadyReconciledVoided) {
+    await markNeedsReconciliation(
+      order.id,
+      `Guía anulada por la transportadora (${input.carrierStatusRaw}) — generar nueva guía o revisar despacho`,
+    );
+  }
+  await notifyOrderShippingException({
+    orderId: order.id,
+    carrierStatusRaw: input.carrierStatusRaw,
+    carrierDescription: input.carrierDescription,
+    carrierClarification: input.carrierClarification,
+    occurredAt: input.occurredAt,
+    isVoidedGuide: voidedGuide,
+  });
+  logger.warn({
+    event: "order.saga.tracking.exception",
+    orderNumber: order.number,
+    carrierRaw: input.carrierStatusRaw,
+    voidedGuide,
+  });
 }
 
 export async function processTrackingUpdate(input: {
   trackingNumber: string;
   status: "PENDING" | "DISPATCHED" | "IN_TRANSIT" | "DELIVERED" | "RETURNED" | "EXCEPTION";
   carrierStatusRaw: string;
+  carrierDescription?: string;
+  carrierClarification?: string;
+  occurredAt?: Date;
 }): Promise<{ status: "ok" | "no_match" | "noop"; orderNumber?: string; transitionedTo?: string }> {
   const order = await findOrderByTrackingNumber(input.trackingNumber);
   if (!order) {
@@ -1123,6 +1234,7 @@ export async function processTrackingUpdate(input: {
     if (currentStatus === "SHIPPED" || currentStatus === "FULFILLING") {
       try {
         await transitionOrder(order.id, "DELIVERED");
+        await clearLogisticsReconciliationOnDelivery(order);
         await sendOrderDelivered(order.id);
         return { status: "ok", orderNumber: order.number, transitionedTo: "DELIVERED" };
       } catch (err) {
@@ -1164,38 +1276,10 @@ export async function processTrackingUpdate(input: {
           `revisar y avanzar el pedido manualmente.`,
       );
     }
-  } else if (input.status === "RETURNED" || input.status === "EXCEPTION") {
-    // Devolución / novedad. NO auto-transicionamos (requiere decisión humana: reponer
-    // stock, reembolsar si fue Wompi, o re-despachar). Pero la marcamos needsReconciliation
-    // para que la dueña la VEA en /admin/pedidos "Necesitan atención" + el resumen diario.
-    // Sin esto, una entrega COD rechazada queda en un estado 'pagado' para siempre →
-    // ingresos y stock inflados en silencio (revisión adversarial COD, mandato #7 sin Sentry).
-    await prisma.order
-      .update({
-        where: { id: order.id },
-        data: {
-          needsReconciliation: true,
-          reconciliationReason: `Envío ${
-            input.status === "RETURNED" ? "DEVUELTO" : "con novedad"
-          } (${input.carrierStatusRaw}) — revisar stock${
-            order.status === "DELIVERED" ? " y reembolso" : " / reenvío"
-          }`,
-        },
-      })
-      .catch(() => null);
-    // N-22b — además del flag: notificación in-app al centro admin con la acción
-    // esperada explícita (revisar y decidir reenvío/reembolso/reposición de stock —
-    // NADA de eso se automatiza, es decisión operativa) + email honesto al cliente
-    // ("tu pedido viene de vuelta, te contactamos"). Idempotente por evento (el
-    // dedup de WebhookEvent ya garantizó una sola corrida) y best-effort total
-    // (notifyOrderReturned captura sus errores internamente).
-    await notifyOrderReturned({ orderId: order.id, carrierStatusRaw: input.carrierStatusRaw });
-    logger.warn({
-      event: "order.saga.tracking.needs_attention",
-      orderNumber: order.number,
-      incoming: input.status,
-      carrierRaw: input.carrierStatusRaw,
-    });
+  } else if (input.status === "RETURNED") {
+    await handleReturnedTrackingUpdate(order, input);
+  } else if (input.status === "EXCEPTION") {
+    await handleExceptionTrackingUpdate(order, input);
   }
 
   return { status: "noop", orderNumber: order.number };

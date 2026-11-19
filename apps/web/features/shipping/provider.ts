@@ -83,7 +83,12 @@ export type TrackingStatus = {
   trackingNumber: string;
   status: "PENDING" | "DISPATCHED" | "IN_TRANSIT" | "DELIVERED" | "RETURNED" | "EXCEPTION";
   carrierStatusRaw: string;
-  history: Array<{ status: string; description: string; timestamp: Date }>;
+  history: Array<{
+    status: string;
+    description: string;
+    clarification?: string;
+    timestamp: Date;
+  }>;
 };
 
 export type ShipmentHistoryItem = {

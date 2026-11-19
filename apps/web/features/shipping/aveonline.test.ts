@@ -19,6 +19,7 @@ import {
   AveonlineProvider,
   buildCotizarProductos,
   computePackedPackage,
+  isVoidedGuideStatus,
   parseAveonlineDate,
 } from "./aveonline";
 import type { ShipmentItem } from "./provider";
@@ -210,7 +211,7 @@ describe("handleWebhook — historial granular (ShipmentEvent, 2026-11-04)", () 
     expect(ev.status).toBe("DELIVERED");
   });
 
-  it("parseAveonlineDate entiende `fechamostrar` del polling (MM/DD/YYYY HH:mm:ss, hora CO)", () => {
+  it("parseAveonlineDate entiende `fechamostrar` del polling (ISO, MM/DD/YYYY HH:mm:ss y DD/MM/YYYY HH:mm de novedades)", () => {
     // Mismo instante que el webhook "2026-11-04 11:04:43" → dedup cross-source posible.
     expect(parseAveonlineDate("11/04/2026 11:04:43").toISOString()).toBe(
       "2026-11-04T16:04:43.000Z",
@@ -218,6 +219,16 @@ describe("handleWebhook — historial granular (ShipmentEvent, 2026-11-04)", () 
     expect(parseAveonlineDate("2026-11-04 11:04:43").toISOString()).toBe(
       "2026-11-04T16:04:43.000Z",
     );
+    // Caso real PRD LCM-2026-0006: novedades Envía/Aveonline llegan como `DD/MM/YYYY HH:mm` sin `:ss`.
+    expect(parseAveonlineDate("18/11/2026 18:31").toISOString()).toBe("2026-11-18T23:31:00.000Z");
+    expect(parseAveonlineDate("05/11/2026 18:31").toISOString()).toBe("2026-11-05T23:31:00.000Z");
+  });
+
+  it("isVoidedGuideStatus distingue guías anuladas frente a novedades operativas", () => {
+    expect(isVoidedGuideStatus("GUIA ANULADA")).toBe(true);
+    expect(isVoidedGuideStatus("CANCELADA")).toBe(true);
+    expect(isVoidedGuideStatus("NOVEDAD")).toBe(false);
+    expect(isVoidedGuideStatus("EN EXCEPCION")).toBe(false);
   });
 });
 

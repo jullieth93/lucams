@@ -178,9 +178,9 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
       severity: "crítica",
       title: `${recon} orden(es) necesitan reconciliación`,
       detail:
-        "Un pago quedó inconsistente con el stock (p.ej. Wompi cobró pero se agotó la unidad).",
+        "Hay pedidos con gestión manual pendiente (descuadre de pago/stock, guía anulada/timeout o devolución confirmada de transportadora).",
       action:
-        "Abre /admin/pedidos (filtro 'Necesitan atención'): reembolsa o repón stock según el caso.",
+        "Abre /admin/pedidos (filtro 'Necesitan atención'), revisa el motivo exacto registrado en cada orden y resuélvela antes de cerrarla.",
     });
   }
   if (stuck > 0) {

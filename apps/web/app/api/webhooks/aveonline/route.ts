@@ -193,6 +193,7 @@ export async function POST(req: Request) {
       trackingNumber: event.trackingNumber,
       status: event.status,
       carrierStatusRaw: event.carrierStatusRaw,
+      ...(event.hasCarrierTimestamp ? { occurredAt: event.timestamp } : {}),
     });
     logger.info({
       event: "webhook.aveonline.processed",
