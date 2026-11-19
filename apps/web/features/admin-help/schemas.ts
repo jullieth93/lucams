@@ -26,3 +26,12 @@ export const SubmitHelpFeedbackSchema = z.object({
     .optional()
     .transform((value) => value || null),
 });
+
+export const GetContextualHelpSchema = z.object({
+  pathname: z
+    .string()
+    .trim()
+    .min(1)
+    .max(240)
+    .refine((val) => val.startsWith("/admin"), "Ruta administrativa inválida"),
+});

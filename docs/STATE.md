@@ -54,7 +54,7 @@
 - Puntos Lucams con tope ≤25 %, retrocrédito y reversión (excluidos en propuestas B2B); referidos por `/r/[codigo]`. Posventa invitado con token + correo, retractos y garantías con reembolso final `SUPERADMIN` + MFA; soporte PQR con SLA e IA 0-PII.
 - Vigilancia fiscal diaria (`ADR-196`) sobre umbrales DIAN de 3.500 UVT (incluyendo Wompi y `DIRECT_TRANSFER`), proyección anual y alertas 70/90/100 %.
 - Panel con 8 roles × 38 capacidades, deny-by-default, MFA `aal2`, step-up en acciones sensibles, inactividad de 30 min, PII redactada en servidor, auditoría y confirmaciones destructivas.
-- Centro de ayuda con 43 guías y ocho recorridos (`ADR-197`); Lifecycle y Marketing respetan Ley 1581, supresión por rebote/queja y `DRY_RUN` en STG (`ADR-198`).
+- Centro de ayuda v2 (`ADR-197`): launcher reactivo por ruta/subruta (`?`), 48 guías, 8 Playbooks E2E, rutinas por rol y vista `SUPERADMIN`; Lifecycle y Marketing respetan Ley 1581, rebote/queja y `DRY_RUN` en STG (`ADR-198`).
 - 33 plantillas React Email + 2 Auth OTP; fechas `America/Bogota`; GA4 y UTM bajo consentimiento; backups diarios y DR mensual.
 
 ## Pendientes abiertos reales

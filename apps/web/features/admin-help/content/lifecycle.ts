@@ -1,3 +1,4 @@
+import { HELP_LIVE_NUMBERS } from "../constants";
 import type { AdminModuleGuide } from "../types";
 
 export const LIFECYCLE_GUIDE: AdminModuleGuide = {
@@ -5,191 +6,83 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
   title: "Lifecycle Journeys",
   area: "Marketing",
   route: "/admin/lifecycle",
-  summary:
-    "Recorridos de activación, recompra, reactivación, alta intención y seguimiento B2B con medición de conversión.",
+  summary: `Automatizaciones por comportamiento (activación, recompra, reactivación, intención y B2B) con opt-in Ley 1581, \`DRY_RUN\` en STG y atribución a ${HELP_LIVE_NUMBERS.lifecycleAttributionWindowDays} días.`,
   purpose:
-    "Coordina relaciones con contactos mediante pasos configurables, condiciones, tiempos y salidas. Cada recorrido inscribe contactos elegibles, ejecuta mensajes en el momento permitido y atribuye clics, compras e ingresos sin duplicar envíos.",
+    "Ejecuta cada 15 minutos recorridos multi-paso con reserva transaccional de límite diario en PostgreSQL, horario de silencio Colombia, verificación de consentimiento `NEWSLETTER` en cada paso comercial, delegación automática frente a Carritos/Reposición para cero duplicados, tareas CRM B2B idempotentes y atribución única de pedidos pagados.",
   whenToUse: [
-    "Para acompañar una primera compra o impulsar la siguiente.",
-    "Para reactivar clientes inactivos o cerrar oportunidades de alta intención.",
-    "Para dar seguimiento consultivo a empresas y eventos.",
-    "Para configurar, probar y medir automatizaciones comerciales.",
+    "Para activar, pausar, editar o crear recorridos automáticos de relación con clientes y prospectos B2B.",
+    "Para probar un paso con MFA (en STG simula en `DRY_RUN`; en PRD envía prueba controlada).",
+    "Para reintentar mensajes fallidos o auditar conversión e ingresos en modo 0-PII (`FINANCE_ANALYST`).",
   ],
   concepts: [
     {
-      term: "Recorrido",
+      term: "Semilla siempre en DRAFT y activación humana + MFA",
       definition:
-        "Configuración versionada de disparador, inscripción, pasos y reglas de frecuencia. Solo ejecuta mensajes cuando está activo.",
+        "Ningún despliegue ni semilla enciende envíos por su cuenta: activar un recorrido o tocar el interruptor global exige decisión humana con MFA reciente.",
     },
     {
-      term: "Control general",
+      term: "Modo DRY_RUN forzado en STG",
       definition:
-        "Interruptor y límite diario compartido por todos los recorridos. Se aplica por contacto en hora Colombia y se reserva en base de datos antes de enviar para evitar excesos incluso con workers concurrentes.",
+        "En ambientes Preview/STG el motor evalúa audiencias y pasos sin llamar jamás a Resend ni crear tareas reales.",
     },
     {
-      term: "Modo de prueba (DRY_RUN)",
+      term: "Delegación anti-duplicado",
       definition:
-        "En STG procesa reglas y mensajes sin llamar a Resend ni crear tareas operativas. La acción de prueba valida el contenido sin enviar correo.",
+        "Si el contacto ya tiene un carrito abandonado activo o alerta `back-in-stock` lista, la inscripción sale con `DELEGATED_CART_RECOVERY` o `DELEGATED_BACK_IN_STOCK` para no enviarle doble correo.",
     },
     {
-      term: "Inscripción",
-      definition:
-        "Relación entre un contacto y un recorrido en un ciclo concreto, con paso actual, próxima ejecución y salida.",
-    },
-    {
-      term: "Condición",
-      definition:
-        "Requisito que se evalúa en cada paso: compra, carrito, puntos, diseño, consentimiento, entrega o ausencia de compra.",
-    },
-    {
-      term: "Cooldown",
-      definition:
-        "Tiempo que una inscripción terminada espera antes de poder comenzar otro ciclo del mismo recorrido.",
-    },
-    {
-      term: "Atribución",
-      definition:
-        "Relación entre el último clic anterior a una orden creada dentro de los 30 días siguientes que ya esté pagada. Un clic posterior no roba la conversión. Cada pedido se atribuye a un solo mensaje y los ingresos nunca se calculan sobre intenciones.",
+      term: `Atribución única de último clic (${HELP_LIVE_NUMBERS.lifecycleAttributionWindowDays} días)`,
+      definition: `Una orden pagada dentro de ${HELP_LIVE_NUMBERS.lifecycleAttributionWindowDays} días posteriores a un clic en \`/j/[token]\` se adjudica a un único mensaje (\`convertedOrderId\` único); un clic posterior a la compra nunca roba atribución.`,
     },
   ],
   sections: [
     {
       id: "configuracion",
-      title: "Configuración y disparadores",
-      summary: "Controla inscripción, consentimiento, ventanas y frecuencia.",
+      title: "Interruptor global, disparadores, consentimiento y silencio",
+      summary: "Salvaguardas legales y técnicas antes de emitir un solo mensaje.",
       topics: [
         {
-          id: "trigger",
-          label: "Disparador",
+          id: "control-general",
+          label: "Killswitch y tope diario global por contacto",
+          description: `Reserva en base de datos el cupo diario en hora Bogotá entre todos los recorridos; modificarlo exige MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min).`,
+          caution:
+            "Ante cualquier degradación de Resend o ajuste masivo de catálogo, puedes pausar todo el motor desde este interruptor.",
+        },
+        {
+          id: "optin-comercial",
+          label: "Revalidación Ley 1581 y supresión instantánea",
           description:
-            "Define el comportamiento que permite inscribir: primera compra, segunda compra, inactividad, alta intención o B2B.",
-          interpretation:
-            "Elige primero el objetivo del recorrido; los pasos se ejecutan después de validar la condición actual del contacto.",
-        },
-        {
-          id: "status",
-          label: "Estado",
-          description: "Borrador, activo, pausado o archivado.",
-          interpretation:
-            "Solo activo inscribe y ejecuta. Pausar conserva los datos y archivar impide nuevas inscripciones sin borrar historial.",
-        },
-        {
-          id: "optin",
-          label: "Consentimiento requerido",
-          description: "Determina si la inscripción exige newsletter vigente.",
-          interpretation:
-            "Los pasos comerciales vuelven a comprobar la versión vigente del consentimiento y cualquier revocación posterior; los transaccionales no lo usan como bloqueo.",
-        },
-        {
-          id: "ventanas",
-          label: "Inactividad, entrada y cooldown",
-          description: "Controla antigüedad de datos, ventana de elegibilidad y reingreso.",
-          interpretation:
-            "La ventana de entrada limita la antigüedad máxima del evento y la inactividad exige una antigüedad mínima; ambas se aplican también en reactivación y B2B. Cooldown evita repetir el mismo recorrido inmediatamente después de completar o salir de un ciclo. La ventana de carritos recientes se recalcula en cada ejecución.",
-        },
-        {
-          id: "frecuencia",
-          label: "Límite diario y silencio",
-          description: "Restringe mensajes por día y define horario de silencio.",
-          interpretation:
-            "El límite global cuenta todos los recorridos; el individual solo el recorrido actual. Se aplica el más restrictivo. El silencio cruza medianoche si la hora inicial es mayor que la final y la ejecución se reprograma.",
-        },
-        {
-          id: "delegacion",
-          label: "Carrito y reposición",
-          description:
-            "Evita recordatorios duplicados con los flujos transaccionales ya existentes.",
-          interpretation:
-            "Un carrito vigente sale con DELEGATED_CART_RECOVERY y una alerta con stock con DELEGATED_BACK_IN_STOCK. Esos flujos envían su propio mensaje; Lifecycle no repite el aviso.",
+            "Antes de cada paso comercial vuelve a comprobar opt-in vigente; cualquier baja, rebote duro o queja cancela al instante mensajes pendientes y bloquea reanudaciones.",
+          interpretation: "Solo una pausa manual administrativa puede reanudarse.",
         },
       ],
     },
     {
       id: "pasos",
-      title: "Pasos, contenido y condiciones",
-      summary: "Cada paso combina espera, condición, contenido y llamada a la acción.",
+      title: "Constructor de pasos, variables y rutas seguras",
+      summary: "Texto escapado, saludo `{nombre}` y botones hacia rutas internas verificadas.",
       topics: [
         {
-          id: "delay",
-          label: "Espera en minutos",
+          id: "contenido-cta",
+          label: "Espera en minutos, condición y ruta interna (`/productos`, `/recomendador`…)",
           description:
-            "Tiempo antes de ejecutar el paso: 0 es inmediato, 1440 un día y 10080 una semana.",
+            "No admite HTML crudo por seguridad; el botón exige ruta interna iniciada con `/` y envuelve el enlace en token HMAC opaco sin PII en la URL.",
           interpretation:
-            "La espera se calcula desde la ejecución anterior y se ajusta al horario de silencio.",
-        },
-        {
-          id: "condition",
-          label: "Condición",
-          description:
-            "Permite saltar pasos que ya no aplican o completar el recorrido si no hay más pasos.",
-          interpretation:
-            "Una condición falsa no envía mensaje; el motor avanza al siguiente paso.",
-        },
-        {
-          id: "body",
-          label: "Contenido y nombre",
-          description:
-            "Texto configurable con saludo personalizado mediante {nombre} y párrafos separados por líneas en blanco.",
-          interpretation:
-            "No se admite HTML arbitrario. La plantilla escapa el contenido para evitar inyecciones.",
-        },
-        {
-          id: "cta",
-          label: "Botón y ruta",
-          description: "Define texto y destino interno del botón.",
-          interpretation:
-            "La ruta debe comenzar con /. Si el recorrido tiene producto contextual, /productos y /recomendador llevan a su ficha para aprovechar los relacionados por ocasión y categoría. El enlace público se genera con token opaco para atribuir clics sin exponer datos personales.",
-        },
-        {
-          id: "commercial",
-          label: "Comercial o transaccional",
-          description: "Distingue promoción de servicio.",
-          interpretation:
-            "Comercial exige opt-in y añade baja en un clic; transaccional conserva el carácter de servicio.",
+            "Usa `1440` min para 1 día y `10080` min para 7 días; el motor respeta siempre el horario de silencio nocturno.",
         },
       ],
     },
     {
       id: "operacion",
-      title: "Inscripciones, mensajes y métricas",
-      summary: "Permite auditar ejecución, salidas, enlaces y compras atribuidas.",
+      title: "Inscripciones, reintentos y atribución 0-PII",
+      summary: "Trazabilidad desde aceptación en Resend hasta pedido pagado.",
       topics: [
         {
-          id: "enrollment",
-          label: "Inscripciones y ciclos",
-          description: "Muestran paso actual, próxima ejecución, estado y motivo de salida.",
-          interpretation:
-            "Solo una pausa manual puede reanudarse. Una baja, rebote, queja o fallo definitivo no se reanuda para evitar omitir la supresión. Finalizar impide una nueva inscripción automática.",
-        },
-        {
-          id: "message",
-          label: "Mensajes y entrega",
-          description: "Conserva estado, error, enlace, entrega Resend, clic y conversión.",
-          interpretation:
-            "Enviado significa aceptado por Resend; entregado llega después por webhook. DRY_RUN es una simulación sin correo. Fallido permite reintentar con la misma instantánea de contenido, destinatario, clasificación y ruta; baja, rebote o queja cancelan lo pendiente.",
-        },
-        {
-          id: "metrics",
-          label: "Entrega, clics, conversión e ingresos",
-          description:
-            "Cruza resendId con EmailEvent para medir entrega, rebote, queja y diferido, y calcula clics, compras atribuidas e ingreso.",
-          interpretation:
-            "La conversión exige un clic anterior a una orden creada dentro de 30 días que ya esté pagada. Un clic posterior a la orden no la roba. No confundas aceptación por Resend, entrega o inscripciones completadas con ventas.",
-        },
-        {
-          id: "b2b-tasks",
-          label: "Tareas B2B",
-          description: "Crea seguimiento operativo aunque el contacto no tenga correo.",
-          interpretation:
-            "Cada oportunidad, paso y ciclo tiene una clave idempotente. La tarea queda en Bandeja Hoy y la bitácora de Contacto 360; ganar o perder la oportunidad cierra el recorrido.",
-        },
-        {
-          id: "audience",
-          label: "Vista de audiencia",
-          description:
-            "Estimación de contactos elegibles en el momento actual, con exclusión por consentimiento.",
-          interpretation:
-            "La elegibilidad cambia con compras, bajas y comportamiento; la cifra no es una lista congelada de destinatarios.",
+          id: "mensajes-metricas",
+          label: "Enviado vs Entregado vs Convertido",
+          description: "Cruza webhooks firmados de Resend (`EmailEvent`) y órdenes pagadas reales.",
+          caution:
+            "Si el circuit breaker de Resend está abierto, espera a que recupere salud en /admin/observability antes de pulsar Reintentar.",
         },
       ],
     },
@@ -197,102 +90,114 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
   procedures: [
     {
       id: "crear-activar",
-      title: "Crear y activar un recorrido",
-      goal: "Configurar una automatización revisada antes de permitir mensajes reales.",
+      title: "Configurar, probar y activar un recorrido Lifecycle",
+      goal: "Encender una automatización segura, con audiencia validada y cero spam.",
+      route: "/admin/lifecycle",
       roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"],
       steps: [
-        "Abre Lifecycle Journeys y revisa el interruptor y el límite global del motor.",
-        "Selecciona Nuevo recorrido y define clave, nombre, propósito y disparador.",
-        "Configura consentimiento, ventanas, límite diario y horario de silencio.",
-        "Agrega los pasos con espera, condición, asunto, preheader, titular, contenido y botón.",
-        "Guarda como borrador y revisa la audiencia elegible y la vista previa de cada paso.",
-        "Prueba el paso elegido con MFA (límite de 12 pruebas por hora); en STG el resultado siempre es DRY_RUN y no sale correo.",
-        "Activa el recorrido con confirmación MFA y verifica las primeras inscripciones, entregas y ejecuciones en el cron.",
+        "Revisa el interruptor general y el límite diario global en /admin/lifecycle.",
+        "Crea o abre el recorrido en estado Borrador (`DRAFT`), define disparador, consentimiento requerido, ventanas, cooldown y horario de silencio.",
+        "Configura cada paso con espera en minutos, condición, textos claros con `{nombre}` y ruta interna válida (`/...`).",
+        "Guarda el borrador, inspecciona la estimación de audiencia elegible y abre la vista previa de cada paso.",
+        `Ejecuta una prueba con MFA reciente (tope ${HELP_LIVE_NUMBERS.emailTestHourlyLimit}/hora; recuerda que en STG queda en DRY_RUN).`,
+        `Activa el recorrido confirmando MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min) y audita las primeras inscripciones.`,
       ],
       expected:
-        "El recorrido queda activo con inscripciones elegibles, sin activarse por accidente ni sobrescribir otras automatizaciones.",
-      exceptions: [
-        "Si la audiencia está vacía, revisa consentimiento, ventana de entrada y comportamiento antes de activar.",
-      ],
+        "El motor inscribe y envía únicamente a titulares elegibles dentro de horario y cupo diario.",
     },
     {
       id: "editar",
-      title: "Editar pasos sin perder historial",
-      goal: "Cambiar configuración preservando inscripciones y mensajes anteriores.",
+      title: "Versionar un recorrido activo sin corromper inscripciones en curso",
+      goal: "Actualizar pasos conservando historial íntegro.",
+      route: "/admin/lifecycle",
       roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"],
       steps: [
-        "Abre el recorrido y modifica configuración o pasos existentes.",
-        "Al reordenar, añadir o retirar pasos, revisa que ningún paso actual quede inválido.",
-        "Guarda para crear una nueva versión del recorrido.",
-        "Comprueba inscripciones activas y próximas ejecuciones.",
+        "Abre el detalle del recorrido (`/admin/lifecycle/[id]`) y ajusta textos, tiempos o pasos futuros.",
+        "Respeta los pasos que ya tienen mensajes históricos o inscripciones paradas en ellos (el servidor bloquea borrarlos).",
+        "Guarda para incrementar versión y revisa próximas ejecuciones.",
       ],
-      expected: "La versión aumenta y el historial permanece íntegro.",
-      exceptions: [
-        "No puedes eliminar pasos con mensajes históricos ni el paso actual de una inscripción activa.",
-      ],
+      expected: "Nueva versión activa sin huérfanos ni reenvíos accidentales.",
     },
     {
       id: "reintentar",
-      title: "Reintentar un mensaje fallido",
-      goal: "Recuperar un envío sin generar duplicados.",
+      title: "Reintentar un mensaje fallido con idempotencia",
+      goal: "Recuperar un fallo puntual de red conservando la instantánea exacta.",
+      route: "/admin/lifecycle",
       roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"],
       steps: [
-        "Abre Mensajes y localiza el registro fallido.",
-        "Revisa el motivo del fallo y la salud de Resend.",
-        "Pulsa Reintentar y completa MFA.",
-        "Verifica el nuevo estado y el identificador de entrega cuando exista.",
+        "Comprueba primero en /admin/observability que Resend esté operativo.",
+        "Ubica el mensaje fallido (que no haya sido cancelado por baja/rebote).",
+        `Pulsa Reintentar confirmando MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min).`,
       ],
-      expected:
-        "El mensaje queda pendiente de una nueva ejecución con la misma clave de deduplicación.",
-      exceptions: [
-        "Si el circuito de Resend está abierto, espera el cierre antes de reintentar; no generes una tormenta de llamadas.",
-      ],
+      expected: "El mensaje se reencola con su misma clave de deduplicación sin duplicar correos.",
     },
     {
       id: "auditar-lifecycle-finanzas",
-      title: "Auditar ingresos atribuidos y conversión en modo 0-PII",
-      goal: "Verificar el retorno comercial de los recorridos sin exponer datos personales.",
+      title: "Auditar ingresos atribuidos en modo contable 0-PII",
+      goal: "Conciliar órdenes atribuidas a Lifecycle sin ver identidades personales.",
+      route: "/admin/lifecycle",
       roles: ["FINANCE_ANALYST", "SUPERADMIN"],
       steps: [
-        "Revisa el embudo global (enviados, entregados, clics, convertidos) y la dona de inscripciones.",
-        "Abre el recorrido deseado para inspeccionar su atribución e ingresos en pesos.",
-        "Haz clic en el enlace del pedido convertido para contrastar el cobro real en Pedidos o Finanzas.",
+        "Revisa el embudo global y el ingreso atribuido por recorrido.",
+        "Filtra o inspecciona las inscripciones convertidas dentro de la ventana de 30 días.",
+        "Haz clic en el pedido convertido (`LCM`) para cruzar su cobro real en /admin/finanzas.",
       ],
-      expected:
-        "Cada ingreso atribuido en Lifecycle se concilia contra una orden pagada verificable con identidad protegida.",
+      expected: "Cada peso atribuido corresponde a una única orden efectivamente pagada.",
     },
   ],
   cautions: [
-    "No actives recorridos sin revisar audiencia, control general y previsualización: en PRD los envíos reales pueden llegar a clientes.",
-    "No uses el motor para reemplazar recuperación de carritos, reposiciones o reseñas: Lifecycle delega esos avisos para no duplicarlos.",
-    "No cambies horarios o pasos esperando efectos retroactivos en mensajes ya enviados.",
-    "No interpretes clics ni aceptación por Resend como ventas o entregas: cada estado se mide por separado y la conversión exige orden pagada posterior al clic.",
+    "En producción, activar un recorrido sobre una ventana amplia puede inscribir de inmediato a todos los contactos que cumplan la condición.",
+  ],
+  dontTouch: [
+    "Nunca desactives «Consentimiento requerido» en pasos con contenido promocional o descuentos: violaría la Ley 1581.",
+    "No crees recorridos que repitan recordatorios de carrito abandonado o avisos de stock: esos flujos ya están delegados.",
+    "No pulses Reintentar en ráfaga mientras Resend aparezca degradado.",
+  ],
+  checklist: [
+    "Clasificación Comercial vs Transaccional y opt-in Ley 1581 verificados.",
+    "Audiencia estimada y vista previa móvil revisadas en Borrador.",
+    "Horario de silencio nocturno Colombia activo.",
+    "Activación confirmada con MFA reciente.",
+  ],
+  subroutes: [
+    {
+      id: "lifecycle-nuevo",
+      pattern: "/admin/lifecycle/nuevo",
+      title: "Creación de nuevo recorrido en Borrador",
+      summary:
+        "Defines disparador, reglas de elegibilidad, consentimiento y pasos iniciales; al guardar nace siempre en `DRAFT`.",
+      tips: [
+        "Guarda primero en Borrador para poder inspeccionar la audiencia elegible real y previsualizar cada correo antes de activar.",
+        "Elige una clave (`slug`) descriptiva y estable.",
+      ],
+      highlightSectionIds: ["configuracion", "pasos"],
+      highlightProcedureIds: ["crear-activar"],
+    },
+    {
+      id: "lifecycle-detalle",
+      pattern: "/admin/lifecycle/[id]",
+      title: "Operación, pasos, audiencia y atribución del recorrido",
+      summary:
+        "Gestionas versiones de pasos, pruebas MFA, pausa/activación, inscripciones activas, reintentos y órdenes atribuidas de este recorrido.",
+      tips: [
+        "No podrás eliminar un paso que ya tenga mensajes emitidos o contactos actualmente posicionados en él; edita su contenido o pausa el recorrido.",
+        "En STG verás ejecuciones marcadas `DRY_RUN` porque el envío externo está bloqueado por diseño.",
+      ],
+      highlightSectionIds: ["pasos", "operacion"],
+      highlightProcedureIds: ["editar", "reintentar"],
+    },
   ],
   faqs: [
     {
-      question: "¿Por qué un contacto elegible no recibió nada?",
+      question:
+        "¿Por qué STG nunca envía correos reales de Lifecycle ni siquiera en el botón de prueba?",
       answer:
-        "Revisa consentimiento, estado del recorrido, condición del paso, límite diario, horario de silencio, salida por compra o B2B y estado del circuito de Resend.",
+        "Por blindaje de ambiente (`ADR-198`): Preview/STG fuerza `DRY_RUN` absoluto para garantizar cero contacto accidental hacia clientes reales.",
     },
     {
-      question: "¿La semilla activa los recorridos?",
+      question: "¿Puede una misma compra sumarse a dos mensajes o dos recorridos?",
       answer:
-        "No. Las cinco rutas iniciales quedan como borradores. La activación siempre exige revisión humana y MFA.",
-    },
-    {
-      question: "¿Se repiten mensajes al reintentar?",
-      answer:
-        "Cada inscripción y mensaje tiene una clave única. El reintento reutiliza contenido, nombre, clasificación, ruta, token e idempotency key; el token utilizable nunca se guarda, solo su hash.",
-    },
-    {
-      question: "¿Cuándo termina una inscripción?",
-      answer:
-        "Al completar todos los pasos, al registrarse una salida por compra o resultado B2B, al perder consentimiento requerido, al delegar carrito o reposición, o cuando un administrador la finaliza.",
-    },
-    {
-      question: "¿STG puede enviar correos Lifecycle reales?",
-      answer:
-        "No. Preview siempre ejecuta DRY_RUN: registra la simulación sin llamar a Resend ni crear tareas operativas. La prueba administrativa tampoco envía correo.",
+        "No. `LifecycleMessage.convertedOrderId` tiene restricción única en base de datos y adjudica solo al último clic previo a la compra dentro de 30 días.",
     },
   ],
   related: [
@@ -303,16 +208,17 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
     "email-templates",
     "observability",
   ],
+  relatedPlaybooks: ["playbook-audiencias-carritos-lifecycle", "playbook-oportunidad-b2b-cierre"],
   keywords: [
     "journey",
     "recorrido",
+    "lifecycle",
     "automatización",
     "activación",
     "recompra",
     "reactivación",
-    "consentimiento",
-    "conversión",
+    "DRY_RUN",
     "atribución",
   ],
-  version: 5,
+  version: 6,
 };

@@ -5,12 +5,49 @@ import { recordAdminAction } from "@/lib/admin-audit";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { logger } from "@/lib/logger";
-import { SaveHelpProgressSchema, SubmitHelpFeedbackSchema } from "./schemas";
-import { saveAdminHelpProgress, submitAdminHelpFeedback } from "./service";
-import type { AdminHelpProgress } from "./types";
+import {
+  GetContextualHelpSchema,
+  SaveHelpProgressSchema,
+  SubmitHelpFeedbackSchema,
+} from "./schemas";
+import {
+  getContextualHelpForPathname,
+  saveAdminHelpProgress,
+  submitAdminHelpFeedback,
+} from "./service";
+import type { AdminHelpProgress, AdminModuleGuide, AdminSubrouteFocus } from "./types";
 
 export type AdminHelpActionResult =
   { ok: true; progress?: AdminHelpProgress; message: string } | { ok: false; message: string };
+
+export type ContextualHelpActionResult =
+  | {
+      ok: true;
+      guide: AdminModuleGuide;
+      subroute: AdminSubrouteFocus | null;
+      progress: AdminHelpProgress | null;
+      feedback: { isHelpful: boolean; comment: string | null } | null;
+    }
+  | { ok: false; message: string };
+
+export async function getContextualHelpAction(input: unknown): Promise<ContextualHelpActionResult> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
+  const parsed = GetContextualHelpSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: "No pudimos resolver la ruta actual del panel." };
+  }
+
+  const resolved = await getContextualHelpForPathname({
+    adminUserId: session.admin.id,
+    role: session.admin.role,
+    pathname: parsed.data.pathname,
+  });
+  if (!resolved) {
+    return { ok: false, message: "No hay guía autorizada para esta pantalla." };
+  }
+
+  return { ok: true, ...resolved };
+}
 
 export async function saveHelpProgressAction(input: unknown): Promise<AdminHelpActionResult> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
