@@ -280,12 +280,12 @@ function isProductionEnv(): boolean {
  */
 function formatAveonlineCity(city: string, department: string): string {
   // 1) Quitar tildes
-  const noTilde = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const noTilde = (s: string) => s.normalize("NFD").replaceAll(/[\u0300-\u036f]/g, "");
   // 2) Quitar "D.C." con o sin espacios/puntos a los lados, sin requerir \b final
   //    (los puntos no satisfacen word boundary contra fin de string).
-  const noDc = (s: string) => s.replace(/\s*D\.?\s*C\.?\s*/gi, " ");
+  const noDc = (s: string) => s.replaceAll(/\s*D\.?\s*C\.?\s*/gi, " ");
   // 3) Limpiar espacios + uppercase
-  const strip = (s: string) => noDc(noTilde(s)).replace(/\s+/g, " ").trim().toUpperCase();
+  const strip = (s: string) => noDc(noTilde(s)).replaceAll(/\s+/g, " ").trim().toUpperCase();
 
   let cityClean = strip(city);
   let deptClean = strip(department);
@@ -310,6 +310,43 @@ let tokenCache: CachedToken | null = null;
 let carriersCache: CachedCarriers | null = null;
 let agentsCache: CachedAgents | null = null;
 
+function mapRawAgentItem(a: {
+  id?: number;
+  nombre?: string;
+  direccion?: string;
+  principal?: string;
+}): CachedAgents["items"][number] {
+  const principalFlag = String(a.principal ?? "")
+    .trim()
+    .toUpperCase();
+  return {
+    id: Number(a.id),
+    nombre: String(a.nombre ?? ""),
+    direccion: String(a.direccion ?? ""),
+    // La doc documenta "S"/"N"; la cuenta real devuelve "SI"/"NO" (verificado en vivo).
+    // Aceptamos ambos (+ "1") para no dejar la selección de agente-principal en código muerto.
+    principal: ["S", "SI", "1"].includes(principalFlag),
+  };
+}
+
+function extractValidatedAgentsList(
+  data: {
+    status?: string;
+    message?: string;
+    agentes?: Array<{
+      id?: number;
+      nombre?: string;
+      direccion?: string;
+      principal?: string;
+    }>;
+  } | null,
+): CachedAgents["items"] {
+  if (data?.status === "ok") {
+    return (data.agentes ?? []).map(mapRawAgentItem);
+  }
+  throw new Error(`Aveonline listarAgentes: ${data?.message ?? "respuesta inválida"}`);
+}
+
 /**
  * Lista agentes (puntos de despacho) habilitados en la cuenta + cachea 24h.
  * Aveonline REQUIERE idagente válido en generarGuia2 — sin él responde
@@ -332,35 +369,8 @@ async function listEnabledAgents() {
     { retry: true },
   );
   if (!res.ok) throw new Error(`Aveonline listarAgentes fail HTTP ${res.status}`);
-  const data = (await res.json()) as {
-    status?: string;
-    message?: string;
-    agentes?: Array<{
-      id?: number;
-      nombre?: string;
-      direccion?: string;
-      principal?: string;
-    }>;
-  } | null;
-  // La API legacy PHP responde HTTP 200 con status:"error" en cuerpo (token
-  // inválido → "credenciales incorrectas"). Sin este chequeo caía a agentes:[] y le
-  // decíamos a la admin "crea un agente" cuando el problema real es el token (audit
-  // Aveonline). NO cacheamos respuestas de error.
-  if (data?.status !== "ok") {
-    throw new Error(`Aveonline listarAgentes: ${data?.message ?? "respuesta inválida"}`);
-  }
-  const items = (data.agentes ?? []).map((a) => ({
-    id: Number(a.id),
-    nombre: String(a.nombre ?? ""),
-    direccion: String(a.direccion ?? ""),
-    // La doc documenta "S"/"N"; la cuenta real devuelve "SI"/"NO" (verificado en vivo).
-    // Aceptamos ambos (+ "1") para no dejar la selección de agente-principal en código muerto.
-    principal: ["S", "SI", "1"].includes(
-      String(a.principal ?? "")
-        .trim()
-        .toUpperCase(),
-    ),
-  }));
+  const data = (await res.json()) as Parameters<typeof extractValidatedAgentsList>[0];
+  const items = extractValidatedAgentsList(data);
   agentsCache = { items, expiresAt: now + 24 * 60 * 60_000 };
   logger.info({
     event: "shipping.aveonline.agents_refresh",
@@ -385,6 +395,22 @@ async function resolveDefaultAgentId(): Promise<string> {
   }
   const principal = agents.find((a) => a.principal);
   return String((principal ?? agents[0]).id);
+}
+
+function extractValidatedCarriersList(data: {
+  status?: string;
+  message?: string;
+  transportadoras?: Array<{ id: number; text: string }>;
+}): Array<{ id: number; text: string }> {
+  if (data.status === "ok" && Array.isArray(data.transportadoras)) {
+    return data.transportadoras;
+  }
+  logger.warn({
+    event: "shipping.aveonline.carriers_refresh.error",
+    status: data.status ?? null,
+    message: data.message?.slice(0, 160) ?? null,
+  });
+  throw new Error(`Aveonline listarTransportadoras: ${data.message ?? "respuesta inválida"}`);
 }
 
 /**
@@ -416,20 +442,7 @@ async function listEnabledCarriers(): Promise<Array<{ id: number; text: string }
     message?: string;
     transportadoras?: Array<{ id: number; text: string }>;
   };
-  // La API PHP responde HTTP 200 con status:"error" (token inválido → "credenciales
-  // incorrectas"; sin registros → "registros no encontrados"), SIN la clave
-  // `transportadoras`. Sin este chequeo, `?? []` cacheaba [] durante 24h y bloqueaba
-  // la generación de guía (resolveCarrierId → "no habilitado") de pedidos YA PAGADOS
-  // por un día entero, incluso tras recuperarse Aveonline (audit). NO cacheamos vacío/error.
-  if (data.status !== "ok" || !Array.isArray(data.transportadoras)) {
-    logger.warn({
-      event: "shipping.aveonline.carriers_refresh.error",
-      status: data.status ?? null,
-      message: data.message?.slice(0, 160) ?? null,
-    });
-    throw new Error(`Aveonline listarTransportadoras: ${data.message ?? "respuesta inválida"}`);
-  }
-  const items = data.transportadoras;
+  const items = extractValidatedCarriersList(data);
   // Solo cacheamos una lista NO vacía (una vacía sería anómala en una cuenta con
   // transportadoras habilitadas → no la fijamos 24h).
   if (items.length > 0) carriersCache = { items, expiresAt: now + 24 * 60 * 60_000 };
@@ -457,9 +470,9 @@ export async function listCarriersForAdmin(): Promise<Array<{ id: number; text: 
 function normalizeCarrierName(s: string): string {
   return s
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replaceAll(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+    .replaceAll(/[^a-z0-9]/g, "");
 }
 
 /**
@@ -562,12 +575,9 @@ export async function listAveonlineWebhooks(): Promise<{
     logger.warn({ event: "shipping.aveonline.list_webhooks.non_json" });
     return { items: [], raw: { error: "respuesta no-JSON (endpoint no documentado)" } };
   }
-  const items = Array.isArray(data?.webhooks)
-    ? data.webhooks
-    : Array.isArray(data?.data)
-      ? data.data
-      : [];
-  return { items: items as { url?: string; id?: string | number }[], raw: data };
+  const candidateItems = Array.isArray(data?.webhooks) ? data.webhooks : data?.data;
+  const items = Array.isArray(candidateItems) ? candidateItems : [];
+  return { items, raw: data };
 }
 
 /** Elimina webhook por URL. */
@@ -595,6 +605,41 @@ export async function deleteAveonlineWebhook(url: string): Promise<{
   return { ok: Boolean(data.success), message: data.messages ?? "" };
 }
 
+function readAveonlineCredentials(): {
+  usuario: string;
+  clave: string;
+  envLabel: "production" | "test";
+} {
+  const envLabel = isProductionEnv() ? "production" : "test";
+  const usuario = process.env.AVEONLINE_USUARIO;
+  const clave = process.env.AVEONLINE_CLAVE;
+  if (!usuario || !clave) {
+    throw new Error(
+      `AVEONLINE_USUARIO + AVEONLINE_CLAVE no configurados (modo ${envLabel}). Ver ADR-039 + .env.example.`,
+    );
+  }
+  return { usuario, clave, envLabel };
+}
+
+function parseAuthenticatedAccount(data: {
+  status: string;
+  message?: string;
+  token?: string;
+  cuentas?: Array<{ usuarios: Array<{ id: number }> }>;
+}): { token: string; idempresa: number } {
+  const firstUser = data.cuentas?.[0]?.usuarios?.[0];
+  // Credenciales inválidas: la doc muestra status:"ok" pero cuentas:[] ("la contraseña
+  // no coincide y NO se lista registro"). Distinguimos ese caso para que la admin sepa
+  // que el problema es la credencial (no un fallo genérico) — audit Aveonline.
+  if (data.status === "ok" && !firstUser) {
+    throw new Error("Aveonline auth: credenciales inválidas (revisar AVEONLINE_USUARIO/CLAVE)");
+  }
+  if (data.status !== "ok" || !data.token || !firstUser) {
+    throw new Error(`Aveonline auth: ${data.message ?? "respuesta inválida"}`);
+  }
+  return { token: data.token, idempresa: firstUser.id };
+}
+
 async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
   const now = Date.now();
   // Refresh con 5 min de buffer antes de expirar
@@ -602,17 +647,7 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
     return { token: tokenCache.token, idempresa: tokenCache.idempresa };
   }
 
-  // Un solo set de credenciales cuyo valor cambia por ambiente (demo fuera de
-  // prod, reales solo en prod). AVEONLINE_ENV ya no selecciona credenciales.
-  const isProd = isProductionEnv();
-  const usuario = process.env.AVEONLINE_USUARIO;
-  const clave = process.env.AVEONLINE_CLAVE;
-  if (!usuario || !clave) {
-    throw new Error(
-      "AVEONLINE_USUARIO + AVEONLINE_CLAVE no configurados " +
-        `(modo ${isProd ? "production" : "test"}). Ver ADR-039 + .env.example.`,
-    );
-  }
+  const { usuario, clave, envLabel } = readAveonlineCredentials();
 
   // retryAttempts:2 (no el default 3): auth corre ANTES del quote (2×15 s) dentro del
   // mismo maxDuration=45 del step 2. Con el default 3×5 s el peor caso auth+quote
@@ -636,27 +671,18 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
     token?: string;
     cuentas?: Array<{ usuarios: Array<{ id: number }> }>;
   };
-  // Credenciales inválidas: la doc muestra status:"ok" pero cuentas:[] ("la contraseña
-  // no coincide y NO se lista registro"). Distinguimos ese caso para que la admin sepa
-  // que el problema es la credencial (no un fallo genérico) — audit Aveonline.
-  if (data.status === "ok" && !data.cuentas?.[0]?.usuarios?.[0]) {
-    throw new Error("Aveonline auth: credenciales inválidas (revisar AVEONLINE_USUARIO/CLAVE)");
-  }
-  if (data.status !== "ok" || !data.token || !data.cuentas?.[0]?.usuarios?.[0]) {
-    throw new Error(`Aveonline auth: ${data.message ?? "respuesta inválida"}`);
-  }
-  const idempresa = data.cuentas[0].usuarios[0].id;
+  const { token, idempresa } = parseAuthenticatedAccount(data);
   tokenCache = {
-    token: data.token,
+    token,
     idempresa,
     expiresAt: now + 60 * 60_000, // 1h vigencia documentada
   };
   logger.info({
     event: "shipping.aveonline.auth_refresh",
     idempresa,
-    env: isProd ? "production" : "test",
+    env: envLabel,
   });
-  return { token: data.token, idempresa };
+  return { token, idempresa };
 }
 
 export type AveonlineHealth = {
@@ -814,121 +840,14 @@ export class AveonlineProvider implements ShippingProvider {
     );
     if (!res.ok) throw new Error(`Aveonline quote fail HTTP ${res.status}`);
 
-    // Schema completo (Aveonline devuelve strings donde deberían ser numbers — parseo defensivo).
-    const data = (await res.json()) as {
-      status?: string;
-      message?: string;
-      cotizaciones?: Array<{
-        numbererror?: string;
-        dataerror?: string;
-        codTransportadora?: string;
-        nombreTransportadora?: string;
-        total?: number;
-        diasentrega?: number | string;
-      }>;
-    };
-
-    // Error TOP-LEVEL de Aveonline (token expirado a mitad, origen/destino malformado,
-    // error de cuenta/plugin): la respuesta llega con status != "ok" y SIN el array
-    // `cotizaciones`. Sin este chequeo caía a `?? []` y devolvía [] silenciosamente →
-    // el usuario veía "no encontramos transportadoras" (como si la ciudad no tuviera
-    // cobertura) y la causa real jamás se logueaba (revisión adversarial #5). Auth y
-    // createShipment sí chequean status; la cotización no lo hacía.
-    if (data.status !== "ok" || !Array.isArray(data.cotizaciones)) {
-      logger.warn({
-        event: "shipping.aveonline.quote.response_error",
-        origen: origenFmt,
-        destino: destinoFmt,
-        status: data.status ?? null,
-        message: data.message?.slice(0, 200) ?? null,
-      });
-      throw new Error(
-        `Aveonline no devolvió cotizaciones (status=${data.status ?? "?"}` +
-          `${data.message ? `: ${data.message.slice(0, 120)}` : ""}).`,
-      );
-    }
-
-    const all = data.cotizaciones;
-    const ok = all.filter((c) => c.numbererror === "-0-");
-    const failed = all.filter((c) => c.numbererror !== "-0-");
-
-    // Log estructurado: si todas fallaron, capturamos numbererror+dataerror para
-    // que admin vea la causa exacta en /admin/logs (con stdbuf line-buffer).
-    // TODAS las transportadoras fallaron con numbererror/dataerror = respuesta
-    // DEFINITIVA de cobertura/datos (999 genérico — verificado con sonda live
-    // 2026-08-08: un destino inexistente devuelve 16 carriers con 999; también
-    // -2 destino inválido, -5/-6/-7 límites de valor/unidades/peso). NO es un
-    // fallo transitorio → devolvemos [] y la UI muestra "No encontramos
-    // transportadoras que cubran esa ciudad". Antes se lanzaba excepción y el
-    // cliente veía el banner "reintenta en unos segundos" que JAMÁS se resolvía
-    // (el bug de producción reportado 2026-08-08).
-    if (ok.length === 0 && failed.length > 0) {
-      logger.warn({
-        event: "shipping.aveonline.quote.all_failed",
-        origen: origenFmt,
-        destino: destinoFmt,
-        totalCotizaciones: all.length,
-        errores: failed.slice(0, 8).map((c) => ({
-          carrier: c.nombreTransportadora,
-          code: c.numbererror,
-          msg: c.dataerror?.slice(0, 160),
-        })),
-      });
-      return [];
-    }
-
-    if (ok.length > 0 && failed.length > 0) {
-      // Rechazo PARCIAL: algunas cotizaron y otras no. Loguear el detalle
-      // (numbererror + dataerror) de cada rechazada — con solo los nombres no
-      // se podía distinguir "sin cobertura" de "paquete fuera de rango" (ej.
-      // peso mínimo del carrier), la pista para configurar CARRIER_RULES.
-      logger.info({
-        event: "shipping.aveonline.quote.partial",
-        ok: ok.length,
-        failed: failed.length,
-        rejected: failed.map((c) => ({
-          carrier: c.nombreTransportadora,
-          code: c.numbererror,
-          msg: c.dataerror?.slice(0, 160),
-        })),
-      });
-    }
-
-    // Saneamos cada cotización al shape que ShippingSelectionSchema acepta, para que
-    // ninguna fila "OK" se muestre pero luego falle en silencio al seleccionarla
-    // (revisión adversarial #4). En concreto:
-    //  - codTransportadora vacío ⇒ quoteId="" (falla min(1)): descartamos esa fila.
-    //  - diasentrega puede venir >30 o no-entero (schema tope max(30)): clamp+round.
-    //  - total puede venir como string no-numérico ⇒ NaN (falla .int()): coerción a 0.
-    const quotes = ok
-      .filter((c) => (c.codTransportadora ?? "") !== "")
-      .map((c) => ({
-        carrier: (c.nombreTransportadora ?? "carrier").toLowerCase().replace(/\s+/g, "-"),
-        carrierName: c.nombreTransportadora ?? "Transportadora",
-        fleteCop: Math.round((Number(c.total) || 0) * 100), // pasamos a centavos
-        deliveryDays: Math.min(30, Math.max(0, Math.round(Number(c.diasentrega) || 0))),
-        contraentrega: params.contraentrega,
-        quoteId: c.codTransportadora ?? "",
-      }));
-
-    // Observabilidad de logos (2026-10-12): Aveonline devuelve las
-    // transportadoras habilitadas en la cuenta y el mapa CARRIER_LOGOS
-    // (lib/carrier-logos.ts) se actualiza a mano — una habilitada nueva
-    // (ej. Transprensa al activarla) caía en el ícono genérico de camión sin
-    // que nadie se enterara. Warn por carrier cotizado sin logo (dedup por
-    // slug); NO rompe el flujo — la UI tiene fallback (ícono Truck).
-    const sinLogo = [
-      ...new Set(quotes.filter((q) => !carrierLogo(q.carrierName)).map((q) => q.carrier)),
-    ];
-    if (sinLogo.length > 0) {
-      logger.warn({
-        event: "shipping.aveonline.quote.carrier_without_logo",
-        carriers: sinLogo,
-        hint: "Agregar el slug a CARRIER_LOGOS (lib/carrier-logos.ts) + asset en public/carriers/",
-      });
-    }
-
-    return quotes;
+    const data = (await res.json()) as AveonlineQuoteRawResponse;
+    const all = extractValidQuoteItems(data, origenFmt, destinoFmt);
+    return processAveonlineQuoteItems({
+      all,
+      origenFmt,
+      destinoFmt,
+      contraentrega: params.contraentrega,
+    });
   }
 
   async createShipment(params: {
@@ -943,56 +862,11 @@ export class AveonlineProvider implements ShippingProvider {
   }): Promise<ShippingResult> {
     // Contrato Aveonline: docs/nacional/generacionGuia
     // Mismo endpoint que cotización pero tipo="generarGuia2".
-    // idtransportador viene del quoteId que cotización devolvió como codTransportadora.
     const { token, idempresa } = await getAuthToken();
-    // Set único: mismas vars en todo ambiente (demo fuera de prod); getAuthToken
-    // ya validó que existen (lanza si faltan).
-    const usuario = process.env.AVEONLINE_USUARIO!;
-    const clave = process.env.AVEONLINE_CLAVE!;
-
-    // Resolver idtransportador: si caller pasó quoteId (del flow inmediato
-    // post-checkout) lo usamos; sino lo derivamos del carrier name via
-    // listEnabledCarriers (cacheado 24h). Esto permite que la saga post-pago
-    // funcione aunque el quoteId no se haya persistido en Order.
+    const { usuario, clave } = readAveonlineCredentials();
     const idtransportador = params.quoteId ?? (await resolveCarrierId(params.carrier));
-
-    // Resolver idagente (REQUERIDO por Aveonline — sin él responde
-    // "No se puede generar la guia"). Cacheado 24h.
     const idagente = await resolveDefaultAgentId();
-
-    // Business data se lee de SiteSettings (admin/contenido/configuracion).
-    // params.pickup tiene precedencia si caller los pasa explícitos (útil para
-    // testing o overrides). Si vienen vacíos, fallback a settings.
-    const [settingNit, settingCity, settingDept, settingAddress, settingPhone, settingContact] =
-      await Promise.all([
-        getSettingValue("BUSINESS_NIT", "0000000000"),
-        getSettingValue("PICKUP_CITY", ""),
-        getSettingValue("PICKUP_DEPARTMENT", ""),
-        getSettingValue("PICKUP_ADDRESS", ""),
-        getSettingValue("PICKUP_PHONE", ""),
-        getSettingValue("PICKUP_CONTACT_NAME", ""),
-      ]);
-
-    const pickupCity = params.pickup.city || settingCity;
-    const pickupDept = params.pickup.department || settingDept;
-    const pickupAddress = params.pickup.address || settingAddress;
-    const pickupPhone = params.pickup.phone || settingPhone;
-    const pickupContact = params.pickup.contactName || settingContact;
-
-    // Validación: si falta cualquier dato de pickup, error claro apuntando
-    // al admin (no a env vars).
-    const missing: string[] = [];
-    if (!pickupCity) missing.push("PICKUP_CITY");
-    if (!pickupDept) missing.push("PICKUP_DEPARTMENT");
-    if (!pickupAddress) missing.push("PICKUP_ADDRESS");
-    if (!pickupPhone) missing.push("PICKUP_PHONE");
-    if (!pickupContact) missing.push("PICKUP_CONTACT_NAME");
-    if (missing.length > 0) {
-      throw new Error(
-        `Aveonline createShipment: faltan datos de recogida [${missing.join(", ")}]. ` +
-          `Configúralos en /admin/contenido/paginas/global (sección 'Negocio').`,
-      );
-    }
+    const pickupCfg = await resolveValidatedPickupConfig(params.pickup);
 
     // `dscorreop` es REQUERIDO por generarGuia2 (doc oficial; error tipificado -13
     // "El correo del destinatario no existe"). Fallar temprano con causa accionable
@@ -1004,143 +878,20 @@ export class AveonlineProvider implements ShippingProvider {
       );
     }
 
-    // Aveonline en PESOS (montos internos en centavos → centsToPesos).
-    const valorRecaudo = params.contraentrega ? centsToPesos(params.valorRecaudoCop ?? 0) : 0;
-    const totalDeclaradoPesos = centsToPesos(
-      params.items.reduce((acc, i) => acc + i.declaredValueCop * i.qty, 0),
-    );
-
-    // El pedido se despacha como UN paquete físico (imanes: todo va en una caja)
-    // con el MISMO modelo de empaque de la cotización (computePackedPackage:
-    // peso y espesor Σ, huella máxima) → el flete facturado == el cotizado, y
-    // qty=2 nunca duplica el flete (una sola guía tarifada por peso/volumen
-    // real, no 2 guías ni 2 bultos). Ver ADR-053 + auditoría doc 2026-07-28.
-    const pkg = computePackedPackage(params.items);
-    const productos = [
-      {
-        alto: String(pkg.altoCm),
-        ancho: String(pkg.anchoCm),
-        largo: String(pkg.largoCm),
-        peso: String(pkg.pesoKg),
-        unidades: 1,
-        nombre: pkg.nombre,
-        ref: params.orderId,
-        valorDeclarado: String(pkg.valorDeclaradoPesos),
-      },
-    ];
-
-    // Doble gate de facturación, computado una vez (lo usa bloquegenerarguia y
-    // la decisión de crear la relación de envíos — solo tiene sentido para una
-    // guía REAL que entra a la red logística).
-    const isRealGuide =
-      process.env.AVEONLINE_GENERATE_REAL === "true" &&
-      (process.env.NODE_ENV === "production" || process.env.AVEONLINE_FORCE_BILLING === "true");
-
-    // dsnit del destinatario: Aveonline exige numérico ≥5 dígitos y valor
-    // >10000 (verificado sandbox 2026-07-28: "000001" se rechaza por "mayor a
-    // 10000"). El documento puede ser PP alfanumérico (checkout 2026-10): se
-    // extraen los dígitos, pero si no quedan suficientes (ej. "AB1234" → 1234
-    // ≤ 10000, o "ABCDEFGH" → "") se usa el placeholder "100001" igual que
-    // cuando el cliente no ingresó documento (admin lo completa desde
-    // /admin/pedidos antes de despachar).
-    const recipientDocDigits = (params.delivery.documentNumber ?? "")
-      .replace(/\D/g, "")
-      .slice(0, 15);
-    const recipientDocForGuide = Number(recipientDocDigits) > 10000 ? recipientDocDigits : "100001";
-
-    const body = {
-      tipo: "generarGuia2",
+    const body = buildGenerarGuiaBody({
+      params,
       token,
       idempresa,
-      codigo: usuario,
-      dsclavex: clave,
-      // Origen (remitente = nosotros) — datos de SiteSettings
-      origen: formatAveonlineCity(pickupCity, pickupDept),
-      dsdirre: pickupAddress,
-      dsbarrioo: "", // opcional Aveonline; usaríamos un SiteSetting PICKUP_BARRIO si llega
-      dsnitre: settingNit,
-      dsnombre: pickupContact,
-      dstelre: pickupPhone,
-      dscelularre: pickupPhone,
-      dscorreopre: process.env.EMAIL_FROM?.match(/<(.+?)>/)?.[1] ?? "hola@lucamsshop.com",
-      // Destino (destinatario = cliente). Lucy 2026-05-21:
-      // - destino con formato `CIUDAD(DEPTO)` UPPERCASE igual que cotización.
-      // - dsnit del cliente: dígitos del documento o placeholder "100001"
-      //   (regla completa en recipientDocForGuide, arriba).
-      // - dscorreop con el email real del cliente (Aveonline le notifica).
-      //
-      // FLUJO REGALO (2026-10-05): `delivery.contactName`/`delivery.phone` ya
-      // vienen resueltos por la saga (resolveShipmentRecipient): son los del
-      // DESTINATARIO cuando el pedido es "lo recibe otra persona", así que la
-      // guía (dsnombrecompleto/dstel/dscelular) sale a su nombre sin ningún
-      // cambio acá. El correo (dscorreop) sigue siendo el del comprador.
-      destino: formatAveonlineCity(params.delivery.city, params.delivery.department),
-      dsdir: params.delivery.address,
-      // Alineación 2026-10-20: el barrio del checkout ahora llega a la guía
-      // (antes vacío — el mensajero solo veía la línea compuesta).
-      dsbarrio: params.delivery.neighborhood ?? "",
-      IdTipoEntrega: "1", // 1=domicilio, 2=oficina
-      dsnit: recipientDocForGuide,
-      dsnombrecompleto: params.delivery.contactName,
-      dstel: params.delivery.phone,
-      dscelular: params.delivery.phone,
-      dscorreop: params.delivery.email ?? "",
-      idtransportador, // del quoteId (flow inmediato) o resuelto via resolveCarrierId
-      idagente, // resuelto via resolveDefaultAgentId (cacheado 24h)
-      unidades: 1, // 1 paquete físico (el peso total ya va en productos[0].peso)
-      productos,
-      dscontenido: params.items
-        .map((i) => i.productSlug)
-        .join(", ")
-        .slice(0, 80),
-      // Alineación 2026-10-20: las notas de entrega del cliente (portería,
-      // horarios, indicaciones) viajan en dscom. Capado a 200 chars defensivo
-      // (campo libre de la API PHP, sin límite documentado).
-      dscom: (params.delivery.notes ?? "").slice(0, 200),
-      // Formas de pago de la guía (tabla oficial de la doc de cotización,
-      // verificada 2026-07-28): `contraentrega` = "el DESTINATARIO asume el costo
-      // del ENVÍO"; `idasumecosto` = "el DESTINATARIO asume el costo del RECAUDO".
-      // Ambos en 0 SIEMPRE:
-      //  - Prepagada (Wompi): fila 1 de la tabla — destinatario no paga nada.
-      //  - COD: fila 5 — el mensajero cobra EXACTAMENTE `valorrecaudo`
-      //    (= order.total, que YA incluye el flete que el cliente vio en checkout)
-      //    y Lucams asume transporte + fee de recaudo en la liquidación.
-      //  Antes iban 1/1 (fila 2): el mensajero cobraba valorrecaudo + flete + fee
-      //  ENCIMA → el cliente pagaba el flete DOS veces (auditoría doc 2026-07-28).
-      idasumecosto: 0,
-      contraentrega: 0,
-      valorrecaudo: valorRecaudo,
-      bloquegenerarguia: isRealGuide ? "0" : "1",
-      // relacion_envios (doc oficial generacionGuia, verificada 2026-10-20):
-      // «Todas las transportadoras a excepción de Envia (29) deben tener este
-      // campo en 1 para funcionar». Envía queda en "0"; el resto declara la
-      // relación SOLO cuando la guía es real (en simulación la guía no entra a
-      // la red logística y no hay nada que manifestar) y la relación se crea
-      // por API inmediatamente después (createShippingRelation, best-effort).
-      relacion_envios: isRealGuide && !isEnviaCarrier(params.carrier, idtransportador) ? "1" : "0",
-      enviarcorreos: "1",
-      cartaporte: "0",
-      // valorMinimo=0: usar la SUMA de valores declarados reales (no la valoración fija
-      // de $10.000 que aplica el "1"). Con "1" la guía sub-aseguraba TODO envío a $10.000
-      // (el imán más barato ya vale $45.000) y contradecía el valor real que calcula
-      // ADR-053; además queda coherente con la cotización, que también usa 0. Verificado
-      // en vivo: la guía genera OK con valorMinimo=0 (audit Aveonline).
-      valorMinimo: 0,
-      dsvalor_pedido: String(totalDeclaradoPesos),
-      dsreferencia: params.orderId, // tracking interno
-      plugin: "apiave", // valor documentado por Aveonline
-    };
+      usuario,
+      clave,
+      idtransportador,
+      idagente,
+      pickupCfg,
+    });
 
     // Sin `retry`: generar guía NO es idempotente — un reintento tras timeout
     // podría crear una guía DUPLICADA (doble cobro/etiqueta). Solo timeout + CB.
-    //
-    // Timeout 20s (NO el 15s genérico de la tabla): generarGuia2 es el endpoint
-    // PHP más lento (genera guía + PDF + sticker) y es la ÚNICA llamada
-    // no-reintentable. Bajarlo aumenta la probabilidad de abortar una guía que
-    // Aveonline SÍ completó server-side → queda huérfana (nuestra DB no guardó el
-    // trackingNumber) y un retry posterior de la saga generaría una segunda guía.
-    // 20s era el valor previo probado; no se baja sin evidencia del p99 real
-    // (mandato #9). Ver ADR-045/048.
+    // Timeout 20s (NO el 15s genérico de la tabla): ver ADR-045/048.
     const res = await aveonlineFetch(`${BASE_URL}/nal/v1.0/generarGuiaTransporteNacional.php`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1157,102 +908,53 @@ export class AveonlineProvider implements ShippingProvider {
       throw new Error(`Aveonline createShipment HTTP ${res.status}`);
     }
 
-    const data = (await res.json()) as {
-      status: string;
-      message?: string;
-      resultado?: {
-        guia?: {
-          codigo?: string;
-          mensaje?: string;
-          numguia?: number | string;
-          rutaguia?: string;
-          rotulo?: string;
-          rutasticker?: string;
-          archivorotulo?: string;
-          archivosticker?: string;
-          transportadora?: string;
-        };
-      };
-    };
-
-    if (data.status !== "ok" || !data.resultado?.guia?.numguia) {
-      const msg = data.resultado?.guia?.mensaje ?? data.message ?? "respuesta inválida";
-      logger.error({
-        event: "shipping.aveonline.createshipment.fail",
-        orderId: params.orderId,
-        msg,
-        // Diagnóstico SIN PII (auditoría 2026-07-13): NO logueamos responseFull ni los
-        // datos personales del destinatario (dsdir=dirección, dsnit=cédula/NIT,
-        // dsnombrecompleto=nombre). Solo campos operativos y de configuración de la guía.
-        requestBodySent: {
-          origen: body.origen,
-          destino: body.destino,
-          idtransportador: body.idtransportador,
-          unidades: body.unidades,
-          productosCount: body.productos.length,
-          valorrecaudo: body.valorrecaudo,
-          contraentrega: body.contraentrega,
-          bloquegenerarguia: body.bloquegenerarguia,
-        },
-      });
-      throw new Error(`Aveonline createShipment falló: ${msg}`);
-    }
-
-    const guia = data.resultado.guia;
-    const trackingNumber = String(guia.numguia);
-    // labelUrl: preferimos rutasticker (110x120 térmico) por tamaño; fallback rutaguia
-    // (PDF normal) y luego rotulo (URL label — algunas transportadoras solo devuelven
-    // este; la copia archivada valida %PDF, así que si rotulo fuera HTML la saga cae
-    // a la siguiente fuente sin romper nada).
-    const labelUrl = guia.rutasticker ?? guia.rutaguia ?? guia.rotulo ?? "";
-    const trackingUrl = guia.rutaguia ?? labelUrl;
-    // Fix 1.8 (2026-10-07) — PDF embebido en la respuesta (archivorotulo = base64 PDF
-    // del rótulo, docs/integrations/aveonline.md). Es la fuente MÁS confiable para la
-    // copia propia en Storage: no depende de que la URL externa siga viva ni de sesión.
-    const labelPdfBase64 = guia.archivorotulo ?? guia.archivosticker ?? null;
+    const data = (await res.json()) as AveonlineCreateShipmentRawResponse;
+    const guia = extractValidatedShipmentGuide(data, params.orderId, body);
+    const result = buildShippingResultFromGuide(guia, params.carrier);
 
     logger.info({
       event: "shipping.aveonline.createshipment.success",
       orderId: params.orderId,
-      trackingNumber,
+      trackingNumber: result.trackingNumber,
       carrier: guia.transportadora,
     });
 
-    // Relación de envíos (manifiesto de recogida) para carriers ≠ Envía: la
-    // declaramos en la guía (relacion_envios:"1") y la creamos de inmediato
-    // por API. Best-effort: la guía YA existe y es lo crítico; un fallo acá
-    // queda en ErrorLog para crear la relación a mano en el panel (el flujo
-    // de recogida es manual hoy) — nunca tira la saga con la guía ya creada.
     if (body.relacion_envios === "1") {
-      try {
-        const relacionId = await this.createShippingRelation(idtransportador, trackingNumber);
-        logger.info({
-          event: "shipping.aveonline.relation_created",
-          orderId: params.orderId,
-          trackingNumber,
-          relacionId,
-        });
-      } catch (err) {
-        logger.error({
-          event: "shipping.aveonline.relation_fail",
-          orderId: params.orderId,
-          trackingNumber,
-          idtransportador,
-          err: err instanceof Error ? err.message : String(err),
-        });
-      }
+      await this.tryCreateShippingRelationBestEffort({
+        orderId: params.orderId,
+        idtransportador,
+        trackingNumber: result.trackingNumber,
+      });
     }
 
-    return {
-      trackingNumber,
-      trackingUrl,
-      labelUrl,
-      labelPdfBase64,
-      carrier: (guia.transportadora ?? params.carrier).toLowerCase().replace(/\s+/g, "-"),
-      // Aveonline no devuelve ETA exacta — caller puede estimar usando deliveryDays
-      // del quote previo y guardarlo en Order si lo necesita.
-      estimatedDeliveryAt: null,
-    };
+    return result;
+  }
+
+  private async tryCreateShippingRelationBestEffort(params: {
+    orderId: string;
+    idtransportador: string;
+    trackingNumber: string;
+  }): Promise<void> {
+    try {
+      const relacionId = await this.createShippingRelation(
+        params.idtransportador,
+        params.trackingNumber,
+      );
+      logger.info({
+        event: "shipping.aveonline.relation_created",
+        orderId: params.orderId,
+        trackingNumber: params.trackingNumber,
+        relacionId,
+      });
+    } catch (err) {
+      logger.error({
+        event: "shipping.aveonline.relation_fail",
+        orderId: params.orderId,
+        trackingNumber: params.trackingNumber,
+        idtransportador: params.idtransportador,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**
@@ -1287,7 +989,9 @@ export class AveonlineProvider implements ShippingProvider {
     if (!res.ok || data.status !== "ok") {
       throw new Error(`Aveonline relacionEnvios: ${data.message ?? `HTTP ${res.status}`}`);
     }
-    return data.relacionenvio != null ? String(data.relacionenvio) : null;
+    return data.relacionenvio === undefined || data.relacionenvio === null
+      ? null
+      : String(data.relacionenvio);
   }
 
   async getTracking(trackingNumber: string): Promise<TrackingStatus> {
@@ -1313,14 +1017,7 @@ export class AveonlineProvider implements ShippingProvider {
       message?: string;
       guias?: Array<{
         estado?: string;
-        // La doc del histórico usa `fechamostrar` (MM/DD/YYYY HH:mm:ss), NO `fecha`.
-        historicos?: Array<{
-          fechamostrar?: string;
-          fecha?: string;
-          descripcion?: string;
-          aclaracion?: string;
-          estado?: string;
-        }>;
+        historicos?: AveonlineRawHistoryItem[];
       }>;
     };
     // status:"error" (HTTP 200) → "La guia no existe" / "autenticacion fallida". Sin
@@ -1329,23 +1026,12 @@ export class AveonlineProvider implements ShippingProvider {
       throw new Error(`Aveonline tracking: ${data.message ?? "guía no encontrada"}`);
     }
     const guia = data.guias[0];
-    const status: TrackingStatus["status"] = mapAveonlineStatus(guia?.estado ?? "");
+    const carrierStatusRaw = guia?.estado ?? "";
     return {
       trackingNumber,
-      status,
-      carrierStatusRaw: guia?.estado ?? "",
-      history: (guia?.historicos ?? []).map((h) => {
-        // parseAveonlineDate entiende ISO local (`YYYY-MM-DD HH:mm[:ss]`), novedades en
-        // español (`DD/MM/YYYY HH:mm[:ss]`, caso real LCM-2026-0006) y el formato doc
-        // (`MM/DD/YYYY HH:mm:ss`), siempre en hora Colombia (-05:00).
-        const raw = h.fechamostrar ?? h.fecha; // real: fechamostrar; fecha = fallback defensivo
-        return {
-          status: h.estado ?? "",
-          description: h.descripcion ?? "",
-          clarification: h.aclaracion ?? "",
-          timestamp: raw ? parseAveonlineDate(raw) : new Date(),
-        };
-      }),
+      status: mapAveonlineStatus(carrierStatusRaw),
+      carrierStatusRaw,
+      history: (guia?.historicos ?? []).map(mapAveonlineHistoryItem),
     };
   }
 
@@ -1353,56 +1039,396 @@ export class AveonlineProvider implements ShippingProvider {
     // PLAN_CATALOG_V2 ADR-039 — Webhook Aveonline NO documenta HMAC.
     // MITIGACIÓN: route handler valida secret en paramN (ver
     // app/api/webhooks/aveonline/route.ts).
-    //
-    // Aveonline envía 2 shapes posibles:
-    //   - Plugin legacy WordPress: estado:[{estado_id, nombre_estado, fecha}]
-    //   - AveCRM nuevo: estado:[{nombre, timestamp}] o {nombre}
-    // Soportamos ambos via nombre_estado || nombre.
-    type EstadoItem = {
-      nombre?: string;
-      nombre_estado?: string;
-      timestamp?: string;
-      fecha?: string;
-    };
     const body = JSON.parse(rawBody) as {
-      // La doc envía `guia` como NÚMERO (892349021). Sin String() se pasaba un number
-      // a Order.trackingNumber (columna String) → PrismaClientValidationError tragado
-      // en el route → la orden NUNCA pasaba a SHIPPED/DELIVERED ni salían los correos.
-      guia?: string | number;
-      estado?: EstadoItem[] | EstadoItem;
+      guia?: string | number | null;
+      estado?: AveonlineWebhookEstadoItem[] | AveonlineWebhookEstadoItem;
     };
-    const trackingNumber = body.guia != null ? String(body.guia) : "";
-    const estadoArr: EstadoItem[] = Array.isArray(body.estado)
-      ? body.estado
-      : body.estado
-        ? [body.estado]
-        : [];
+    const trackingNumber = body.guia === undefined || body.guia === null ? "" : String(body.guia);
+    const estadoArr = normalizeWebhookEstados(body.estado);
     const last = estadoArr[estadoArr.length - 1];
-    const nombreRaw = last?.nombre_estado ?? last?.nombre ?? "";
-    const status = mapAveonlineStatus(nombreRaw);
+    const nombreRaw = resolveWebhookEstadoName(last);
     const tsRaw = last?.timestamp ?? last?.fecha;
     return {
       trackingNumber,
-      status,
+      status: mapAveonlineStatus(nombreRaw),
       carrierStatusRaw: nombreRaw,
-      // Historial granular completo del payload (cada hito con su fecha del carrier)
-      // para persistencia ShipmentEvent — antes solo se usaba el ÚLTIMO estado.
-      history: estadoArr.map((item) => {
-        const raw = item.nombre_estado ?? item.nombre ?? "";
-        const itemTs = item.timestamp ?? item.fecha;
-        return {
-          status: mapAveonlineStatus(raw),
-          carrierStatusRaw: raw,
-          description: "",
-          occurredAt: parseAveonlineDate(itemTs),
-        };
-      }),
+      history: estadoArr.map(mapWebhookEstadoToHistoryItem),
       timestamp: parseAveonlineDate(tsRaw),
       // Without a carrier timestamp, parseAveonlineDate falls back to `new Date()`:
       // the route must NOT use that non-deterministic value in the dedup key (D-4).
-      hasCarrierTimestamp: tsRaw != null,
+      hasCarrierTimestamp: tsRaw !== undefined && tsRaw !== null,
     };
   }
+}
+
+type AveonlineQuoteItemRaw = {
+  numbererror?: string;
+  dataerror?: string;
+  codTransportadora?: string;
+  nombreTransportadora?: string;
+  total?: number;
+  diasentrega?: number | string;
+};
+
+type AveonlineQuoteRawResponse = {
+  status?: string;
+  message?: string;
+  cotizaciones?: AveonlineQuoteItemRaw[];
+};
+
+function extractValidQuoteItems(
+  data: AveonlineQuoteRawResponse,
+  origenFmt: string,
+  destinoFmt: string,
+): AveonlineQuoteItemRaw[] {
+  if (data.status === "ok" && Array.isArray(data.cotizaciones)) {
+    return data.cotizaciones;
+  }
+  logger.warn({
+    event: "shipping.aveonline.quote.response_error",
+    origen: origenFmt,
+    destino: destinoFmt,
+    status: data.status ?? null,
+    message: data.message?.slice(0, 200) ?? null,
+  });
+  const detailSuffix = data.message ? `: ${data.message.slice(0, 120)}` : "";
+  throw new Error(
+    `Aveonline no devolvió cotizaciones (status=${data.status ?? "?"}${detailSuffix}).`,
+  );
+}
+
+function sanitizeAveonlineQuoteRow(
+  c: AveonlineQuoteItemRaw,
+  contraentrega: boolean,
+): ShippingQuote {
+  const totalNumber = Number(c.total);
+  const safeTotal = Number.isFinite(totalNumber) ? totalNumber : 0;
+  const daysNumber = Number(c.diasentrega);
+  const safeDays = Number.isFinite(daysNumber) ? daysNumber : 0;
+  return {
+    carrier: (c.nombreTransportadora ?? "carrier").toLowerCase().replaceAll(/\s+/g, "-"),
+    carrierName: c.nombreTransportadora ?? "Transportadora",
+    fleteCop: Math.round(safeTotal * 100), // pasamos a centavos
+    deliveryDays: Math.min(30, Math.max(0, Math.round(safeDays))),
+    contraentrega,
+    quoteId: c.codTransportadora ?? "",
+  };
+}
+
+function warnCarriersWithoutLogo(quotes: ShippingQuote[]): void {
+  const sinLogo = [
+    ...new Set(quotes.filter((q) => !carrierLogo(q.carrierName)).map((q) => q.carrier)),
+  ];
+  if (sinLogo.length === 0) return;
+  logger.warn({
+    event: "shipping.aveonline.quote.carrier_without_logo",
+    carriers: sinLogo,
+    hint: "Agregar el slug a CARRIER_LOGOS (lib/carrier-logos.ts) + asset en public/carriers/",
+  });
+}
+
+function processAveonlineQuoteItems(input: {
+  all: AveonlineQuoteItemRaw[];
+  origenFmt: string;
+  destinoFmt: string;
+  contraentrega: boolean;
+}): ShippingQuote[] {
+  const ok = input.all.filter((c) => c.numbererror === "-0-");
+  const failed = input.all.filter((c) => c.numbererror !== "-0-");
+
+  if (ok.length === 0 && failed.length > 0) {
+    logger.warn({
+      event: "shipping.aveonline.quote.all_failed",
+      origen: input.origenFmt,
+      destino: input.destinoFmt,
+      totalCotizaciones: input.all.length,
+      errores: failed.slice(0, 8).map((c) => ({
+        carrier: c.nombreTransportadora,
+        code: c.numbererror,
+        msg: c.dataerror?.slice(0, 160),
+      })),
+    });
+    return [];
+  }
+
+  if (ok.length > 0 && failed.length > 0) {
+    logger.info({
+      event: "shipping.aveonline.quote.partial",
+      ok: ok.length,
+      failed: failed.length,
+      rejected: failed.map((c) => ({
+        carrier: c.nombreTransportadora,
+        code: c.numbererror,
+        msg: c.dataerror?.slice(0, 160),
+      })),
+    });
+  }
+
+  const quotes = ok
+    .filter((c) => (c.codTransportadora ?? "") !== "")
+    .map((c) => sanitizeAveonlineQuoteRow(c, input.contraentrega));
+
+  warnCarriersWithoutLogo(quotes);
+  return quotes;
+}
+
+type ValidatedPickupConfig = {
+  nit: string;
+  city: string;
+  department: string;
+  address: string;
+  phone: string;
+  contactName: string;
+};
+
+async function resolveValidatedPickupConfig(
+  pickup: ShippingAddress,
+): Promise<ValidatedPickupConfig> {
+  const [settingNit, settingCity, settingDept, settingAddress, settingPhone, settingContact] =
+    await Promise.all([
+      getSettingValue("BUSINESS_NIT", "0000000000"),
+      getSettingValue("PICKUP_CITY", ""),
+      getSettingValue("PICKUP_DEPARTMENT", ""),
+      getSettingValue("PICKUP_ADDRESS", ""),
+      getSettingValue("PICKUP_PHONE", ""),
+      getSettingValue("PICKUP_CONTACT_NAME", ""),
+    ]);
+
+  const resolved: ValidatedPickupConfig = {
+    nit: settingNit,
+    city: pickup.city || settingCity,
+    department: pickup.department || settingDept,
+    address: pickup.address || settingAddress,
+    phone: pickup.phone || settingPhone,
+    contactName: pickup.contactName || settingContact,
+  };
+
+  const requiredPairs: ReadonlyArray<[string, string]> = [
+    ["PICKUP_CITY", resolved.city],
+    ["PICKUP_DEPARTMENT", resolved.department],
+    ["PICKUP_ADDRESS", resolved.address],
+    ["PICKUP_PHONE", resolved.phone],
+    ["PICKUP_CONTACT_NAME", resolved.contactName],
+  ];
+  const missing = requiredPairs.filter(([, value]) => !value).map(([key]) => key);
+  if (missing.length > 0) {
+    throw new Error(
+      `Aveonline createShipment: faltan datos de recogida [${missing.join(", ")}]. ` +
+        `Configúralos en /admin/contenido/paginas/global (sección 'Negocio').`,
+    );
+  }
+  return resolved;
+}
+
+function resolveSenderNotificationEmail(): string {
+  const match = /<(.+?)>/.exec(process.env.EMAIL_FROM ?? "");
+  return match?.[1] ?? "hola@lucamsshop.com";
+}
+
+function resolveRecipientDocForGuide(documentNumber: string | undefined): string {
+  const digits = (documentNumber ?? "").replaceAll(/\D/g, "").slice(0, 15);
+  return Number(digits) > 10000 ? digits : "100001";
+}
+
+function isRealBillingGuideEnabled(): boolean {
+  if (process.env.AVEONLINE_GENERATE_REAL !== "true") return false;
+  return process.env.NODE_ENV === "production" || process.env.AVEONLINE_FORCE_BILLING === "true";
+}
+
+function buildGenerarGuiaBody(input: {
+  params: {
+    carrier: string;
+    delivery: ShippingAddress;
+    items: ShipmentItem[];
+    contraentrega: boolean;
+    valorRecaudoCop?: number;
+    orderId: string;
+  };
+  token: string;
+  idempresa: number;
+  usuario: string;
+  clave: string;
+  idtransportador: string;
+  idagente: string;
+  pickupCfg: ValidatedPickupConfig;
+}) {
+  const { params, pickupCfg, idtransportador } = input;
+  const valorRecaudo = params.contraentrega ? centsToPesos(params.valorRecaudoCop ?? 0) : 0;
+  const totalDeclaradoPesos = centsToPesos(
+    params.items.reduce((acc, i) => acc + i.declaredValueCop * i.qty, 0),
+  );
+  const pkg = computePackedPackage(params.items);
+  const isRealGuide = isRealBillingGuideEnabled();
+  const requiresShippingRelation = isRealGuide && !isEnviaCarrier(params.carrier, idtransportador);
+
+  return {
+    tipo: "generarGuia2",
+    token: input.token,
+    idempresa: input.idempresa,
+    codigo: input.usuario,
+    dsclavex: input.clave,
+    origen: formatAveonlineCity(pickupCfg.city, pickupCfg.department),
+    dsdirre: pickupCfg.address,
+    dsbarrioo: "",
+    dsnitre: pickupCfg.nit,
+    dsnombre: pickupCfg.contactName,
+    dstelre: pickupCfg.phone,
+    dscelularre: pickupCfg.phone,
+    dscorreopre: resolveSenderNotificationEmail(),
+    destino: formatAveonlineCity(params.delivery.city, params.delivery.department),
+    dsdir: params.delivery.address,
+    dsbarrio: params.delivery.neighborhood ?? "",
+    IdTipoEntrega: "1",
+    dsnit: resolveRecipientDocForGuide(params.delivery.documentNumber),
+    dsnombrecompleto: params.delivery.contactName,
+    dstel: params.delivery.phone,
+    dscelular: params.delivery.phone,
+    dscorreop: params.delivery.email ?? "",
+    idtransportador,
+    idagente: input.idagente,
+    unidades: 1,
+    productos: [
+      {
+        alto: String(pkg.altoCm),
+        ancho: String(pkg.anchoCm),
+        largo: String(pkg.largoCm),
+        peso: String(pkg.pesoKg),
+        unidades: 1,
+        nombre: pkg.nombre,
+        ref: params.orderId,
+        valorDeclarado: String(pkg.valorDeclaradoPesos),
+      },
+    ],
+    dscontenido: params.items
+      .map((i) => i.productSlug)
+      .join(", ")
+      .slice(0, 80),
+    dscom: (params.delivery.notes ?? "").slice(0, 200),
+    idasumecosto: 0,
+    contraentrega: 0,
+    valorrecaudo: valorRecaudo,
+    bloquegenerarguia: isRealGuide ? "0" : "1",
+    relacion_envios: requiresShippingRelation ? "1" : "0",
+    enviarcorreos: "1",
+    cartaporte: "0",
+    valorMinimo: 0,
+    dsvalor_pedido: String(totalDeclaradoPesos),
+    dsreferencia: params.orderId,
+    plugin: "apiave",
+  };
+}
+
+type AveonlineShipmentGuidePayload = {
+  codigo?: string;
+  mensaje?: string;
+  numguia?: number | string;
+  rutaguia?: string;
+  rotulo?: string;
+  rutasticker?: string;
+  archivorotulo?: string;
+  archivosticker?: string;
+  transportadora?: string;
+};
+
+type AveonlineCreateShipmentRawResponse = {
+  status: string;
+  message?: string;
+  resultado?: {
+    guia?: AveonlineShipmentGuidePayload;
+  };
+};
+
+function extractValidatedShipmentGuide(
+  data: AveonlineCreateShipmentRawResponse,
+  orderId: string,
+  body: ReturnType<typeof buildGenerarGuiaBody>,
+): AveonlineShipmentGuidePayload & { numguia: number | string } {
+  const guia = data.resultado?.guia;
+  if (data.status === "ok" && guia?.numguia) {
+    return guia as AveonlineShipmentGuidePayload & { numguia: number | string };
+  }
+  const msg = guia?.mensaje ?? data.message ?? "respuesta inválida";
+  logger.error({
+    event: "shipping.aveonline.createshipment.fail",
+    orderId,
+    msg,
+    requestBodySent: {
+      origen: body.origen,
+      destino: body.destino,
+      idtransportador: body.idtransportador,
+      unidades: body.unidades,
+      productosCount: body.productos.length,
+      valorrecaudo: body.valorrecaudo,
+      contraentrega: body.contraentrega,
+      bloquegenerarguia: body.bloquegenerarguia,
+    },
+  });
+  throw new Error(`Aveonline createShipment falló: ${msg}`);
+}
+
+function buildShippingResultFromGuide(
+  guia: AveonlineShipmentGuidePayload & { numguia: number | string },
+  fallbackCarrier: string,
+): ShippingResult {
+  const trackingNumber = String(guia.numguia);
+  const labelUrl = guia.rutasticker ?? guia.rutaguia ?? guia.rotulo ?? "";
+  const trackingUrl = guia.rutaguia ?? labelUrl;
+  const labelPdfBase64 = guia.archivorotulo ?? guia.archivosticker ?? null;
+  return {
+    trackingNumber,
+    trackingUrl,
+    labelUrl,
+    labelPdfBase64,
+    carrier: (guia.transportadora ?? fallbackCarrier).toLowerCase().replaceAll(/\s+/g, "-"),
+    estimatedDeliveryAt: null,
+  };
+}
+
+type AveonlineRawHistoryItem = {
+  fechamostrar?: string;
+  fecha?: string;
+  descripcion?: string;
+  aclaracion?: string;
+  estado?: string;
+};
+
+function mapAveonlineHistoryItem(h: AveonlineRawHistoryItem) {
+  const raw = h.fechamostrar ?? h.fecha;
+  return {
+    status: h.estado ?? "",
+    description: h.descripcion ?? "",
+    clarification: h.aclaracion ?? "",
+    timestamp: raw ? parseAveonlineDate(raw) : new Date(),
+  };
+}
+
+type AveonlineWebhookEstadoItem = {
+  nombre?: string;
+  nombre_estado?: string;
+  timestamp?: string;
+  fecha?: string;
+};
+
+function normalizeWebhookEstados(
+  estado: AveonlineWebhookEstadoItem[] | AveonlineWebhookEstadoItem | undefined,
+): AveonlineWebhookEstadoItem[] {
+  if (Array.isArray(estado)) return estado;
+  if (estado) return [estado];
+  return [];
+}
+
+function resolveWebhookEstadoName(item: AveonlineWebhookEstadoItem | undefined): string {
+  return item?.nombre_estado ?? item?.nombre ?? "";
+}
+
+function mapWebhookEstadoToHistoryItem(item: AveonlineWebhookEstadoItem) {
+  const raw = resolveWebhookEstadoName(item);
+  return {
+    status: mapAveonlineStatus(raw),
+    carrierStatusRaw: raw,
+    description: "",
+    occurredAt: parseAveonlineDate(item.timestamp ?? item.fecha),
+  };
 }
 
 /**
@@ -1464,43 +1490,40 @@ export function isVoidedGuideStatus(raw: string): boolean {
   return s.includes("ANULAD") || s.includes("CANCEL");
 }
 
+const AVEONLINE_STATUS_RULES: ReadonlyArray<{
+  status: TrackingStatus["status"];
+  keywords: readonly string[];
+}> = [
+  { status: "DELIVERED", keywords: ["ENTREGAD"] },
+  { status: "RETURNED", keywords: ["DEVUELT", "DEVOLUC", "RETORN"] },
+  // NOVEDAD / EXCEPCIÓN operativa + ANULADA / CANCELADA terminal (distinguidas por isVoidedGuideStatus).
+  { status: "EXCEPTION", keywords: ["NOVEDAD", "EXCEPCI", "ANULAD", "CANCEL"] },
+  // Estados canónicos + variantes vistas en producción (Envía vía Aveonline: BODEGA, CENTRO LOG, RUTA).
+  {
+    status: "IN_TRANSIT",
+    keywords: [
+      "REPARTO",
+      "TRANSITO",
+      "TRÁNSITO",
+      "CAMINO",
+      "BODEGA",
+      "CENTRO LOG",
+      "RUTA",
+      "SALIO",
+      "SALIÓ",
+    ],
+  },
+  // PRODUCIDA / DESPACHO / MERCANCIA RECOGIDA equivalen a paquete despachado en origen.
+  {
+    status: "DISPATCHED",
+    keywords: ["DESPACHO", "DESPACHAD", "ADMITID", "PRODUCIDA", "RECOGID"],
+  },
+];
+
 export function mapAveonlineStatus(raw: string): TrackingStatus["status"] {
   const s = raw.toUpperCase();
-  if (s.includes("ENTREGAD")) return "DELIVERED";
-  if (s.includes("DEVUELT") || s.includes("DEVOLUC") || s.includes("RETORN")) return "RETURNED";
-  if (s.includes("NOVEDAD") || s.includes("EXCEPCI")) return "EXCEPTION";
-  // Estados canónicos documentados (doc "Tipos de estados de envíos" + flujo
-  // sandbox avanzarEstado): GENERADA → PRODUCIDA → EN DESPACHO → EN REPARTO →
-  // ENTREGADA (+ EN NOVEDAD, ANULADA terminal). Antes "EN DESPACHO"/"EN REPARTO"
-  // no matcheaban nada → la orden jamás transicionaba a SHIPPED y una guía
-  // ANULADA quedaba "pendiente" para siempre (auditoría doc 2026-07-28).
-  if (s.includes("ANULAD") || s.includes("CANCEL")) return "EXCEPTION";
-  if (
-    s.includes("REPARTO") ||
-    s.includes("TRANSITO") ||
-    s.includes("TRÁNSITO") ||
-    s.includes("CAMINO") ||
-    // No canónicos vistos en producción (Envía vía Aveonline, pedido real
-    // LCM-2026-0004, 2026-11-04): "EN BODEGA ORIGEN"/"EN BODEGA DESTINO" y
-    // variantes de tránsito por centros logísticos. Sin este mapeo la orden
-    // quedaba en "Preparando" (FULFILLING) con el paquete ya viajando y el
-    // cliente jamás recibía el email «En camino».
-    s.includes("BODEGA") ||
-    s.includes("CENTRO LOG") ||
-    s.includes("RUTA") ||
-    s.includes("SALIO") ||
-    s.includes("SALIÓ")
-  )
-    return "IN_TRANSIT";
-  if (
-    s.includes("DESPACHO") ||
-    s.includes("DESPACHAD") ||
-    s.includes("ADMITID") ||
-    s.includes("PRODUCIDA") ||
-    // "MERCANCIA RECOGIDA" / "RECOGIDO" (Envía, mismo caso real): el carrier ya
-    // recogió el paquete en origen → equivale a despachado.
-    s.includes("RECOGID")
-  )
-    return "DISPATCHED";
+  for (const rule of AVEONLINE_STATUS_RULES) {
+    if (rule.keywords.some((kw) => s.includes(kw))) return rule.status;
+  }
   return "PENDING";
 }
