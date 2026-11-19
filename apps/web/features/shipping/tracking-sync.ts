@@ -40,6 +40,59 @@ export type TrackingSyncResult = {
   skippedReason?: string;
 };
 
+function buildLatestCarrierIncidentContext(
+  latest: { description?: string; clarification?: string; timestamp?: Date } | undefined,
+): {
+  carrierDescription?: string;
+  carrierClarification?: string;
+  occurredAt?: Date;
+} {
+  if (!latest) return {};
+  return {
+    ...(latest.description ? { carrierDescription: latest.description } : {}),
+    ...(latest.clarification ? { carrierClarification: latest.clarification } : {}),
+    ...(latest.timestamp ? { occurredAt: latest.timestamp } : {}),
+  };
+}
+
+async function syncSingleOrderGuide(order: {
+  id: string;
+  number: string;
+  trackingNumber: string;
+  shipmentClaimedAt: Date | null;
+}): Promise<boolean> {
+  const provider = await getShippingProvider();
+  const tracking = await provider.getTracking(order.trackingNumber);
+  // Historial granular del carrier → ShipmentEvent (2026-11-04). El polling es la
+  // fuente que trae DESCRIPCIONES (`historicos[].descripcion`) y hace backfill de
+  // hitos que el webhook no entregó; dedup cross-source por minuto (best-effort).
+  // `?? []`: proveedores/mocks sin historial son válidos (sin historial, sin hitos).
+  const history = tracking.history ?? [];
+  if (history.length > 0) {
+    await recordShipmentEvents({
+      orderId: order.id,
+      trackingNumber: order.trackingNumber,
+      source: "POLL",
+      events: history.map((h) => ({
+        carrierStatusRaw: h.status,
+        description: h.description,
+        clarification: h.clarification,
+        occurredAt: h.timestamp,
+      })),
+      guideCreatedAt: order.shipmentClaimedAt,
+    });
+  }
+  if (tracking.status === "PENDING") return false; // sin novedad real del carrier
+
+  const result = await processTrackingUpdate({
+    trackingNumber: order.trackingNumber,
+    status: tracking.status,
+    carrierStatusRaw: tracking.carrierStatusRaw,
+    ...buildLatestCarrierIncidentContext(history[0]),
+  });
+  return result.status === "ok";
+}
+
 export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> {
   if (!process.env.AVEONLINE_USUARIO || !process.env.AVEONLINE_CLAVE) {
     return { checked: 0, transitioned: 0, failed: 0, skippedReason: "not_configured" };
@@ -61,45 +114,21 @@ export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> 
   let transitioned = 0;
   let failed = 0;
   for (const order of orders) {
-    const trackingNumber = order.trackingNumber!;
+    if (!order.trackingNumber) continue;
     try {
-      const provider = await getShippingProvider();
-      const tracking = await provider.getTracking(trackingNumber);
-      // Historial granular del carrier → ShipmentEvent (2026-11-04). El polling es la
-      // fuente que trae DESCRIPCIONES (`historicos[].descripcion`) y hace backfill de
-      // hitos que el webhook no entregó; dedup cross-source por minuto (best-effort).
-      // `?? []`: proveedores/mocks sin historial son válidos (sin historial, sin hitos).
-      const history = tracking.history ?? [];
-      if (history.length > 0) {
-        await recordShipmentEvents({
-          orderId: order.id,
-          trackingNumber,
-          source: "POLL",
-          events: history.map((h) => ({
-            carrierStatusRaw: h.status,
-            description: h.description,
-            occurredAt: h.timestamp,
-          })),
-          guideCreatedAt: order.shipmentClaimedAt,
-        });
-      }
-      if (tracking.status === "PENDING") continue; // sin novedad real del carrier
-      const latest = history[0];
-      const result = await processTrackingUpdate({
-        trackingNumber,
-        status: tracking.status,
-        carrierStatusRaw: tracking.carrierStatusRaw,
-        ...(latest?.description ? { carrierDescription: latest.description } : {}),
-        ...(latest?.clarification ? { carrierClarification: latest.clarification } : {}),
-        ...(latest?.timestamp ? { occurredAt: latest.timestamp } : {}),
+      const didTransition = await syncSingleOrderGuide({
+        id: order.id,
+        number: order.number,
+        trackingNumber: order.trackingNumber,
+        shipmentClaimedAt: order.shipmentClaimedAt,
       });
-      if (result.status === "ok") transitioned += 1;
+      if (didTransition) transitioned += 1;
     } catch (err) {
       failed += 1;
       logger.warn({
         event: "shipping.tracking_sync.guide_failed",
         orderNumber: order.number,
-        trackingNumber,
+        trackingNumber: order.trackingNumber,
         err: err instanceof Error ? err.message : String(err),
       });
     }

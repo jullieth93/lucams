@@ -254,7 +254,7 @@ export async function sendOrderShipped(orderId: string): Promise<void> {
         trackingUrl: true,
       },
     });
-    if (!order || !order.trackingNumber) return;
+    if (!order?.trackingNumber) return;
 
     const ship = order.shippingAddress as ShippingAddrSnapshot;
     const tpl = await renderOrderShippedEmail({
@@ -644,6 +644,25 @@ export async function sendOrderRefunded(orderId: string): Promise<void> {
 // centro de notificaciones. Best-effort total: nunca lanza ni retrasa la saga.
 // ─────────────────────────────────────────────────────────────────────
 
+function formatNewOrderAdminSummary(params: {
+  ship: ShippingAddrSnapshot;
+  totalCop: number;
+  isGift: boolean;
+}): { customerName: string; detail: string } {
+  const customerName = params.ship.fullName ?? "Cliente";
+  const totalLabel = new Intl.NumberFormat("es-CO", {
+    style: "currency",
+    currency: "COP",
+    maximumFractionDigits: 0,
+  }).format(params.totalCop / 100);
+  const locationLabel = `${params.ship.city ?? "ciudad?"}, ${params.ship.department ?? "depto?"}`;
+  const giftSuffix = params.isGift ? " · 🎁 regalo" : "";
+  return {
+    customerName,
+    detail: `${customerName} · ${totalLabel} · ${locationLabel}${giftSuffix}`,
+  };
+}
+
 /**
  * Avisa al negocio que un pedido quedó PAGADO (o COD confirmado). Se llama en
  * processPaidOrder junto al email de confirmación del cliente. dedupKey por
@@ -673,12 +692,11 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
     if (!order) return;
 
     const ship = order.shippingAddress as ShippingAddrSnapshot;
-    const customerName = ship.fullName ?? "Cliente";
-    const totalLabel = new Intl.NumberFormat("es-CO", {
-      style: "currency",
-      currency: "COP",
-      maximumFractionDigits: 0,
-    }).format(order.total / 100);
+    const { customerName, detail } = formatNewOrderAdminSummary({
+      ship,
+      totalCop: order.total,
+      isGift: order.isGift,
+    });
 
     // 1) Registro duradero en el centro de notificaciones (la fuente de verdad
     //    del aviso; se crea aunque el email falle).
@@ -686,7 +704,7 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
       type: "ORDER",
       severity: "info",
       title: `Nuevo pedido ${order.number}`,
-      detail: `${customerName} · ${totalLabel} · ${ship.city ?? "ciudad?"}, ${ship.department ?? "depto?"}${order.isGift ? " · 🎁 regalo" : ""}`,
+      detail,
       actionUrl: `/admin/pedidos/${order.number}`,
       actionLabel: "Ver pedido",
       dedupKey: `new-order-${order.id}`,
@@ -763,6 +781,36 @@ function sanitizeCarrierNote(value?: string): string {
   return scrubPii(collapsed).slice(0, 240);
 }
 
+function readMetaString(meta: Record<string, unknown> | null, key: string): string | null {
+  const val = meta?.[key];
+  return typeof val === "string" && val.length > 0 ? val : null;
+}
+
+function hasStoredCarrierContext(meta: Record<string, unknown> | null): boolean {
+  return (
+    readMetaString(meta, "carrierDescription") !== null ||
+    readMetaString(meta, "carrierClarification") !== null
+  );
+}
+
+function normalizeCarrierIncidentNotes(input: {
+  carrierStatusRaw: string;
+  carrierDescription?: string;
+  carrierClarification?: string;
+  fallbackRaw: string;
+}): {
+  cleanRaw: string;
+  cleanDesc: string;
+  cleanClar: string;
+  carrierContext: string;
+} {
+  const cleanRaw = sanitizeCarrierNote(input.carrierStatusRaw) || input.fallbackRaw;
+  const cleanDesc = sanitizeCarrierNote(input.carrierDescription);
+  const cleanClar = sanitizeCarrierNote(input.carrierClarification);
+  const carrierContext = [cleanDesc, cleanClar].filter(Boolean).join(" · ");
+  return { cleanRaw, cleanDesc, cleanClar, carrierContext };
+}
+
 function buildIncidentKey(normalizedRawKey: string, occurredAt?: Date): string {
   if (!occurredAt) return `${normalizedRawKey}:no-ts`;
   return `${normalizedRawKey}:${Math.floor(occurredAt.getTime() / 60_000)}`;
@@ -823,7 +871,6 @@ function isEmailPermanentlyHandled(result: { sent: boolean; reason?: string }): 
 }
 
 async function upsertOrderReturnedNotification(params: {
-  orderId: string;
   orderNumber: string;
   dedupKey: string;
   title: string;
@@ -837,30 +884,69 @@ async function upsertOrderReturnedNotification(params: {
     orderBy: { createdAt: "desc" },
   });
 
-  if (existing) {
-    const prevMeta = (existing.metadata ?? null) as Record<string, unknown> | null;
-    const prevEmailSentAt =
-      typeof prevMeta?.customerEmailSentAt === "string" ? prevMeta.customerEmailSentAt : null;
-    const prevRaw =
-      typeof prevMeta?.carrierStatusRaw === "string" ? prevMeta.carrierStatusRaw : null;
-    const prevHadContext = Boolean(prevMeta?.carrierDescription || prevMeta?.carrierClarification);
-    const shouldEnrich =
-      prevRaw !== params.cleanRaw || (!prevHadContext && params.carrierContext.length > 0);
-
-    if (shouldEnrich) {
-      await prisma.notification.update({
-        where: { id: existing.id },
-        data: {
-          title: params.title,
-          detail: params.detail,
-          metadata: params.buildMetadata(prevEmailSentAt),
-        },
-      });
-    }
-    return { notifId: existing.id, alreadyEmailed: Boolean(prevEmailSentAt) };
+  if (!existing) {
+    const created = await notify({
+      type: "ORDER",
+      severity: "warning",
+      title: params.title,
+      detail: params.detail,
+      actionUrl: `/admin/pedidos/${params.orderNumber}`,
+      actionLabel: "Revisar pedido",
+      dedupKey: params.dedupKey,
+      metadata: params.buildMetadata(null),
+    });
+    return { notifId: created.id, alreadyEmailed: false };
   }
 
-  const created = await notify({
+  const prevMeta = (existing.metadata ?? null) as Record<string, unknown> | null;
+  const prevEmailSentAt = readMetaString(prevMeta, "customerEmailSentAt");
+  const prevRaw = readMetaString(prevMeta, "carrierStatusRaw");
+  const missingContextNowAvailable =
+    !hasStoredCarrierContext(prevMeta) && params.carrierContext.length > 0;
+
+  if (prevRaw !== params.cleanRaw || missingContextNowAvailable) {
+    await prisma.notification.update({
+      where: { id: existing.id },
+      data: {
+        title: params.title,
+        detail: params.detail,
+        metadata: params.buildMetadata(prevEmailSentAt),
+      },
+    });
+  }
+  return { notifId: existing.id, alreadyEmailed: prevEmailSentAt !== null };
+}
+
+async function upsertOrderExceptionNotification(params: {
+  orderNumber: string;
+  dedupKey: string;
+  title: string;
+  detail: string;
+  incidentKey: string;
+  normalizedRawKey: string;
+  carrierContext: string;
+  metadata: Prisma.InputJsonObject;
+}): Promise<void> {
+  const existing = await prisma.notification.findFirst({
+    where: { dedupKey: params.dedupKey },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existing) {
+    const prevMeta = (existing.metadata ?? null) as Record<string, unknown> | null;
+    const prevIncidentKey = readMetaString(prevMeta, "incidentKey");
+    if (matchesSameCarrierIncident(prevIncidentKey, params.incidentKey, params.normalizedRawKey)) {
+      if (!hasStoredCarrierContext(prevMeta) && params.carrierContext.length > 0) {
+        await prisma.notification.update({
+          where: { id: existing.id },
+          data: { title: params.title, detail: params.detail, metadata: params.metadata },
+        });
+      }
+      return;
+    }
+  }
+
+  await notify({
     type: "ORDER",
     severity: "warning",
     title: params.title,
@@ -868,9 +954,8 @@ async function upsertOrderReturnedNotification(params: {
     actionUrl: `/admin/pedidos/${params.orderNumber}`,
     actionLabel: "Revisar pedido",
     dedupKey: params.dedupKey,
-    metadata: params.buildMetadata(null),
+    metadata: params.metadata,
   });
-  return { notifId: created.id, alreadyEmailed: false };
 }
 
 /**
@@ -909,14 +994,13 @@ export async function notifyOrderShippingException(input: {
     });
     if (!order) return;
 
-    const cleanRaw = sanitizeCarrierNote(input.carrierStatusRaw) || "NOVEDAD";
-    const cleanDesc = sanitizeCarrierNote(input.carrierDescription);
-    const cleanClar = sanitizeCarrierNote(input.carrierClarification);
-    const carrierContext = [cleanDesc, cleanClar].filter(Boolean).join(" · ");
+    const { cleanRaw, cleanDesc, cleanClar, carrierContext } = normalizeCarrierIncidentNotes({
+      ...input,
+      fallbackRaw: "NOVEDAD",
+    });
     const normalizedRawKey = cleanRaw.toUpperCase();
     const incidentKey = buildIncidentKey(normalizedRawKey, input.occurredAt);
     const isVoidedGuide = Boolean(input.isVoidedGuide);
-    const dedupKey = `order-exception-${order.id}`;
 
     const { title, detail } = formatShippingExceptionCopy({
       orderNumber: order.number,
@@ -927,46 +1011,26 @@ export async function notifyOrderShippingException(input: {
       isVoidedGuide,
     });
 
-    const existing = await prisma.notification.findFirst({
-      where: { dedupKey },
-      orderBy: { createdAt: "desc" },
-    });
-    const prevMeta = (existing?.metadata ?? null) as Record<string, unknown> | null;
-    const prevIncidentKey = typeof prevMeta?.incidentKey === "string" ? prevMeta.incidentKey : null;
-    const prevHadContext = Boolean(prevMeta?.carrierDescription || prevMeta?.carrierClarification);
-
-    const metadata = {
-      orderId: order.id,
+    await upsertOrderExceptionNotification({
       orderNumber: order.number,
-      trackingNumber: order.trackingNumber,
-      carrierStatusRaw: cleanRaw,
-      carrierDescription: cleanDesc || null,
-      carrierClarification: cleanClar || null,
-      incidentKey,
-      isVoidedGuide,
-      orderStatus: order.status,
-      paymentMethod: order.paymentMethod,
-    };
-
-    if (existing && matchesSameCarrierIncident(prevIncidentKey, incidentKey, normalizedRawKey)) {
-      if (!prevHadContext && carrierContext.length > 0) {
-        await prisma.notification.update({
-          where: { id: existing.id },
-          data: { title, detail, metadata },
-        });
-      }
-      return;
-    }
-
-    await notify({
-      type: "ORDER",
-      severity: "warning",
+      dedupKey: `order-exception-${order.id}`,
       title,
       detail,
-      actionUrl: `/admin/pedidos/${order.number}`,
-      actionLabel: "Revisar pedido",
-      dedupKey,
-      metadata,
+      incidentKey,
+      normalizedRawKey,
+      carrierContext,
+      metadata: {
+        orderId: order.id,
+        orderNumber: order.number,
+        trackingNumber: order.trackingNumber,
+        carrierStatusRaw: cleanRaw,
+        carrierDescription: cleanDesc || null,
+        carrierClarification: cleanClar || null,
+        incidentKey,
+        isVoidedGuide,
+        orderStatus: order.status,
+        paymentMethod: order.paymentMethod,
+      },
     });
   } catch (err) {
     logger.error({
@@ -975,6 +1039,44 @@ export async function notifyOrderShippingException(input: {
       err: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+async function sendOrderReturnedCustomerEmail(params: {
+  orderNumber: string;
+  email: string;
+  ship: ShippingAddrSnapshot;
+  notifId: string;
+  buildMetadata: (emailSentAt: string | null) => Prisma.InputJsonObject;
+}): Promise<void> {
+  const tpl = await renderOrderReturnedEmail({
+    orderNumber: params.orderNumber,
+    customerName: params.ship.fullName ?? "Cliente",
+  });
+  const result = await sendEmail({
+    to: params.email,
+    subject: tpl.subject,
+    html: tpl.html,
+    text: tpl.text,
+    idempotencyKey: `${params.orderNumber}-returned`,
+    tags: [
+      { name: "type", value: "order_returned" },
+      { name: "order_number", value: params.orderNumber },
+    ],
+  });
+  if (isEmailPermanentlyHandled(result)) {
+    await prisma.notification
+      .update({
+        where: { id: params.notifId },
+        data: { metadata: params.buildMetadata(new Date().toISOString()) },
+      })
+      .catch(() => null);
+  }
+  logger.info({
+    event: "order.returned_notification.sent",
+    orderNumber: params.orderNumber,
+    to: params.email,
+    result: result.sent ? "ok" : `skip:${result.reason}`,
+  });
 }
 
 /**
@@ -1011,20 +1113,19 @@ export async function notifyOrderReturned(input: {
     });
     if (!order) return;
 
-    const cleanRaw = sanitizeCarrierNote(input.carrierStatusRaw) || "DEVUELTO";
-    const cleanDesc = sanitizeCarrierNote(input.carrierDescription);
-    const cleanClar = sanitizeCarrierNote(input.carrierClarification);
-    const carrierContext = [cleanDesc, cleanClar].filter(Boolean).join(" · ");
+    const { cleanRaw, cleanDesc, cleanClar, carrierContext } = normalizeCarrierIncidentNotes({
+      ...input,
+      fallbackRaw: "DEVUELTO",
+    });
     const contextSuffix = carrierContext ? `: ${carrierContext}` : "";
     const moneyHint = resolvePaymentRefundHint(order.paymentMethod);
-    const dedupKey = `order-returned-${order.id}`;
     const title = `Pedido ${order.number} devuelto por la transportadora`;
     const detail =
       `El carrier reportó "${cleanRaw}" (guía ${order.trackingNumber ?? "—"})${contextSuffix}. ` +
       `Acción esperada: revisa el pedido y decide — reenvío al cliente, reembolso (${moneyHint}) ` +
       `o reposición del stock cuando el paquete llegue de vuelta. Nada de esto es automático.`;
 
-    const buildMetadata = (emailSentAt: string | null) => ({
+    const buildMetadata = (emailSentAt: string | null): Prisma.InputJsonObject => ({
       orderId: order.id,
       orderNumber: order.number,
       trackingNumber: order.trackingNumber,
@@ -1037,9 +1138,8 @@ export async function notifyOrderReturned(input: {
     });
 
     const { notifId, alreadyEmailed } = await upsertOrderReturnedNotification({
-      orderId: order.id,
       orderNumber: order.number,
-      dedupKey,
+      dedupKey: `order-returned-${order.id}`,
       title,
       detail,
       cleanRaw,
@@ -1048,35 +1148,12 @@ export async function notifyOrderReturned(input: {
     });
     if (alreadyEmailed) return;
 
-    const ship = order.shippingAddress as ShippingAddrSnapshot;
-    const tpl = await renderOrderReturnedEmail({
+    await sendOrderReturnedCustomerEmail({
       orderNumber: order.number,
-      customerName: ship.fullName ?? "Cliente",
-    });
-    const result = await sendEmail({
-      to: order.email,
-      subject: tpl.subject,
-      html: tpl.html,
-      text: tpl.text,
-      idempotencyKey: `${order.number}-returned`,
-      tags: [
-        { name: "type", value: "order_returned" },
-        { name: "order_number", value: order.number },
-      ],
-    });
-    if (isEmailPermanentlyHandled(result)) {
-      await prisma.notification
-        .update({
-          where: { id: notifId },
-          data: { metadata: buildMetadata(new Date().toISOString()) },
-        })
-        .catch(() => null);
-    }
-    logger.info({
-      event: "order.returned_notification.sent",
-      orderNumber: order.number,
-      to: order.email,
-      result: result.sent ? "ok" : `skip:${result.reason}`,
+      email: order.email,
+      ship: order.shippingAddress as ShippingAddrSnapshot,
+      notifId,
+      buildMetadata,
     });
   } catch (err) {
     logger.error({

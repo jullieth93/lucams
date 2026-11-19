@@ -178,9 +178,21 @@ describe.skipIf(!hasDb)("ShipmentEvent — persistencia e idempotencia cross-sou
     expect(otroMinuto).not.toBe(a);
   });
 
-  it("omite novedades operativas (EXCEPTION/NOVEDAD) en ShipmentEvent pero sí persiste devoluciones reales (RETURNED)", async () => {
+  it("persiste tanto EXCEPTION (NOVEDAD) como RETURNED (DEVOLUCIÓN) una sola vez sin spam y enriquece descripción desde polling", async () => {
     const countBefore = await prisma.shipmentEvent.count({ where: { orderId } });
-    const skippedException = await recordShipmentEvents({
+    const occurredAt = new Date("2026-11-18T23:31:00.000Z");
+
+    // 1) Webhook con fecha pero sin descripción → 1 fila EXCEPTION.
+    const fromWebhook = await recordShipmentEvents({
+      orderId,
+      trackingNumber,
+      source: "WEBHOOK",
+      events: [{ carrierStatusRaw: "NOVEDAD", occurredAt }],
+    });
+    expect(fromWebhook).toBe(1);
+
+    // 2) Polling del mismo minuto con descripción + aclaración → 0 filas nuevas (sin spam), pero enriquece la descripción vacía.
+    const fromPoll = await recordShipmentEvents({
       orderId,
       trackingNumber,
       source: "POLL",
@@ -188,13 +200,21 @@ describe.skipIf(!hasDb)("ShipmentEvent — persistencia e idempotencia cross-sou
         {
           carrierStatusRaw: "NOVEDAD",
           description: "ENTREGA NO EFECTUADA POR INCONVENIENTES OPERATIVOS",
-          occurredAt: new Date("2026-11-18T23:31:00.000Z"),
+          clarification: "18:30 : NOMBRE: 2986 ACLARACION:por tiempo",
+          occurredAt,
         },
       ],
     });
-    expect(skippedException).toBe(0);
-    expect(await prisma.shipmentEvent.count({ where: { orderId } })).toBe(countBefore);
+    expect(fromPoll).toBe(0);
+    expect(await prisma.shipmentEvent.count({ where: { orderId } })).toBe(countBefore + 1);
 
+    const eventsAfterPoll = await listShipmentEvents(orderId);
+    const novedadRow = eventsAfterPoll.find((e) => e.status === "EXCEPTION");
+    expect(novedadRow?.description).toBe(
+      "ENTREGA NO EFECTUADA POR INCONVENIENTES OPERATIVOS (por tiempo)",
+    );
+
+    // 3) Devolución confirmada (`RETURNED`) también queda trazada con su propio estado.
     const savedReturned = await recordShipmentEvents({
       orderId,
       trackingNumber,

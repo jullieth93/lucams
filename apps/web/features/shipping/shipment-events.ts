@@ -18,7 +18,7 @@ import "server-only";
  */
 
 import { prisma } from "@/lib/db";
-import { logger } from "@/lib/logger";
+import { logger, scrubPii } from "@/lib/logger";
 import { mapAveonlineStatus } from "@/features/shipping/aveonline";
 
 export type ShipmentEventInput = {
@@ -26,6 +26,8 @@ export type ShipmentEventInput = {
   carrierStatusRaw: string;
   /** Descripción operativa del carrier (vacía en eventos de webhook). */
   description?: string;
+  /** Aclaración operativa adicional del carrier (`historicos[].aclaracion` en polling). */
+  clarification?: string;
   occurredAt: Date;
 };
 
@@ -40,7 +42,34 @@ const TRACKING_STATUS = [
 type TrackingStatusValue = (typeof TRACKING_STATUS)[number];
 
 function normalizeCarrierStatus(raw: string): string {
-  return raw.trim().toUpperCase().replace(/\s+/g, " ");
+  return raw.trim().toUpperCase().split(/\s+/).join(" ");
+}
+
+/**
+ * Extrae y sanea la descripción + aclaración operativa de Aveonline sin códigos
+ * internos de mensajero (`"18:30 : NOMBRE: 2986 ACLARACION:por tiempo"` → `"por tiempo"`),
+ * produciendo un texto limpio y veraz tanto para `/admin/pedidos/[number]` como para
+ * `/pedido/[token]`.
+ */
+export function formatCarrierEventDescription(
+  description?: string,
+  clarification?: string,
+): string {
+  const cleanDesc = description ? scrubPii(description.trim().split(/\s+/).join(" ")) : "";
+  let cleanClar = "";
+  if (clarification) {
+    const rawClar = clarification.trim().split(/\s+/).join(" ");
+    const match = /ACLARACI[OÓ]N\s*:\s*(.+)$/i.exec(rawClar);
+    const extracted = match ? match[1].trim() : rawClar;
+    cleanClar = scrubPii(extracted);
+  }
+  if (cleanDesc && cleanClar) {
+    if (cleanDesc.toLowerCase().includes(cleanClar.toLowerCase())) {
+      return cleanDesc.slice(0, 500);
+    }
+    return `${cleanDesc} (${cleanClar})`.slice(0, 500);
+  }
+  return (cleanDesc || cleanClar).slice(0, 500);
 }
 
 /**
@@ -91,17 +120,12 @@ export async function recordShipmentEvents(input: {
 }): Promise<number> {
   if (!input.events.length) return 0;
   try {
-    // Las novedades operativas del carrier (`EXCEPTION`: "NOVEDAD", "por tiempo", etc.)
-    // NO se persisten en `ShipmentEvent`: son incidencias internas de ruta que suelen
-    // resolverse en el reintento del día hábil siguiente y solo notifican al admin
-    // (caso LCM-2026-0006). El timeline del pedido conserva únicamente hitos reales de
-    // avance y devoluciones confirmadas (`RETURNED`).
+    // Registra TODOS los hitos reales del carrier con su fecha verdadera en hora
+    // Colombia (`parseAveonlineDate`), incluyendo tanto novedades operativas de ruta
+    // (`EXCEPTION` / `NOVEDAD`) como devoluciones confirmadas (`RETURNED`). Gracias al
+    // parseo determinista de `DD/MM/YYYY HH:mm`, cada hito genera exactamente 1 fila.
     const rows = input.events
-      .filter((ev) => {
-        const raw = ev.carrierStatusRaw.trim();
-        if (!raw) return false;
-        return mapAveonlineStatus(raw) !== "EXCEPTION";
-      })
+      .filter((ev) => ev.carrierStatusRaw.trim().length > 0)
       .map((ev) => {
         const mapped: TrackingStatusValue = mapAveonlineStatus(ev.carrierStatusRaw);
         const isGenerated = normalizeCarrierStatus(ev.carrierStatusRaw) === "GENERADA";
@@ -116,7 +140,7 @@ export async function recordShipmentEvents(input: {
           trackingNumber: input.trackingNumber,
           status: TRACKING_STATUS.includes(mapped) ? mapped : "PENDING",
           carrierStatusRaw: ev.carrierStatusRaw.trim().slice(0, 120),
-          description: (ev.description ?? "").trim().slice(0, 500),
+          description: formatCarrierEventDescription(ev.description, ev.clarification),
           occurredAt,
           source: input.source,
           dedupKey: buildShipmentEventDedupKey({
@@ -128,6 +152,9 @@ export async function recordShipmentEvents(input: {
       });
     if (!rows.length) return 0;
     const result = await prisma.shipmentEvent.createMany({ data: rows, skipDuplicates: true });
+    if (input.source === "POLL" && result.count < rows.length) {
+      await enrichExistingEmptyDescriptions(rows);
+    }
     return result.count;
   } catch (err) {
     logger.warn({
@@ -138,6 +165,18 @@ export async function recordShipmentEvents(input: {
       err: err instanceof Error ? err.message : String(err),
     });
     return 0;
+  }
+}
+
+async function enrichExistingEmptyDescriptions(
+  rows: Array<{ dedupKey: string; description: string }>,
+): Promise<void> {
+  const withDescription = rows.filter((r) => r.description.length > 0);
+  for (const row of withDescription) {
+    await prisma.shipmentEvent.updateMany({
+      where: { dedupKey: row.dedupKey, description: "" },
+      data: { description: row.description },
+    });
   }
 }
 
@@ -164,7 +203,7 @@ export async function listShipmentEvents(orderId: string) {
  * descripción, escondiendo el avance real del paquete).
  */
 export function humanizeCarrierStatus(raw: string): string {
-  const clean = raw.trim().replace(/\s+/g, " ").toLowerCase();
+  const clean = raw.trim().replaceAll(/\s+/g, " ").toLowerCase();
   if (!clean) return "";
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
@@ -190,6 +229,15 @@ export function friendlyCarrierEventLabel(raw: string): string {
     "EN TRÁNSITO": "En tránsito hacia tu ciudad",
     ENTREGADA: "Entregado",
     ENTREGADO: "Entregado",
+    "ENTREGADA DIGITALIZADA": "Entregado",
+    NOVEDAD: "Novedad operativa en reparto",
+    "EN NOVEDAD": "Novedad operativa en reparto",
+    EXCEPCION: "Novedad operativa en reparto",
+    EXCEPCIÓN: "Novedad operativa en reparto",
+    DEVUELTA: "Devuelto a origen",
+    DEVUELTO: "Devuelto a origen",
+    DEVOLUCION: "Devuelto a origen",
+    DEVOLUCIÓN: "Devuelto a origen",
   };
   return FRIENDLY[normalized] ?? humanizeCarrierStatus(raw);
 }

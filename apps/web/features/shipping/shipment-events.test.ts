@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildShipmentEventDedupKey,
+  formatCarrierEventDescription,
   friendlyCarrierEventLabel,
   humanizeCarrierStatus,
 } from "./shipment-events";
@@ -50,5 +51,20 @@ describe("friendlyCarrierEventLabel", () => {
   });
   it("estado desconocido cae a humanización (no a la genérica)", () => {
     expect(friendlyCarrierEventLabel("EN AGENCIA LOCAL")).toBe("En agencia local");
+  });
+  it("diferencia asertivamente NOVEDAD operativa frente a DEVOLUCIÓN a origen", () => {
+    expect(friendlyCarrierEventLabel("NOVEDAD")).toBe("Novedad operativa en reparto");
+    expect(friendlyCarrierEventLabel("DEVUELTA")).toBe("Devuelto a origen");
+  });
+});
+
+describe("formatCarrierEventDescription", () => {
+  it("extrae la aclaración humana de Aveonline sin códigos internos de mensajero", () => {
+    expect(
+      formatCarrierEventDescription(
+        "ENTREGA NO EFECTUADA POR INCONVENIENTES OPERATIVOS",
+        "18:30 : NOMBRE: 2986 ACLARACION:por tiempo",
+      ),
+    ).toBe("ENTREGA NO EFECTUADA POR INCONVENIENTES OPERATIVOS (por tiempo)");
   });
 });
