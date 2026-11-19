@@ -11,7 +11,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/db";
-import { logger } from "@/lib/logger";
+import { logger, scrubPii } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { designDisplayUnits } from "@/features/personalization/design-units";
 import {
@@ -758,24 +758,144 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
   }
 }
 
+function sanitizeCarrierNote(value?: string): string {
+  return value ? scrubPii(value.trim().replace(/\s+/g, " ")).slice(0, 240) : "";
+}
+
 /**
- * N-22b — Pedido DEVUELTO / CON NOVEDAD por la transportadora (webhook
- * Aveonline RETURNED/EXCEPTION). Antes solo se marcaba el flag admin
- * (needsReconciliation): el cliente no se enteraba de que su paquete venía de
- * vuelta hasta que preguntaba.
+ * Novedad operativa o guía anulada reportada por la transportadora (`EXCEPTION`:
+ * `NOVEDAD`, `EXCEPCION`, `ANULADA` — caso real LCM-2026-0006).
  *
- * Dos avisos, ambos best-effort e idempotentes por evento (el dedup de
- * WebhookEvent ya garantiza una sola corrida por evento del carrier):
- *  1) Centro de notificaciones admin con la ACCIÓN ESPERADA explícita
- *     (revisar y decidir reenvío / reembolso / reposición de stock). NO se
- *     automatiza ninguna de las tres: es decisión operativa. dedupKey por
- *     orden: eventos repetidos actualizan la misma notificación (anti-ruido).
- *  2) Email al cliente con copy honesto, sin promesas ("tu pedido viene de
- *     vuelta, te contactamos"). idempotencyKey `${number}-returned`.
+ * Separación estricta frente a `notifyOrderReturned`:
+ *  1) SOLO avisa al admin en `/admin/notificaciones` (JAMÁS envía correo de
+ *     «viene de vuelta» al cliente, porque una novedad operativa suele salir a
+ *     reintento al siguiente día hábil o resolverse aclarando dirección en Aveonline).
+ *  2) Dedup determinista en PostgreSQL incluso si la notificación ya fue marcada
+ *     como leída (`readAt != null`), evitando que `tracking-sync` (cada 15 min)
+ *     recree avisos o suba `createdAt` en bucle. Si el webhook llegó sin detalle y
+ *     el polling posterior trae `descripcion`/`aclaracion` del mismo incidente,
+ *     enriquece el texto una sola vez sin reabrir `readAt`.
+ */
+export async function notifyOrderShippingException(input: {
+  orderId: string;
+  carrierStatusRaw: string;
+  carrierDescription?: string;
+  carrierClarification?: string;
+  occurredAt?: Date;
+  isVoidedGuide?: boolean;
+}): Promise<void> {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { id: input.orderId, deletedAt: null },
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        paymentMethod: true,
+        shippingCarrier: true,
+        trackingNumber: true,
+      },
+    });
+    if (!order) return;
+
+    const cleanRaw = sanitizeCarrierNote(input.carrierStatusRaw) || "NOVEDAD";
+    const cleanDesc = sanitizeCarrierNote(input.carrierDescription);
+    const cleanClar = sanitizeCarrierNote(input.carrierClarification);
+    const carrierContext = [cleanDesc, cleanClar].filter(Boolean).join(" · ");
+    const normalizedRawKey = cleanRaw.toUpperCase();
+    const incidentKey = input.occurredAt
+      ? `${normalizedRawKey}:${Math.floor(input.occurredAt.getTime() / 60_000)}`
+      : `${normalizedRawKey}:no-ts`;
+
+    const dedupKey = `order-exception-${order.id}`;
+    const carrierLabel = order.shippingCarrier
+      ? carrierDisplayName(order.shippingCarrier)
+      : "La transportadora";
+    const title = input.isVoidedGuide
+      ? `Guía anulada en pedido ${order.number}`
+      : `Novedad de entrega en pedido ${order.number}`;
+    const detail = input.isVoidedGuide
+      ? `${carrierLabel} reportó "${cleanRaw}" en la guía ${order.trackingNumber ?? "—"}${
+          carrierContext ? ` (${carrierContext})` : ""
+        }. Acción esperada: verifica en Aveonline y genera una nueva guía o coordina el despacho; no se envió correo de devolución al cliente.`
+      : `${carrierLabel} reportó "${cleanRaw}" en la guía ${order.trackingNumber ?? "—"}${
+          carrierContext ? `: ${carrierContext}` : ""
+        }. Suele corresponder a un inconveniente operativo de ruta con reintento al siguiente día hábil; verifica en el panel de Aveonline solo si requiere aclarar dirección o teléfono. Al cliente no se le notificó devolución ni se activó reconciliación de pago.`;
+
+    const existing = await prisma.notification.findFirst({
+      where: { dedupKey },
+      orderBy: { createdAt: "desc" },
+    });
+    const prevMeta = (existing?.metadata ?? null) as Record<string, unknown> | null;
+    const prevIncidentKey = typeof prevMeta?.incidentKey === "string" ? prevMeta.incidentKey : null;
+    const prevHadContext = Boolean(prevMeta?.carrierDescription || prevMeta?.carrierClarification);
+    const isSameLogicalIncident =
+      prevIncidentKey !== null &&
+      (prevIncidentKey === incidentKey ||
+        prevIncidentKey === `${normalizedRawKey}:no-ts` ||
+        (incidentKey === `${normalizedRawKey}:no-ts` &&
+          prevIncidentKey.startsWith(`${normalizedRawKey}:`)));
+
+    const metadata = {
+      orderId: order.id,
+      orderNumber: order.number,
+      trackingNumber: order.trackingNumber,
+      carrierStatusRaw: cleanRaw,
+      carrierDescription: cleanDesc || null,
+      carrierClarification: cleanClar || null,
+      incidentKey,
+      isVoidedGuide: Boolean(input.isVoidedGuide),
+      orderStatus: order.status,
+      paymentMethod: order.paymentMethod,
+    };
+
+    if (existing && isSameLogicalIncident) {
+      if (!prevHadContext && carrierContext.length > 0) {
+        await prisma.notification.update({
+          where: { id: existing.id },
+          data: { title, detail, metadata },
+        });
+      }
+      return;
+    }
+
+    await notify({
+      type: "ORDER",
+      severity: "warning",
+      title,
+      detail,
+      actionUrl: `/admin/pedidos/${order.number}`,
+      actionLabel: "Revisar pedido",
+      dedupKey,
+      metadata,
+    });
+  } catch (err) {
+    logger.error({
+      event: "order.shipping_exception_notification.fail",
+      orderId: input.orderId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * N-22b — Pedido DEVUELTO al remitente confirmado por la transportadora (`RETURNED`:
+ * `DEVUELTO`, `DEVOLUCIÓN`, `RETORNADO`). NUNCA se invoca para novedades operativas
+ * (`EXCEPTION`).
+ *
+ * Dos avisos, ambos best-effort e idempotentes en PostgreSQL:
+ *  1) Centro de notificaciones admin con la acción esperada explícita (reenvío,
+ *     reembolso o reposición de stock al recibir el paquete). Sin re-subir `createdAt`
+ *     ni recrear filas cada 15 min en `tracking-sync` si el estado no cambió.
+ *  2) Email honesto al cliente («tu pedido viene de vuelta, te contactamos») enviado
+ *     máximo UNA vez por pedido (guarda `customerEmailSentAt` persistida en `metadata`
+ *     más `idempotencyKey` de Resend como segunda capa).
  */
 export async function notifyOrderReturned(input: {
   orderId: string;
   carrierStatusRaw: string;
+  carrierDescription?: string;
+  carrierClarification?: string;
 }): Promise<void> {
   try {
     const order = await prisma.order.findFirst({
@@ -792,35 +912,81 @@ export async function notifyOrderReturned(input: {
     });
     if (!order) return;
 
+    const cleanRaw = sanitizeCarrierNote(input.carrierStatusRaw) || "DEVUELTO";
+    const cleanDesc = sanitizeCarrierNote(input.carrierDescription);
+    const cleanClar = sanitizeCarrierNote(input.carrierClarification);
+    const carrierContext = [cleanDesc, cleanClar].filter(Boolean).join(" · ");
+
     // 1) Notificación in-app al centro admin — la acción esperada va explícita.
     const moneyHint =
       order.paymentMethod === "WOMPI"
         ? "si el pago fue en línea, evalúa reembolso en Wompi (botón Reembolsar del pedido)"
         : order.paymentMethod === "DIRECT_TRANSFER"
           ? "fue pago directo verificado (Bre-B / Transferencia): evalúa reembolso bancario desde el pedido"
-          : "es contra entrega: no hay dinero que devolver si no se cobró";
-    await notify({
-      type: "ORDER",
-      severity: "warning",
-      title: `Pedido ${order.number} devuelto por la transportadora`,
-      detail:
-        `El carrier reportó "${input.carrierStatusRaw}" (guía ${order.trackingNumber ?? "—"}). ` +
-        `Acción esperada: revisa el pedido y decide — reenvío al cliente, reembolso (${moneyHint}) ` +
-        `o reposición del stock cuando el paquete llegue de vuelta. Nada de esto es automático.`,
-      actionUrl: `/admin/pedidos/${order.number}`,
-      actionLabel: "Revisar pedido",
-      dedupKey: `order-returned-${order.id}`,
-      metadata: {
-        orderId: order.id,
-        orderNumber: order.number,
-        trackingNumber: order.trackingNumber,
-        carrierStatusRaw: input.carrierStatusRaw,
-        orderStatus: order.status,
-        paymentMethod: order.paymentMethod,
-      },
+          : "es contraentrega: no hay dinero que devolver si no se cobró";
+    const dedupKey = `order-returned-${order.id}`;
+    const title = `Pedido ${order.number} devuelto por la transportadora`;
+    const detail =
+      `El carrier reportó "${cleanRaw}" (guía ${order.trackingNumber ?? "—"})${
+        carrierContext ? `: ${carrierContext}` : ""
+      }. ` +
+      `Acción esperada: revisa el pedido y decide — reenvío al cliente, reembolso (${moneyHint}) ` +
+      `o reposición del stock cuando el paquete llegue de vuelta. Nada de esto es automático.`;
+
+    const existing = await prisma.notification.findFirst({
+      where: { dedupKey },
+      orderBy: { createdAt: "desc" },
+    });
+    const prevMeta = (existing?.metadata ?? null) as Record<string, unknown> | null;
+    const prevCustomerEmailSentAt =
+      typeof prevMeta?.customerEmailSentAt === "string" ? prevMeta.customerEmailSentAt : null;
+    const prevRaw =
+      typeof prevMeta?.carrierStatusRaw === "string" ? prevMeta.carrierStatusRaw : null;
+    const prevHadContext = Boolean(prevMeta?.carrierDescription || prevMeta?.carrierClarification);
+
+    const buildMetadata = (emailSentAt: string | null) => ({
+      orderId: order.id,
+      orderNumber: order.number,
+      trackingNumber: order.trackingNumber,
+      carrierStatusRaw: cleanRaw,
+      carrierDescription: cleanDesc || null,
+      carrierClarification: cleanClar || null,
+      orderStatus: order.status,
+      paymentMethod: order.paymentMethod,
+      ...(emailSentAt ? { customerEmailSentAt: emailSentAt } : {}),
     });
 
-    // 2) Email al cliente (sin promesas: "te contactamos").
+    let notifId: string;
+    if (!existing) {
+      const created = await notify({
+        type: "ORDER",
+        severity: "warning",
+        title,
+        detail,
+        actionUrl: `/admin/pedidos/${order.number}`,
+        actionLabel: "Revisar pedido",
+        dedupKey,
+        metadata: buildMetadata(null),
+      });
+      notifId = created.id;
+    } else {
+      notifId = existing.id;
+      const changed = prevRaw !== cleanRaw || (!prevHadContext && carrierContext.length > 0);
+      if (changed) {
+        await prisma.notification.update({
+          where: { id: existing.id },
+          data: {
+            title,
+            detail,
+            metadata: buildMetadata(prevCustomerEmailSentAt),
+          },
+        });
+      }
+    }
+
+    // 2) Email al cliente: máximo UNA vez por devolución confirmada (incluso tras >24 h en Resend).
+    if (prevCustomerEmailSentAt) return;
+
     const ship = order.shippingAddress as ShippingAddrSnapshot;
     const tpl = await renderOrderReturnedEmail({
       orderNumber: order.number,
@@ -837,6 +1003,19 @@ export async function notifyOrderReturned(input: {
         { name: "order_number", value: order.number },
       ],
     });
+    const permanentlyHandled =
+      result.sent ||
+      result.reason === "disabled-by-env" ||
+      (result.reason === "no-api-key" && process.env.NODE_ENV !== "production");
+    if (permanentlyHandled) {
+      const sentIso = new Date().toISOString();
+      await prisma.notification
+        .update({
+          where: { id: notifId },
+          data: { metadata: buildMetadata(sentIso) },
+        })
+        .catch(() => null);
+    }
     logger.info({
       event: "order.returned_notification.sent",
       orderNumber: order.number,

@@ -52,9 +52,12 @@ vi.mock("@/features/orders/emails", () => ({
   // orden (CANCELLED) → sendOrderCancelled. Sin el stub, el módulo mockeado lanza
   // "No export is defined on the mock" al invocarlo.
   sendOrderCancelled: async () => {},
-  // N-22b — el saga lo invoca en la rama RETURNED/EXCEPTION del tracking.
+  // N-22b — devolución confirmada vs novedad operativa en ruta.
   notifyOrderReturned: async (opts: { orderId: string; carrierStatusRaw: string }) => {
     emailCalls.push({ fn: "notifyOrderReturned", orderId: opts.orderId });
+  },
+  notifyOrderShippingException: async (opts: { orderId: string; carrierStatusRaw: string }) => {
+    emailCalls.push({ fn: "notifyOrderShippingException", orderId: opts.orderId });
   },
 }));
 

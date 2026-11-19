@@ -141,10 +141,17 @@ vi.mock("./emails", async () => {
       emailCalls.push({ fn: "sendOrderConfirmation", orderId });
       return true;
     },
-    // N-22b — el saga lo invoca en la rama RETURNED/EXCEPTION del tracking.
+    // N-22b — el saga lo invoca únicamente en devolución confirmada (RETURNED).
     notifyOrderReturned: async (opts: { orderId: string; carrierStatusRaw: string }) => {
       emailCalls.push({
         fn: "notifyOrderReturned",
+        orderId: opts.orderId,
+        extra: opts.carrierStatusRaw,
+      });
+    },
+    notifyOrderShippingException: async (opts: { orderId: string; carrierStatusRaw: string }) => {
+      emailCalls.push({
+        fn: "notifyOrderShippingException",
         orderId: opts.orderId,
         extra: opts.carrierStatusRaw,
       });
@@ -1355,7 +1362,7 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       expect(emailCalls.filter((c) => c.fn !== "notifyOrderReturned")).toHaveLength(0);
     }, 30000);
 
-    it("EXCEPTION → noop, sin transición + N-22b aviso", async () => {
+    it("EXCEPTION (NOVEDAD operativa) → NO prende needsReconciliation ni avisa devolución al cliente; alerta solo admin", async () => {
       const tracking = `${RUN}-TRK-E`;
       const orderId = await makeFulfillingOrder("E", tracking);
 
@@ -1366,8 +1373,36 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       });
 
       expect(res.status).toBe("noop");
-      expect((await getOrder(orderId))?.status).toBe("FULFILLING");
-      expect(emailCalls.filter((c) => c.fn === "notifyOrderReturned")).toHaveLength(1);
+      const o = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { status: true, needsReconciliation: true, reconciliationReason: true },
+      });
+      expect(o?.status).toBe("FULFILLING");
+      expect(o?.needsReconciliation).toBe(false);
+      expect(o?.reconciliationReason).toBeNull();
+      expect(emailCalls.filter((c) => c.fn === "notifyOrderReturned")).toHaveLength(0);
+      expect(emailCalls.filter((c) => c.fn === "notifyOrderShippingException")).toHaveLength(1);
+    }, 30000);
+
+    it("EXCEPTION con GUIA ANULADA → sí prende needsReconciliation pero sin correo falso de devolución al cliente", async () => {
+      const tracking = `${RUN}-TRK-E2`;
+      const orderId = await makeFulfillingOrder("E2", tracking);
+
+      const res = await processTrackingUpdate({
+        trackingNumber: tracking,
+        status: "EXCEPTION",
+        carrierStatusRaw: "GUIA ANULADA",
+      });
+
+      expect(res.status).toBe("noop");
+      const o = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { needsReconciliation: true, reconciliationReason: true },
+      });
+      expect(o?.needsReconciliation).toBe(true);
+      expect(o?.reconciliationReason).toContain("Guía anulada");
+      expect(emailCalls.filter((c) => c.fn === "notifyOrderReturned")).toHaveLength(0);
+      expect(emailCalls.filter((c) => c.fn === "notifyOrderShippingException")).toHaveLength(1);
     }, 30000);
 
     it("IN_TRANSIT desde un estado no-FULFILLING (ej. DELIVERED) → noop, no retrocede", async () => {
