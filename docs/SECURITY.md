@@ -310,11 +310,11 @@ Leyenda: `SA` = `SUPERADMIN`, `OM` = `OPERATIONS_MANAGER` / `MANAGER`, `CS` = `C
 
 ### 5.5 Progreso y retroalimentación del Centro de Ayuda (`ADR-197`)
 
-- `/admin/ayuda` está permitido para los 8 roles, pero cada guía, relación, búsqueda y procedimiento se filtra nuevamente con `canAccessAdminPath`; ocultar contenido en el cliente no se considera una frontera de seguridad.
-- `saveHelpProgressAction` y `submitHelpFeedbackAction` usan `requireAdminAction` con MFA `aal2` y Zod. El servidor resuelve la guía autorizada, su versión y el número real de pasos; ignora cualquier intento de guardar contenido de un rol superior o pasos arbitrarios.
+- `/admin/ayuda` está permitido para los 8 roles, pero cada guía, subruta, rutina diaria, regla rápida, playbook, búsqueda y procedimiento se filtra en servidor con `canAccessAdminPath` (incluyendo verificación explícita sobre la ruta solicitada antes de resolver por prefijo); el parámetro de vista previa `?rol=` solo se honra cuando `session.admin.role === "SUPERADMIN"`.
+- `getContextualHelpAction`, `saveHelpProgressAction` y `submitHelpFeedbackAction` usan `requireAdminAction` con MFA `aal2` y Zod. El servidor resuelve el contenido autorizado (módulo, `onboarding-*` o `playbook-*`), su versión y el número real de pasos; ignora cualquier intento de consultar o guardar contenido de un rol superior o pasos arbitrarios.
 - `AdminHelpProgress` y `AdminHelpFeedback` aíslan filas por `adminUserId` con unicidad `(adminUserId, guideId)` y cascada al retirar la cuenta. El comentario se limita a 1000 caracteres y la UI prohíbe expresamente incluir datos de clientes o secretos.
 - Las tablas tienen RLS y revocación completa para `anon`, `authenticated` y DML de `service_role`; el acceso legítimo ocurre solo por Prisma en servidor. Están incluidas en la matriz RLS y en la migración `00000000000056`.
-- Los recorridos nunca invocan Server Actions de negocio: su única mutación es el progreso de aprendizaje del propio administrador.
+- Los checklists interactivos nunca invocan Server Actions de negocio: su única mutación es el progreso de aprendizaje del propio administrador.
 
 ### 5.6 Lifecycle Journeys (`ADR-198`)
 

@@ -9,7 +9,7 @@
  * defensivo y rendereamos el shell con info del admin.
  */
 
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { AdminShell } from "@/components/admin-shell";
@@ -19,7 +19,11 @@ import { getCmsImage } from "@/lib/cms";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getUnreadCount } from "@/features/notifications/service";
 import { AdminHelpLauncher } from "@/features/admin-help/components/help-launcher";
-import { getGuideForPath, getOnboardingForRole } from "@/features/admin-help/registry";
+import {
+  getHelpRouteIndex,
+  getOnboardingForRole,
+  getPlaybookIndex,
+} from "@/features/admin-help/registry";
 import { getAdminHelpProgress } from "@/features/admin-help/service";
 
 // Todo el panel admin es SIEMPRE dinámico: exige sesión + datos vivos de la BD, nunca debe
@@ -82,7 +86,8 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
   // cacheado con tag "cms"; null = insignia gradiente + wordmark de siempre).
   const siteLogo = await getCmsImage("site.logo");
   const helpProgress = await getAdminHelpProgress(session.admin.id);
-  const currentGuide = getGuideForPath(pathname, session.admin.role);
+  const routeIndex = getHelpRouteIndex(session.admin.role);
+  const playbookIndex = getPlaybookIndex(session.admin.role);
   const onboarding = getOnboardingForRole(session.admin.role);
 
   return (
@@ -92,12 +97,15 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
       logo={siteLogo ? { url: siteLogo.url, alt: siteLogo.alt } : null}
     >
       {children}
-      <AdminHelpLauncher
-        guide={currentGuide}
-        onboarding={onboarding}
-        role={session.admin.role}
-        progress={helpProgress}
-      />
+      <Suspense fallback={null}>
+        <AdminHelpLauncher
+          routeIndex={routeIndex}
+          playbookIndex={playbookIndex}
+          onboarding={onboarding}
+          role={session.admin.role}
+          initialProgress={helpProgress}
+        />
+      </Suspense>
     </AdminShell>
   );
 }

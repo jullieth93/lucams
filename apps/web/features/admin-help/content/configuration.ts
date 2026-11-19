@@ -1,3 +1,4 @@
+import { HELP_LIVE_NUMBERS } from "../constants";
 import type { AdminModuleGuide } from "../types";
 
 export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
@@ -7,76 +8,61 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     area: "Configuración y seguridad",
     route: "/admin/envios",
     summary:
-      "Transportadoras de Aveonline, límites de peso, Envío Lucams por localidades, hora límite y origen.",
+      "Transportadoras nacionales de Aveonline, límites de peso, Envío Lucams por localidades y hora de corte.",
     purpose:
-      "Configura qué opciones logísticas se ofrecen en el checkout y bajo qué reglas operativas: transportadoras nacionales vía Aveonline con límites de peso mínimo y máximo, mensajería propia Envío Lucams por localidades y verificación del punto de origen de despacho.",
+      "Gobierna qué métodos de entrega ofrece el checkout y bajo qué condiciones: operadores nacionales vía Aveonline acotados por peso mínimo/máximo en kg, mensajería interna Envío Lucams en localidades habilitadas de Bogotá y Soacha, tarifa local fija, hora límite de despacho y validación del punto de recogida.",
     whenToUse: [
-      "Para activar o desactivar una transportadora nacional o definir sus rangos de peso en kg.",
-      "Para ajustar tarifa, hora límite de despacho o localidades cubiertas de Envío Lucams.",
-      "Para verificar que el punto de origen de recogida (PICKUP_*) esté completo antes de cotizar.",
+      "Para activar o pausar una transportadora nacional o ajustar su rango de peso en kg.",
+      "Para modificar la tarifa, localidades cubiertas u hora límite de Envío Lucams.",
+      "Para verificar que los datos del punto de origen de recogida estén completos.",
     ],
     concepts: [
       {
         term: "Rango de peso por transportadora",
         definition:
-          "Límites opcionales de peso mínimo y máximo en kilogramos dentro de los cuales esa transportadora puede cotizarse.",
+          "Límites opcionales (mínimo y máximo en kg) con los que se filtra cada transportadora según el peso apilado real del carrito.",
       },
       {
         term: "Envío Lucams",
         definition:
-          "Modalidad de mensajería propia con tarifa fija para localidades habilitadas de Bogotá y Soacha.",
+          "Mensajería propia con tarifa fija para localidades seleccionadas de Bogotá y Soacha, independiente de Aveonline.",
       },
       {
-        term: "Punto de origen (PICKUP_*)",
+        term: "Hora límite (corte local)",
         definition:
-          "Ciudad, departamento, dirección, teléfono y contacto en Ajustes del sitio desde donde Aveonline cotiza y recoge.",
+          "Hora en reloj de Bogotá (-05:00) que separa las entregas estimadas del ciclo actual frente al siguiente día hábil.",
       },
     ],
     sections: [
       {
         id: "reglas",
-        title: "Reglas de cotización y cobertura",
-        summary: "Determina disponibilidad por peso, cobertura local, tarifa y corte horario.",
+        title: "Cobertura nacional, ruta local y punto de recogida",
+        summary:
+          "Cada cambio afecta inmediatamente las cotizaciones nuevas selladas con HMAC en el checkout.",
         topics: [
           {
-            id: "activa",
-            label: "Transportadora activa",
-            description:
-              "Controla si el operador nacional puede aparecer entre las opciones cotizadas en el checkout.",
-            caution:
-              "Si desactivas todas las transportadoras y también Envío Lucams, ningún cliente podrá finalizar envíos a domicilio.",
-          },
-          {
-            id: "pesos",
-            label: "Peso mínimo y máximo (kg)",
-            description:
-              "Filtra la transportadora según el peso total del carrito antes de ofrecerla al comprador.",
-            interpretation:
-              "Deja vacío cuando no aplique restricción; si defines ambos, el máximo debe ser mayor o igual al mínimo.",
-          },
-          {
-            id: "zonas",
-            label: "Localidades de Envío Lucams",
-            description:
-              "Sectores específicos de Bogotá y Soacha donde opera la entrega local directa.",
-            interpretation:
-              "Activa únicamente localidades con capacidad real de ruta; usa los selectores rápidos por ciudad.",
-          },
-          {
-            id: "corte",
-            label: "Tarifa local y hora límite",
-            description:
-              "Precio fijo en pesos colombianos y hora de corte en zona horaria de Bogotá para promesa del día.",
-            interpretation:
-              "Los pedidos pagados después de la hora límite pasan automáticamente al siguiente día hábil.",
-          },
-          {
             id: "origen",
-            label: "Punto de origen de despacho",
+            label: "Verificación de punto de origen",
             description:
-              "Resumen del remitente logístico configurado en Ajustes del sitio para cotización y recogida.",
+              "Comprueba que ciudad, dirección, contacto y teléfono remitente en Ajustes del sitio estén completos.",
+            caution:
+              "Si aparece alerta de origen incompleto, corrígelo en Ajustes del sitio antes de tocar transportadoras.",
+          },
+          {
+            id: "aveonline-carriers",
+            label: "Transportadoras nacionales y pesos (kg)",
+            description:
+              "Habilita cada operador de Aveonline y filtra qué carritos puede transportar según peso.",
             interpretation:
-              "Si falta ciudad, dirección o teléfono de recogida, el panel muestra alerta preventiva.",
+              "Asegúrate de no dejar huecos de peso (ej. 0–2 kg y 5–10 kg dejando huérfanos los carritos de 3 kg).",
+          },
+          {
+            id: "lucams-local",
+            label: "Localidades, tarifa y corte de Envío Lucams",
+            description:
+              "Define qué localidades de Bogotá y Soacha ven mensajería propia, a qué precio en pesos COP y con qué hora límite.",
+            interpretation:
+              "Activa únicamente zonas donde tengas capacidad operativa real de entrega.",
           },
         ],
       },
@@ -84,30 +70,40 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "configurar-envio",
-        title: "Actualizar reglas de envío",
-        goal: "Ofrecer modalidades, pesos y coberturas que operación puede cumplir.",
+        title: "Ajustar transportadoras o cobertura local sin dejar el checkout sin fletes",
+        goal: "Publicar reglas logísticas cumplibles y verificar cotización nacional y local.",
+        route: "/admin/envios",
         steps: [
-          "Comprueba en el bloque superior que el punto de origen de despacho esté completo y quede al menos un método activo.",
-          "Activa o desactiva cada transportadora nacional y ajusta sus rangos de peso mínimo o máximo si aplica.",
-          "En Envío Lucams revisa tarifa en COP, hora límite en formato 24h y localidades seleccionadas.",
-          "Guarda los cambios de la sección modificada y confirma el aviso de éxito.",
-          "Simula un checkout hacia una localidad cubierta y hacia otra ciudad nacional para validar la cotización.",
+          "Confirma en la cabecera que el punto de origen esté en verde y que siempre permanezca al menos un método activo.",
+          "Ajusta estado o rangos de peso (mínimo ≤ máximo) de las transportadoras nacionales en Aveonline.",
+          "Revisa tarifa COP, hora límite 24h y localidades activas de Envío Lucams.",
+          "Guarda la sección editada y prueba en el checkout una dirección de Bogotá cubierta y una ciudad nacional.",
         ],
         expected:
-          "El checkout ofrece únicamente las modalidades habilitadas con tarifas, pesos y tiempos coherentes.",
+          "El checkout cotiza con sello HMAC tarifas coherentes y nunca queda bloqueado sin transportadora disponible.",
       },
     ],
     cautions: [
-      "No desactives simultáneamente todas las transportadoras de Aveonline y Envío Lucams en una tienda activa.",
+      "Los cambios aplican solo a cotizaciones nuevas; los pedidos ya creados conservan la transportadora y flete sellados al comprar.",
+    ],
+    dontTouch: [
+      "Jamás desactives todas las transportadoras de Aveonline y Envío Lucams al mismo tiempo: bloquearías el 100 % de las ventas en tienda.",
+      "No configures rangos de peso con vacíos intermedios que dejen carritos medianos sin cotización.",
+    ],
+    checklist: [
+      "Punto de origen remitente verificado sin alertas.",
+      "Al menos una transportadora nacional activa sin huecos de peso.",
+      "Cotización probada en checkout para Bogotá y para otra ciudad.",
     ],
     faqs: [
       {
-        question: "¿Cambiar una tarifa o transportadora modifica pedidos anteriores?",
+        question: "¿Si cambio la tarifa de Envío Lucams cambia un pedido ya pagado?",
         answer:
-          "No altera pedidos ni guías ya emitidas; aplica únicamente a cotizaciones nuevas en el checkout.",
+          "No. Cada pedido sella su flete al momento de confirmarse; las nuevas reglas rigen solo hacia adelante.",
       },
     ],
-    related: ["integraciones", "pedidos", "conciliacion", "canales"],
+    related: ["integraciones-aveonline", "contenido-global", "pedidos", "conciliacion"],
+    relatedPlaybooks: ["playbook-pedido-web-300dpi", "playbook-cod-conciliacion-bloqueos"],
     keywords: [
       "Aveonline",
       "Envío Lucams",
@@ -115,104 +111,201 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
       "tarifa",
       "peso",
       "localidad",
-      "zona",
+      "Bogotá",
+      "Soacha",
       "cobertura",
-      "origen",
     ],
-    version: 1,
+    version: 2,
   },
   {
     id: "canales",
-    title: "Canales y Tienda Lucams",
+    title: "Canales omnicanal",
     area: "Configuración y seguridad",
     route: "/admin/canales",
-    summary: "Estado del canal de tienda, modo operativo, URL, feed y conexiones relacionadas.",
+    summary:
+      "Panorama de canales de venta, publicación en escaparate web y preparación omnicanal de inventario.",
     purpose:
-      "Presenta cómo está configurado el canal de venta y qué capacidades tiene activas. La vista Tienda Lucams reúne modo, URL y dependencias para diagnosticar coherencia entre catálogo y checkout.",
+      "Resume los canales comerciales conectados al núcleo de catálogo e inventario de Lucams Shop. La tienda web opera de forma exclusiva en modo transaccional completo (full) con separación estricta entre productos bajo pedido del Estudio (MADE_TO_ORDER) y productos terminados con stock físico (PHYSICAL_STOCK).",
     whenToUse: [
-      "Para verificar el modo y URL del canal.",
-      "Para revisar el estado del feed de productos.",
-      "Antes de investigar una diferencia entre tienda pública y operación.",
+      "Para revisar el estado general de los canales activos y entrar al detalle de Tienda Lucams.",
+      "Antes de auditar qué productos están publicados en el escaparate web y en el feed público.",
     ],
     concepts: [
       {
-        term: "Modo catálogo",
+        term: "Operación full exclusiva",
         definition:
-          "Configuración orientada a captación sin todas las funciones transaccionales del modo completo.",
+          "Lucams Shop opera únicamente como comercio electrónico transaccional completo (carrito, checkout, Wompi, COD y portal B2B); no existe cotización individual por WhatsApp.",
       },
       {
-        term: "Modo completo",
+        term: "MADE_TO_ORDER vs PHYSICAL_STOCK",
         definition:
-          "Operación con carrito, checkout, pagos y logística habilitados según configuración.",
-      },
-      {
-        term: "Merchant feed",
-        definition: "Archivo de productos utilizado por Google Merchant Center.",
+          "Los productos personalizados en el Estudio se fabrican bajo pedido; los productos terminados usan stock físico con reserva de seguridad para venta omnicanal.",
       },
     ],
     sections: [
       {
-        id: "tienda",
-        title: "Estado del canal",
-        summary: "Resume identidad, capacidades e integraciones del canal.",
+        id: "panorama",
+        title: "Tarjetas de canal y arquitectura de publicación",
+        summary: "Conecta el catálogo central con cada superficie comercial habilitada.",
         topics: [
           {
-            id: "modo",
-            label: "Modo de tienda",
-            description: "Define las capacidades comerciales visibles.",
+            id: "tienda-web",
+            label: "Canal Tienda Lucams",
+            description:
+              "Canal principal activo en producción con dominio propio, feed Merchant XML y pasarelas operativas.",
             interpretation:
-              "El modo actual no se cambia desde una preferencia visual; requiere configuración controlada.",
+              "Haz clic en Tienda Lucams para inspeccionar elegibilidad de catálogo, URL canónica y dependencias.",
           },
           {
-            id: "url",
-            label: "URL pública",
-            description: "Dirección del canal que deben usar enlaces e integraciones.",
-            interpretation: "Debe coincidir con el dominio productivo y HTTPS.",
-          },
-          {
-            id: "feed",
-            label: "Feed de productos",
-            description: "Fuente de catálogo para Merchant Center.",
+            id: "externos",
+            label: "Canales externos futuros",
+            description:
+              "La base omnicanal de inventario ya aísla stock físico y kardex por canal; marketplaces externos solo se habilitan cuando su integración oficial está activa.",
             interpretation:
-              "Disponibilidad del XML no garantiza aprobación de productos en Google.",
-          },
-          {
-            id: "salud",
-            label: "Salud de integraciones",
-            description: "Señales de dependencias necesarias para el canal.",
-            interpretation: "Abre Integraciones para diagnosticar el proveedor concreto.",
+              "Nunca prometas disponibilidad en canales aún no conectados en Integraciones.",
           },
         ],
       },
     ],
     procedures: [
       {
-        id: "revisar-canal",
-        title: "Verificar la configuración del canal",
-        goal: "Confirmar coherencia entre tienda, feed e integraciones.",
+        id: "auditar-canales",
+        title: "Revisar coherencia entre catálogo y canales",
+        goal: "Confirmar que los productos visibles y feeds correspondan a la operación vigente.",
+        route: "/admin/canales",
         steps: [
-          "Comprueba URL y modo mostrados.",
-          "Abre la tienda y verifica que sus capacidades coincidan con ese modo.",
-          "Revisa el feed y la selección de productos elegibles.",
-          "Consulta Integraciones para cualquier dependencia degradada.",
-          "Documenta pendientes externos sin interpretar el panel como una acción de publicación.",
+          "Abre Canales y entra al detalle de Tienda Lucams (/admin/canales/tienda).",
+          "Verifica dominio canónico HTTPS, conteo de productos publicados en tienda y salud de integraciones críticas.",
+          "Si un producto activo no aparece en el canal web, revisa en Productos su bandera de publicación en tienda y estado de variantes.",
         ],
         expected:
-          "El canal y sus dependencias presentan una configuración coherente y verificable.",
+          "Tienes certeza de qué oferta pública está expuesta y de que sus conectores transaccionales responden.",
       },
     ],
     cautions: [
-      "No prometas productos en Merchant Center solo porque el feed responde correctamente.",
+      "Publicar un producto en el catálogo no implica aprobación automática en plataformas externas como Google Merchant Center.",
+    ],
+    dontTouch: [
+      "No marques productos personalizados del Estudio como stock físico terminado: el servidor y la arquitectura omnicanal exigen que sean bajo pedido.",
+    ],
+    checklist: [
+      "Canal Tienda Lucams con URL productiva HTTPS y conectores esenciales operativos.",
+      "Productos activos con clasificación correcta entre bajo pedido y stock físico.",
     ],
     faqs: [
       {
-        question: "¿Dónde cambio el modo de tienda?",
-        answer:
-          "Es una configuración de despliegue controlada por el equipo técnico, no una edición cotidiana del contenido.",
+        question:
+          "¿Cómo se atienden pedidos grandes de empresas si la tienda opera 100 % transaccional?",
+        answer: `Las compras individuales cierran directo en el checkout (hasta ${HELP_LIVE_NUMBERS.maxSelfServicePhysicalUnits} unidades físicas por línea) y los proyectos corporativos o eventos desde ${HELP_LIVE_NUMBERS.minB2bUnits} unidades entran por /empresas-y-eventos hacia Oportunidades B2B.`,
       },
     ],
-    related: ["integraciones", "envios", "productos", "observability"],
-    keywords: ["canal", "tienda", "modo", "Merchant", "feed", "Google", "URL"],
+    related: ["canales-tienda", "productos", "inventario", "integraciones"],
+    relatedPlaybooks: ["playbook-catalogo-estudio-lanzamiento"],
+    keywords: [
+      "canales",
+      "omnicanal",
+      "tienda",
+      "escaparate",
+      "bajo pedido",
+      "stock físico",
+      "Merchant",
+    ],
+    version: 2,
+  },
+  {
+    id: "canales-tienda",
+    title: "Canal Tienda Lucams",
+    area: "Configuración y seguridad",
+    route: "/admin/canales/tienda",
+    summary:
+      "Diagnóstico operativo del escaparate web propio, feed XML para Google Merchant y elegibilidad de productos.",
+    purpose:
+      "Muestra en una sola vista la salud comercial de `lucamsshop.com`: dominio canónico, operación transaccional completa, ruta y cobertura del feed Google Merchant XML y estado vivo de los proveedores que sostienen compra, pago y envío.",
+    whenToUse: [
+      "Después de activar, pausar o archivar productos para comprobar cuántos entran al escaparate y al feed.",
+      "Para obtener y verificar la URL del feed XML de Google Merchant Center.",
+      "Cuando investigues por qué el checkout o el catálogo se comporta distinto a lo esperado.",
+    ],
+    concepts: [
+      {
+        term: "Publicación en escaparate (publishedOnStorefront)",
+        definition:
+          "Interruptor por producto que controla si un artículo activo aparece en la tienda web propia y su feed.",
+      },
+      {
+        term: "Feed Google Merchant XML",
+        definition:
+          "Documento público generado dinámicamente con precios en COP, disponibilidad e imágenes de los productos elegibles.",
+      },
+    ],
+    sections: [
+      {
+        id: "diagnostico-tienda",
+        title: "Dominio, catálogo publicado y conectores del canal",
+        summary: "Verifica de un vistazo que vitrina, pagos y envíos estén sincronizados.",
+        topics: [
+          {
+            id: "cobertura-catalogo",
+            label: "Productos elegibles vs pausados",
+            description:
+              "Desglosa cuántos productos activos están publicados en tienda y cuántos quedan excluidos del feed por falta de imagen o variante activa.",
+            interpretation:
+              "Usa este conteo tras cada lanzamiento para detectar fichas incompletas.",
+          },
+          {
+            id: "merchant-xml",
+            label: "Estado del feed XML",
+            description: "Expone el enlace del feed consumido por Google Merchant Center.",
+            caution:
+              "Que el XML responda 200 OK significa que la tienda lo sirve bien; las revisiones políticas de Google se confirman en Merchant Center.",
+          },
+          {
+            id: "dependencias",
+            label: "Semáforo de integraciones del canal",
+            description:
+              "Cruza el estado de Wompi, Aveonline, Resend y Supabase que sostienen la compra directa.",
+            interpretation:
+              "Si alguna dependencia aparece degradada, salta directo a Integraciones u Observabilidad.",
+          },
+        ],
+      },
+    ],
+    procedures: [
+      {
+        id: "verificar-tienda-lucams",
+        title: "Validar el canal web tras cambios de catálogo",
+        goal: "Asegurar que la oferta publicada en web y Merchant XML sea íntegra y comprable.",
+        route: "/admin/canales/tienda",
+        steps: [
+          "Confirma que el dominio público mostrado corresponda al ambiente actual.",
+          "Revisa el conteo de productos publicados y corrige en Productos cualquier ítem activo sin variante o sin foto principal.",
+          "Comprueba que las integraciones de pagos, envíos y correos estén operativas.",
+        ],
+        expected:
+          "El canal web sirve únicamente productos completos y listos para comprar y despachar.",
+      },
+    ],
+    cautions: [
+      "Desmarcar la publicación en escaparate de un producto activo lo retira tanto de las listados web como del feed Merchant.",
+    ],
+    dontTouch: [
+      "No compartas URLs de ambientes de prueba (STG o túneles locales) en cuentas productivas de Google Merchant Center.",
+    ],
+    checklist: [
+      "Dominio productivo correcto.",
+      "Cero productos activos involuntariamente fuera del feed por falta de imagen o variante.",
+      "Conectores de pago y logística en verde.",
+    ],
+    faqs: [
+      {
+        question: "¿Por qué en STG veo más productos pausados que en producción?",
+        answer:
+          "Por diseño de homologación: producción conserva limpio el catálogo activo de referencia e históricos, mientras STG mantiene el catálogo extendido pausado para pruebas.",
+      },
+    ],
+    related: ["canales", "productos", "envios", "integraciones", "observability"],
+    relatedPlaybooks: ["playbook-catalogo-estudio-lanzamiento"],
+    keywords: ["Tienda Lucams", "Merchant Center", "XML", "feed", "escaparate", "dominio"],
     version: 1,
   },
   {
@@ -221,78 +314,48 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     area: "Configuración y seguridad",
     route: "/admin/integraciones",
     summary:
-      "Diagnóstico de Supabase, Wompi, Aveonline, Resend, Turnstile y dependencias externas.",
+      "Estado real de los 7 proveedores externos (Supabase, Wompi, Aveonline, Resend, Cloudflare/Turnstile, Google/IA y WhatsApp) sin exponer secretos.",
     purpose:
-      "Permite comprobar configuración y salud de proveedores sin exponer secretos. La vista Aveonline incluye diagnóstico específico y pruebas de cobertura logística.",
+      "Distingue con exactitud qué está configurado en variables de entorno, conectado, activo y saludable en los 7 proveedores del ecosistema, sin interruptores ficticios ni exposición de llaves privadas.",
     whenToUse: [
-      "Cuando un pago, correo, guía o validación externa falle.",
-      "Para confirmar si falta una configuración requerida.",
-      "Para ejecutar diagnósticos no destructivos de cobertura.",
+      "Cuando falle un cobro en Wompi, la emisión de una guía, un correo o un reto Turnstile.",
+      "Después de un despliegue o rotación de credenciales para confirmar paridad de variables.",
+      "Para entrar al diagnóstico profundo y gestión de webhook de Aveonline.",
     ],
     concepts: [
       {
-        term: "Health check",
+        term: "Resolución viva de proveedor",
         definition:
-          "Comprobación de disponibilidad o configuración de una dependencia en un momento dado.",
+          "Cada tarjeta distingue presencia de configuración, prueba de conexión, activación real y acciones humanas externas pendientes.",
       },
       {
-        term: "Variable de entorno",
+        term: "Circuit breaker y sondas",
         definition:
-          "Configuración de despliegue; el panel informa presencia o estado, nunca debe revelar su valor secreto.",
-      },
-      {
-        term: "Sonda",
-        definition:
-          "Prueba acotada para verificar respuesta de un proveedor sin ejecutar una operación comercial real.",
+          "Protección contra caídas de terceros y pruebas ligeras de lectura que no crean pedidos, pagos ni guías reales.",
       },
     ],
     sections: [
       {
         id: "estado",
-        title: "Estado de proveedores",
-        summary: "Resume disponibilidad, configuración y pendientes humanos.",
+        title: "Lectura de los 7 proveedores y pendientes externos",
+        summary:
+          "Aísla en segundos si un fallo viene de credenciales, red externa o datos de un pedido.",
         topics: [
           {
             id: "salud",
-            label: "Operativo o degradado",
-            description: "Resultado de la última comprobación disponible.",
+            label: "Configurado, conectado y saludable",
+            description:
+              "Informa qué variables requeridas están presentes (nunca su valor) y el resultado de la sonda reciente.",
             interpretation:
-              "Verifica fecha y detalle; un estado pasado no garantiza disponibilidad actual.",
-          },
-          {
-            id: "config",
-            label: "Configuración requerida",
-            description: "Indica presencia o ausencia de variables necesarias.",
-            caution: "Nunca copies secretos a tickets, guías o capturas.",
+              "Si un proveedor figura saludable pero un pedido puntual falló, el problema suele estar en los datos de ese pedido (ej. ciudad o peso), no en las llaves.",
           },
           {
             id: "pendiente",
-            label: "Acción humana",
-            description: "Configuración externa que la aplicación no puede completar sola.",
-            interpretation: "Asigna el pendiente al responsable del proveedor o despliegue.",
-          },
-        ],
-      },
-      {
-        id: "aveonline",
-        title: "Diagnóstico y webhook de Aveonline",
-        summary: "Verifica autenticación en vivo y administra el webhook de eventos de guía.",
-        topics: [
-          {
-            id: "webhook",
-            label: "Registro y retiro de webhook",
+            label: "Acciones humanas externas",
             description:
-              "Suscribe la URL oficial del sitio para recibir novedades automáticas de estados de envío.",
+              "Lista pasos que solo pueden ejecutarse en consolas externas (Vercel, Supabase, Wompi, Cloudflare, Google).",
             caution:
-              "Exige re-autenticación TOTP reciente y en ambientes desplegados bloquea dominios distintos al oficial.",
-          },
-          {
-            id: "error",
-            label: "Sonda de autenticación y latencia",
-            description:
-              "Mide conectividad real y tiempo de respuesta contra Aveonline sin emitir guías comerciales.",
-            interpretation:
-              "Contrasta credenciales, secreto compartido del webhook y dirección de recogida antes de reintentar.",
+              "Nunca pegues llaves privadas, tokens de webhook ni secretos de Vault en tickets, notas o chats.",
           },
         ],
       },
@@ -300,28 +363,153 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "diagnosticar-integracion",
-        title: "Diagnosticar una dependencia",
-        goal: "Distinguir configuración, proveedor y datos de la operación.",
+        title: "Diagnosticar un fallo de proveedor externo",
+        goal: "Separar problemas globales de infraestructura frente a errores puntuales de operación.",
+        route: "/admin/integraciones",
+        roles: ["SUPERADMIN"],
         steps: [
-          "Identifica el proceso afectado y la hora del fallo.",
-          "Revisa estado y configuración del proveedor sin exponer secretos.",
-          "Ejecuta únicamente sondas no destructivas relacionadas.",
-          "Contrasta el error con Observabilidad y el registro de negocio.",
-          "Escala con identificadores y mensajes sanitizados, evitando reintentos comerciales repetidos.",
+          "Identifica el proveedor implicado y revisa su tarjeta en Integraciones.",
+          "Comprueba que todas sus variables obligatorias figuren presentes.",
+          "Si es Aveonline, entra a su diagnóstico dedicado (/admin/integraciones/aveonline) y ejecuta la sonda no destructiva.",
+          "Cruza con Salud técnica (/admin/observability) para revisar webhooks rechazados, latidos de crons o errores recientes.",
+          "Corrige variables en Vercel/entorno si faltan o atiende el dato puntual en el pedido afectado sin lanzar reintentos masivos.",
         ],
-        expected: "La causa queda acotada y el siguiente responsable recibe evidencia segura.",
+        expected:
+          "Determinas con evidencia segura si debes intervenir configuración externa, esperar recuperación del tercero o corregir un registro puntual.",
       },
     ],
-    cautions: ["No uses pagos, guías o correos reales como prueba de conectividad."],
+    cautions: [
+      "Jamás generes compras, reembolsos o guías reales en producción solo para probar si una integración responde.",
+    ],
+    dontTouch: [
+      "Nunca copies valores de `.env` o llaves de API en capturas de pantalla ni conversaciones de soporte.",
+      "No registres webhooks apuntando a túneles temporales desde el ambiente de producción.",
+    ],
+    checklist: [
+      "Variables obligatorias presentes en el proveedor afectado.",
+      "Sonda de conectividad revisada sin ejecutar transacciones comerciales ficticias.",
+      "Cruce verificado contra errores y webhooks en /admin/observability.",
+    ],
     faqs: [
       {
-        question: "¿El panel muestra las claves?",
+        question: "¿Por qué no hay botones de apagar/encender proveedores aquí?",
         answer:
-          "No. Solo debe indicar estado o presencia; las claves se administran en el entorno seguro correspondiente.",
+          "Por diseño arquitectónico (ADR-206): las credenciales viven en el entorno seguro de despliegue y las reglas operativas de negocio se gobiernan en sus módulos reales (como /admin/envios o /admin/lifecycle), evitando toggles engañosos.",
       },
     ],
-    related: ["observability", "envios", "canales", "pedidos"],
-    keywords: ["Wompi", "Aveonline", "Resend", "Supabase", "Turnstile", "salud", "secretos"],
+    related: ["integraciones-aveonline", "observability", "envios", "canales-tienda"],
+    relatedPlaybooks: ["playbook-incidentes-seguridad-dian", "playbook-pedido-web-300dpi"],
+    keywords: [
+      "Wompi",
+      "Aveonline",
+      "Resend",
+      "Supabase",
+      "Turnstile",
+      "Gemini",
+      "WhatsApp",
+      "salud",
+      "variables",
+    ],
+    version: 2,
+  },
+  {
+    id: "integraciones-aveonline",
+    title: "Diagnóstico y Webhook Aveonline",
+    area: "Configuración y seguridad",
+    route: "/admin/integraciones/aveonline",
+    summary:
+      "Sonda de autenticación y latencia en vivo, suscripción segura del webhook de rastreo y pruebas de cobertura nacional (Superadmin).",
+    purpose:
+      "Permite diagnosticar de extremo a extremo la conexión con Aveonline sin emitir guías reales: valida credenciales de autenticación, mide latencia, prueba cotización por ciudad destino y registra o retira el webhook oficial de eventos logísticos.",
+    whenToUse: [
+      "Cuando falle la generación de una guía en un pedido o una ciudad no devuelva cotización nacional.",
+      "Para verificar o renovar la suscripción del webhook de estados de envío en producción.",
+      "Tras rotar credenciales o secreto compartido de Aveonline.",
+    ],
+    concepts: [
+      {
+        term: "Sonda no destructiva",
+        definition:
+          "Autentica y consulta cobertura contra Aveonline sin llamar a `generarGuia2` ni generar cobros con transportadoras.",
+      },
+      {
+        term: "Webhook logístico más cron híbrido",
+        definition:
+          "Aveonline empuja eventos al webhook firmado y, como respaldo resiliente, el cron `tracking-sync` consulta guías activas cada 15 minutos.",
+      },
+    ],
+    sections: [
+      {
+        id: "aveonline-panel",
+        title: "Autenticación, cobertura y gestión de webhook",
+        summary: "Herramientas forenses exclusivas de Superadmin con protección MFA.",
+        topics: [
+          {
+            id: "sonda",
+            label: "Prueba de autenticación y cotización",
+            description:
+              "Comprueba token, latencia en milisegundos y respuesta de operadores hacia ciudades DANE.",
+            interpretation:
+              "Si la sonda autentica bien pero falla una ciudad concreta, revisa cobertura de las transportadoras habilitadas en /admin/envios.",
+          },
+          {
+            id: "webhook",
+            label: "Suscripción y retiro de webhook",
+            description:
+              "Vincula el endpoint oficial del sitio con Aveonline exigiendo código MFA reciente (≤ 10 min).",
+            caution:
+              "En ambientes desplegados bloquea dominios ajenos al oficial; en STG el secreto del webhook permanece desacoplado por aislamiento frente a PRD.",
+          },
+        ],
+      },
+    ],
+    procedures: [
+      {
+        id: "diagnosticar-aveonline",
+        title: "Resolver una falla de cotización o guía en Aveonline",
+        goal: "Aislar si el bloqueo proviene de credenciales, cobertura de ciudad o datos del pedido.",
+        route: "/admin/integraciones/aveonline",
+        roles: ["SUPERADMIN"],
+        steps: [
+          "Ejecuta la sonda de salud en /admin/integraciones/aveonline para confirmar credenciales y latencia.",
+          "Verifica que el punto de origen remitente (Ajustes del sitio / Envíos) tenga ciudad DANE y dirección válidas.",
+          "Comprueba la cotización hacia la ciudad del pedido y revisa en /admin/envios si los rangos de peso filtraron todas las transportadoras.",
+          "Solo tras corregir la causa raíz, vuelve al detalle del pedido (/admin/pedidos/[number]) y reintenta la guía una vez.",
+        ],
+        expected: "La guía se emite limpia sin duplicar despachos ni saturar el API del proveedor.",
+      },
+    ],
+    cautions: [
+      "Modificar la suscripción del webhook exige TOTP reciente y afecta la recepción en tiempo real de estados de envío.",
+    ],
+    dontTouch: [
+      "Nunca apuntes el webhook de Aveonline de producción hacia un entorno local o de staging.",
+      "No reintentes guías repetidamente desde el pedido mientras Aveonline reporte caída de autenticación.",
+    ],
+    checklist: [
+      "Sonda de autenticación en verde y con latencia normal.",
+      "Punto de origen remitente completo.",
+      "Webhook oficial verificado en producción.",
+    ],
+    faqs: [
+      {
+        question: "¿Si el webhook de Aveonline falla temporalmente se pierden las entregas?",
+        answer:
+          "No. El proceso programado `lucams-tracking-sync` sincroniza periódicamente las guías en tránsito como red de seguridad.",
+      },
+    ],
+    related: ["integraciones", "envios", "pedidos", "observability"],
+    relatedPlaybooks: ["playbook-pedido-web-300dpi", "playbook-incidentes-seguridad-dian"],
+    keywords: [
+      "Aveonline",
+      "webhook",
+      "sonda",
+      "guía",
+      "cotizarDoble",
+      "generarGuia2",
+      "latencia",
+      "transporte",
+    ],
     version: 1,
   },
   {
@@ -330,82 +518,74 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     area: "Configuración y seguridad",
     route: "/admin/observability",
     summary:
-      "Resumen 24h, entregabilidad, cuotas de Supabase (Storage y Postgres), crons, webhooks y errores.",
+      "Monitoreo 24h sin Sentry: entregabilidad de correo, cuotas de Supabase, latidos de crons, webhooks, respaldos R2 y errores agrupados.",
     purpose:
-      "Reúne señales operativas y de infraestructura en vivo para saber si el sistema está sano y cuáles cuotas o procesos requieren intervención, desplegando automáticamente el detalle técnico ante incidentes activos.",
+      "Es el tablero central de confiabilidad técnica de Lucams Shop: vigila los procesos programados con dead-man switch, firmas y resultados de webhooks (Wompi, Aveonline, Resend), uso de base de datos y Storage, respaldos diarios cifrados en Cloudflare R2 y errores del servidor agrupados por huella (`fingerprint`).",
     whenToUse: [
-      "Ante errores repetidos o procesos sin ejecución.",
-      "Para revisar webhooks, reversas de stock y pendientes técnicos.",
-      "Para comprobar señales de respaldo y salud general.",
+      "Cuando recibas una notificación o correo de alerta operativa.",
+      "En la revisión de dirección para comprobar respaldos, cuotas de Supabase y entregabilidad de correos.",
+      "Cuando un pago aprobado en Wompi, un render 300 DPI o un correo parezca demorado.",
     ],
     concepts: [
       {
-        term: "Latido",
-        definition: "Señal temporal que demuestra que un proceso programado reportó actividad.",
+        term: "Dead-man switch de crons",
+        definition:
+          "Vigilancia que marca alerta si un proceso programado supera el doble de su intervalo esperado sin reportar latido.",
       },
       {
-        term: "Dead-man switch",
+        term: "Fingerprint de error",
         definition:
-          "Alerta que se activa cuando una señal esperada no llega dentro del tiempo permitido.",
+          "Clave que agrupa ocurrencias del mismo fallo técnico mostrando primera vez, última vez y contador sin saturar la pantalla.",
       },
       {
-        term: "Fingerprint",
+        term: "Entregabilidad y supresión",
         definition:
-          "Agrupación de errores equivalentes para estudiar frecuencia sin contar cada evento como causa distinta.",
+          "Tasa real de entregas frente a rebotes duros o quejas de spam reportadas por webhook firmado de Resend.",
       },
     ],
     sections: [
       {
         id: "procesos",
-        title: "Procesos y conectores",
-        summary: "Presenta ejecuciones esperadas y dependencias degradadas.",
+        title: "Crons, webhooks, cuotas y respaldos",
+        summary: "Expone la salud real de cada pieza asíncrona del sistema.",
         topics: [
           {
             id: "cron",
-            label: "Crons y latidos",
-            description: "Muestra actividad de procesos programados vigilados.",
+            label: "Procesos programados (pg_cron)",
+            description:
+              "Muestra último latido de renders 300 DPI, expiración de órdenes, rastreo logístico, vigilancia fiscal, alertas y limpiezas.",
             interpretation:
-              "Un latido ausente exige revisar horario, entorno y último error antes de ejecutar manualmente.",
+              "En STG los crons emisores de correos comerciales permanecen deshabilitados deliberadamente (`CRON_JOBS_DISABLED`).",
           },
           {
             id: "webhook",
-            label: "Webhooks",
-            description: "Señales recibidas desde proveedores.",
+            label: "Webhooks y reconciliación",
+            description:
+              "Registra eventos entrantes de Wompi (con ventana anti-replay de 25 h), Aveonline y Resend.",
             interpretation:
-              "Revisa firma, idempotencia y resultado; no reenvíes eventos sin procedimiento.",
+              "Si aumentan rechazos de firma, cruza de inmediato con la pestaña de seguridad en /admin/auditoria.",
           },
           {
-            id: "backup",
-            label: "Respaldos",
-            description: "Estado de copias y señales relacionadas con recuperación.",
-            interpretation:
-              "Un respaldo reciente no sustituye la prueba periódica de restauración.",
+            id: "cuotas-backups",
+            label: "Cuotas Supabase y backup diario R2",
+            description:
+              "Monitorea consumo de Postgres, los 5 buckets de Storage y el latido del respaldo cifrado GPG en Cloudflare R2.",
+            caution:
+              "Una alerta de respaldo atrasado exige revisar de inmediato el workflow `backup.yml` en GitHub Actions.",
           },
         ],
       },
       {
         id: "errores",
-        title: "Errores y alertas",
-        summary: "Agrupa incidencias para facilitar diagnóstico y seguimiento.",
+        title: "Errores agrupados y reglas de alerta",
+        summary: "Permite investigar fallos sanitizados y gestionar su estado de seguimiento.",
         topics: [
-          {
-            id: "error",
-            label: "Error y frecuencia",
-            description: "Mensaje sanitizado, apariciones y última ocurrencia.",
-            interpretation:
-              "Prioriza impacto y recurrencia; evita compartir trazas con datos sensibles.",
-          },
           {
             id: "estado",
             label: "Abierto, resuelto o ignorado",
-            description: "Estado de seguimiento del reporte agrupado.",
-            caution: "Marcar resuelto no corrige el código ni elimina futuras ocurrencias.",
-          },
-          {
-            id: "alerta",
-            label: "Regla de alerta",
-            description: "Condición que convirtió una señal en aviso.",
-            interpretation: "Consulta el umbral y la fuente antes de cambiar operación.",
+            description: "Organiza el triaje de incidentes técnicos.",
+            caution:
+              "Marcar un error como Resuelto limpia la bandeja actual pero NO repara el código: si la causa persiste volverá a abrirse en la siguiente ocurrencia.",
           },
         ],
       },
@@ -413,98 +593,112 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "investigar-salud",
-        title: "Investigar una alerta técnica",
-        goal: "Confirmar impacto y encaminar una corrección segura.",
+        title: "Atender una alerta técnica o latido vencido",
+        goal: "Contener el impacto operativo y diagnosticar la raíz sin duplicar efectos.",
+        route: "/admin/observability",
+        roles: ["SUPERADMIN"],
         steps: [
-          "Anota proceso, hora, severidad y registros afectados.",
-          "Revisa última ejecución correcta y errores agrupados.",
-          "Contrasta el estado de Integraciones y la operación relacionada.",
-          "Contén el impacto usando el interruptor autorizado si existe, sin repetir procesos a ciegas.",
-          "Escala con identificadores y evidencia sanitizada.",
-          "Después de corregir, verifica un nuevo latido o ejecución antes de marcar resuelto.",
+          "Abre Salud técnica y revisa las tarjetas en rojo o ámbar del resumen de 24 horas.",
+          "Identifica si el incidente corresponde a un cron detenido, un proveedor degradado, cuota de almacenamiento o pico de rebotes.",
+          "Contrasta el proveedor afectado en /admin/integraciones y verifica si hay pedidos impactados (ej. renders pendientes o pagos sin conciliar).",
+          "Si un recorrido comercial presenta rebotes o fallos externos, usa el interruptor general en /admin/lifecycle o /admin/carritos/configuracion para contener envíos.",
+          "Una vez corregida la causa, espera el siguiente ciclo natural de latido y solo entonces marca el grupo de error como Resuelto.",
         ],
-        expected: "La incidencia tiene causa acotada, contención y verificación posterior.",
+        expected:
+          "El incidente queda contenido sin efectos colaterales ni reenvíos duplicados a clientes.",
       },
     ],
     cautions: [
-      "No ejecutes crons o webhooks manualmente como primer intento; puedes duplicar efectos.",
+      "Nunca dispares endpoints de cron ni reenvíes webhooks manualmente a ciegas sin verificar su idempotencia.",
+    ],
+    dontTouch: [
+      "No ignores alertas de respaldos R2 vencidos ni de tasa de rebote/queja en Resend (arriesgas la reputación del dominio de correo).",
+      "No marques errores recurrentes como Ignorados sin documentar y resolver su causa.",
+    ],
+    checklist: [
+      "Latidos de crons críticos (renders, órdenes pendientes, tracking, alertas, backup) al día.",
+      "Cuotas de Postgres y Storage dentro de margen seguro.",
+      "Tasa de rebote/queja de correo saludable.",
     ],
     faqs: [
       {
-        question: "¿Un cron sin latido siempre está dañado?",
+        question: "¿Por qué en STG varios crons aparecen desactivados?",
         answer:
-          "Puede estar deshabilitado por entorno o aún no cumplir su horario; verifica configuración y ventana esperada.",
+          "Es intencional: STG bloquea envíos automáticos de correo y fuerza Lifecycle en DRY_RUN para jamás contactar correos reales desde pruebas.",
       },
     ],
-    related: ["integraciones", "performance", "notificaciones", "hoy"],
-    keywords: ["error", "cron", "latido", "webhook", "backup", "alerta", "salud"],
-    version: 1,
+    related: ["integraciones", "performance", "auditoria", "notificaciones", "hoy"],
+    relatedPlaybooks: ["playbook-incidentes-seguridad-dian"],
+    keywords: [
+      "error",
+      "cron",
+      "latido",
+      "dead-man switch",
+      "webhook",
+      "backup",
+      "R2",
+      "Supabase",
+      "salud",
+    ],
+    version: 2,
   },
   {
     id: "seguridad",
     title: "Seguridad y clave",
     area: "Configuración y seguridad",
     route: "/admin/seguridad",
-    summary:
-      "Segundo factor obligatorio (TOTP), códigos de respaldo, cambio de dispositivo y rotación de contraseña.",
-    purpose:
-      "Protege tu identidad administrativa con verificación en dos pasos obligatoria (AAL2), rotación de contraseña verificada contra filtraciones públicas y códigos de respaldo de un solo uso.",
+    summary: `Segundo factor TOTP obligatorio (AAL2), ${HELP_LIVE_NUMBERS.mfaRecoveryCodesCount} códigos de respaldo, cambio de teléfono y rotación de contraseña.`,
+    purpose: `Protege tu cuenta administrativa personal: exige verificación en dos pasos TOTP (sesión en nivel AAL2), administra tus ${HELP_LIVE_NUMBERS.mfaRecoveryCodesCount} códigos de recuperación de emergencia y permite rotar tu contraseña validándola contra filtraciones públicas (HIBP).`,
     whenToUse: [
-      "Al enrolar o migrar a un nuevo teléfono la verificación en dos pasos.",
-      "Para generar y custodiar nuevos códigos de respaldo.",
-      "Para rotar tu contraseña administrativa y cerrar sesiones en otros dispositivos.",
+      "En tu primer ingreso al panel para enrolar tu aplicación autenticadora obligatoria.",
+      "Cuando cambies de teléfono celular y necesites migrar tu factor TOTP.",
+      `Para regenerar y guardar en tu gestor tus ${HELP_LIVE_NUMBERS.mfaRecoveryCodesCount} códigos de respaldo únicos.`,
+      "Para cambiar tu contraseña y cerrar sesiones abiertas en otros dispositivos.",
     ],
     concepts: [
       {
-        term: "TOTP",
+        term: "Sesión AAL2 obligatoria",
         definition:
-          "Código temporal generado por tu aplicación de autenticación como segundo factor.",
+          "Ninguna pantalla del panel administrativo opera solo con contraseña; toda sesión exige TOTP verificado y expira por inactividad a los 30 minutos.",
       },
       {
-        term: "AAL2",
-        definition:
-          "Sesión que ya verificó el segundo factor obligatorio para operar el panel administrativo.",
+        term: `Reautenticación reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min)`,
+        definition: `Las acciones críticas (reembolsos, pagos directos B2B, exportaciones CSV, bloqueos COD, fusiones CRM, usuarios) piden confirmar tu código de 6 dígitos si pasaron más de ${HELP_LIVE_NUMBERS.recentMfaMinutes} minutos.`,
       },
       {
-        term: "Código de recuperación",
+        term: "Códigos de respaldo de un solo uso",
         definition:
-          "Respaldo de un solo uso para emergencias cuando pierdes tu dispositivo; al usarlo reinicia el factor para enrolar uno nuevo.",
+          "Llaves de emergencia mostradas una única vez al generarse; usar una en el login reinicia el factor para que enroles de inmediato tu nuevo dispositivo.",
       },
     ],
     sections: [
       {
         id: "mfa",
-        title: "Segundo factor y contraseña",
-        summary: "Controla enrolamiento TOTP, respaldos, cambio de teléfono y rotación de clave.",
+        title: "Autenticador TOTP, respaldos y contraseña",
+        summary: "Controles personales de acceso para los 8 roles administrativos.",
         topics: [
           {
             id: "qr",
-            label: "Código QR y cambio de dispositivo",
+            label: "Enrolamiento QR y migración de teléfono",
             description:
-              "Vincula tu autenticador o reemplaza el teléfono actual sin dejar la cuenta sin MFA permanente.",
-            caution: "No compartas el QR, el secreto ni capturas del enrolamiento.",
-          },
-          {
-            id: "verificacion",
-            label: "Código temporal y re-autenticación",
-            description:
-              "Confirma que el generador funciona y autoriza operaciones sensibles cuando la sesión lleva más de 10 minutos.",
-            interpretation:
-              "Si falla, revisa la hora automática del teléfono y usa el código vigente.",
+              "Vincula Google Authenticator, 1Password, Bitwarden o Authy mediante código QR.",
+            caution:
+              "Si el código de 6 dígitos es rechazado al enrolar, activa la hora automática por red en los ajustes de tu celular.",
           },
           {
             id: "recovery",
-            label: "Códigos de respaldo (10 usos únicos)",
-            description: "Respaldo de emergencia que se muestra una sola vez al generarse.",
-            caution: "Guárdalos en un gestor seguro; regenerarlos invalida el conjunto anterior.",
+            label: `${HELP_LIVE_NUMBERS.mfaRecoveryCodesCount} códigos de recuperación`,
+            description:
+              "Se revelan una sola vez al crearlos o regenerarlos; regenerar invalida al instante cualquier lista anterior.",
+            caution:
+              "Guárdalos únicamente en un gestor de contraseñas cifrado, nunca en notas abiertas ni chats.",
           },
           {
             id: "password",
-            label: "Cambio de contraseña",
+            label: `Rotación de clave (mínimo ${HELP_LIVE_NUMBERS.minAdminPasswordChars} caracteres + HIBP)`,
             description:
-              "Actualiza tu clave (mínimo 10 caracteres, verificada contra brechas públicas HIBP) y revoca otras sesiones abiertas.",
-            interpretation:
-              "Exige tu contraseña actual y código TOTP reciente sin cerrar tu sesión activa.",
+              "Verifica de forma anónima (k-anonymity) que la nueva clave no aparezca en brechas públicas y revoca otras sesiones.",
+            interpretation: "Exige tu contraseña actual y un código TOTP fresco.",
           },
         ],
       },
@@ -512,31 +706,40 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "activar-mfa",
-        title: "Configurar MFA y proteger tu cuenta",
-        goal: "Asegurar tu sesión con segundo factor obligatorio y respaldos custodiados.",
+        title: "Completar enrolamiento MFA y custodiar respaldos",
+        goal: "Dejar tu cuenta lista para operar en AAL2 sin riesgo de bloqueo por pérdida de celular.",
+        route: "/admin/seguridad",
         steps: [
-          "Abre Seguridad y clave desde tu propia sesión.",
-          "Escanea el QR con una aplicación autenticadora confiable.",
-          "Ingresa el código de 6 dígitos para confirmar el vínculo.",
-          "Guarda los 10 códigos de respaldo en tu gestor de contraseñas.",
-          "Si necesitas rotar tu clave, usa el formulario lateral con una contraseña única de al menos 10 caracteres.",
-          "Retira cualquier captura o copia temporal del QR o de los códigos.",
+          "Abre tu gestor de contraseñas o app autenticadora y escanea el código QR en pantalla.",
+          "Escribe el código vigente de 6 dígitos para sellar la verificación AAL2.",
+          `Genera y guarda inmediatamente tus ${HELP_LIVE_NUMBERS.mfaRecoveryCodesCount} códigos de respaldo en un cofre seguro.`,
+          "Elimina cualquier captura temporal si la hubieras tomado por error.",
         ],
         expected:
-          "La cuenta opera en AAL2 obligatorio, con respaldos vigentes y contraseña no filtrada.",
+          "Se habilita todo el menú correspondiente a tu rol y cuentas con respaldo autónomo ante pérdida de dispositivo.",
       },
     ],
-    cautions: ["Nunca envíes códigos TOTP o de respaldo por correo, WhatsApp o tickets."],
+    cautions: [
+      `Tu sesión administrativa se cierra por seguridad tras ${HELP_LIVE_NUMBERS.adminIdleTimeoutMinutes} minutos de inactividad.`,
+    ],
+    dontTouch: [
+      "Jamás compartas tu usuario, contraseña, código TOTP ni códigos de respaldo con nadie (ni siquiera con Dirección).",
+      "No tomes fotos al código QR para enviarlas por WhatsApp o correo.",
+    ],
+    checklist: [
+      "Factor TOTP verificado y generando códigos de 6 dígitos.",
+      `${HELP_LIVE_NUMBERS.mfaRecoveryCodesCount} códigos de respaldo guardados en gestor de contraseñas.`,
+      "Contraseña única de al menos 10 caracteres no reutilizada en otros sitios.",
+    ],
     faqs: [
       {
-        question: "¿Puedo desactivar la verificación en dos pasos?",
-        answer:
-          "No. El segundo factor es obligatorio para todos los roles administrativos; solo puedes cambiar de dispositivo autenticador o usar un código de respaldo en caso de pérdida.",
+        question: "¿Por qué el panel me volvió a pedir código MFA si ya había iniciado sesión?",
+        answer: `Porque ejecutaste una acción sensible (reembolso, pago B2B, exportación, bloqueo o cambio de seguridad) y habían transcurrido más de ${HELP_LIVE_NUMBERS.recentMfaMinutes} minutos desde tu última verificación TOTP.`,
       },
       {
-        question: "¿Qué hago si perdí mi teléfono?",
+        question: "¿Qué hago si perdí o me robaron el celular?",
         answer:
-          "En el reto MFA ingresa uno de tus códigos de respaldo vigentes para reiniciar el factor y enrolar tu nuevo dispositivo de inmediato.",
+          "En la pantalla de reto MFA usa uno de tus códigos de respaldo guardados para entrar, reiniciar el factor y enrolar tu nuevo dispositivo; además rota tu contraseña de inmediato.",
       },
     ],
     related: ["usuarios", "auditoria", "ayuda"],
@@ -549,9 +752,9 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
       "clave",
       "QR",
       "recuperación",
-      "seguridad",
+      "HIBP",
     ],
-    version: 1,
+    version: 2,
   },
   {
     id: "auditoria",
@@ -559,54 +762,60 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     area: "Configuración y seguridad",
     route: "/admin/auditoria",
     summary:
-      "Bitácora inmutable del equipo, pulso de 14 días y eventos de seguridad bloqueados (hora Colombia).",
+      "Bitácora forense inmutable del equipo (120+ acciones), alertas de autogestión (`selfDealing`) y rechazos de seguridad (Superadmin).",
     purpose:
-      "Permite reconstruir mutaciones administrativas con enlaces directos a cada entidad e investigar intentos rechazados de login o firmas inválidas de webhooks.",
+      "Permite reconstruir con hora exacta de Colombia quién hizo qué sobre cualquier entidad del negocio (con diff antes/después y enlace directo al registro), detectar si alguien del staff operó sobre pedidos o contactos propios (`selfDealing`) y correlacionar logins fallidos o firmas inválidas por hash de IP.",
     whenToUse: [
-      "Para investigar quién ejecutó un cambio y saltar directo al registro afectado.",
-      "Para auditar accesos a PII, reembolsos, cambios de rol o alertas de auto-gestión.",
-      "Para revisar campañas de login fallido o webhooks rechazados en la pestaña de seguridad.",
+      "Para auditar reembolsos, pagos directos B2B, exportaciones CSV, descargas 300 DPI, cambios de precios o altas de usuarios.",
+      "Cuando aparezca una marca de autogestión de staff (`selfDealing`).",
+      "Para investigar intentos de acceso rechazados o webhooks con firma inválida.",
     ],
     concepts: [
-      { term: "Actor", definition: "Usuario administrativo que ejecutó la acción registrada." },
       {
-        term: "Entidad",
+        term: "Registro inmutable (AdminActionLog)",
         definition:
-          "Objeto de negocio afectado con enlace directo a su módulo operativo en el panel.",
+          "Entrada de solo adición con actor, acción, entidad enlazada, metadatos antes/después y marca temporal.",
       },
       {
-        term: "Evento de seguridad",
+        term: "Alerta selfDealing",
         definition:
-          "Intento fallido de autenticación o firma inválida de webhook agregado por ventana y correlacionado por hash de IP.",
+          "Bandera automática cuando el correo del administrador coincide con el cliente del pedido, contacto o fusión que acaba de gestionar.",
+      },
+      {
+        term: "Correlación por ipHash",
+        definition:
+          "Huella truncada de IP que permite agrupar intentos hostiles del mismo origen sin almacenar IPs crudas innecesarias.",
       },
     ],
     sections: [
       {
         id: "eventos",
-        title: "Acciones del equipo y seguridad bloqueada",
-        summary: "Alterna entre la bitácora operativa y el registro forense de rechazos.",
+        title: "Acciones del equipo y eventos de seguridad bloqueados",
+        summary: "Dos vistas complementarias para control interno y defensa perimetral.",
         topics: [
           {
-            id: "accion",
-            label: "Acción y entidad enlazada",
+            id: "acciones-equipo",
+            label: "Vistas rápidas operativas",
             description:
-              "Evento administrativo ejecutado en hora de Colombia con acceso directo al registro.",
+              "Filtra al instante accesos/descargas sensibles (PII, ZIP 300 DPI, guías), movimientos financieros, gestión de usuarios/MFA o fusiones CRM.",
             interpretation:
-              "Combina vistas rápidas (PII, finanzas, usuarios/MFA, CRM) con rango de fechas en hora Bogotá.",
+              "Usa el enlace directo de la entidad para contrastar cómo quedó el registro vivo.",
           },
           {
-            id: "seguridad",
+            id: "self-dealing",
+            label: "Revisión de autogestión",
+            description:
+              "Señala cualquiera de las acciones sensibles ejecutadas por un miembro del equipo sobre sus propias compras de prueba o personales.",
+            caution:
+              "Toda compra real de un integrante debe ser despachada, moderada o reembolsada por otra persona autorizada.",
+          },
+          {
+            id: "bloqueados",
             label: "Eventos de seguridad bloqueados",
             description:
-              "Muestra fallos de login admin/tienda y firmas de webhook rechazadas agrupados con contador.",
+              "Agrupa intentos fallidos de login y rechazos de webhooks por ventana temporal.",
             interpretation:
-              "Haz clic en un hash de IP para correlacionar todos los intentos del mismo origen sin exponer IPs personales.",
-          },
-          {
-            id: "self",
-            label: "Alerta de auto-gestión staff",
-            description: "Señala cuando un integrante opera sobre un pedido asociado a su correo.",
-            caution: "No es prueba automática de irregularidad, pero exige verificación.",
+              "Haz clic sobre un `ipHash` para aislar toda la actividad asociada a ese origen.",
           },
         ],
       },
@@ -614,102 +823,103 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "investigar-accion",
-        title: "Investigar un cambio o incidente",
-        goal: "Reconstruir responsable, momento y origen sin alterar evidencia.",
+        title: "Reconstruir un cambio operativo o alerta forense",
+        goal: "Obtener cronología exacta, actor y estado resultante sin alterar evidencia.",
+        route: "/admin/auditoria",
+        roles: ["SUPERADMIN"],
         steps: [
-          "Elige la pestaña Acciones del equipo o Eventos de seguridad bloqueados.",
-          "Delimita el rango de fechas (hora Colombia) y aplica el filtro rápido correspondiente.",
-          "Identifica actor u origen hash IP y revisa el pulso de los últimos 14 días.",
-          "Abre la entidad enlazada para contrastar su estado vivo actual.",
-          "Documenta hallazgos sin modificar registros históricos.",
+          "Selecciona la pestaña Acciones del equipo o Eventos de seguridad bloqueados.",
+          "Acota el rango de fechas en hora Colombia y aplica el filtro rápido del dominio investigado.",
+          "Revisa actor, acción exacta, metadatos y marca `selfDealing` si aplica.",
+          "Abre el enlace directo a la entidad (Pedido, Producto, Cupón, Contacto, Usuario) para verificar su estado actual.",
         ],
         expected:
-          "La investigación conserva una cronología verificable en hora local y trazabilidad completa.",
+          "Cuentas con trazabilidad completa de extremo a extremo lista para decisión interna o soporte regulatorio.",
       },
     ],
     cautions: [
-      "No compartas exportaciones o capturas con datos personales fuera del equipo autorizado.",
+      "La bitácora es inmutable por diseño: ningún registro puede editarse ni borrarse desde el panel.",
+    ],
+    dontTouch: [
+      "No compartas capturas externas de la bitácora sin verificar que no expongan correos o identificadores internos.",
+    ],
+    checklist: [
+      "Revisé alertas `selfDealing` de la semana.",
+      "Verifiqué que no existan picos anómalos en Eventos de seguridad bloqueados.",
     ],
     faqs: [
       {
-        question: "¿Puedo corregir una entrada?",
+        question: "¿También quedan auditadas las descargas de ZIP 300 DPI, guías y CSV?",
         answer:
-          "No desde esta bitácora. Corrige el registro de negocio mediante una nueva acción autorizada que también quede trazada.",
+          "Sí. Aunque no modifican datos comerciales, son lecturas sensibles y registran actor, fecha y entidad en AdminActionLog.",
       },
     ],
-    related: ["usuarios", "seguridad", "clientes", "fidelizacion"],
+    related: ["usuarios", "seguridad", "observability", "finanzas", "clientes"],
+    relatedPlaybooks: ["playbook-incidentes-seguridad-dian"],
     keywords: [
       "bitácora",
+      "auditoría",
+      "forense",
       "actor",
-      "acción",
-      "self dealing",
-      "seguridad",
-      "webhook",
+      "selfDealing",
       "ipHash",
-      "historial",
+      "webhook",
+      "login fallido",
     ],
-    version: 1,
+    version: 2,
   },
   {
     id: "usuarios",
     title: "Usuarios y acceso",
     area: "Configuración y seguridad",
     route: "/admin/usuarios",
-    summary: "Alta, roles, activación y retiro de usuarios administrativos.",
-    purpose:
-      "Controla quién puede ingresar al backoffice y qué capacidades tiene. La asignación de rol afecta acceso y visibilidad de datos, por lo que exige mínimo privilegio y verificación de identidad.",
+    summary: `Altas individuales, matriz de los ${HELP_LIVE_NUMBERS.assignableAdminRoles} roles asignables, estado 2FA y revocación inmediata (Superadmin).`,
+    purpose: `Gobierna quién entra al panel administrativo y con qué alcance exacto de permisos (${HELP_LIVE_NUMBERS.totalCapabilities} capacidades granulares distribuidas en ${HELP_LIVE_NUMBERS.assignableAdminRoles} roles asignables más compatibilidad histórica). Garantiza cuentas nominativas, MFA obligatorio y marcado automático \`isStaff\` en CRM.`,
     whenToUse: [
-      "Para incorporar una persona al equipo administrativo.",
-      "Para cambiar responsabilidades y rol.",
-      "Para desactivar acceso cuando alguien deja de requerirlo.",
+      "Cuando se incorpora alguien nuevo a Taller, Despachos, Soporte, Operaciones, Finanzas o Contenido.",
+      "Para cambiar de rol a una persona cuando cambian sus funciones.",
+      "Para desactivar el acceso en el mismo minuto en que alguien deja de operar.",
     ],
     concepts: [
       {
-        term: "Rol",
-        definition: "Conjunto de capacidades que determina módulos, datos y acciones disponibles.",
-      },
-      {
-        term: "Usuario activo",
+        term: "Principio de mínimo privilegio",
         definition:
-          "Cuenta administrativa habilitada y no eliminada que puede completar autenticación y MFA.",
+          "Cada persona recibe el rol más acotado que le permite cumplir su trabajo diario (ej. Taller no ve precios ni PII; Despachos ve guía pero no ZIP de imprenta).",
       },
       {
-        term: "Mínimo privilegio",
-        definition: "Asignar únicamente las capacidades necesarias para el trabajo actual.",
+        term: "Aislamiento automático de staff (isStaff)",
+        definition:
+          "El correo de todo administrador se marca automáticamente como personal interno en el CRM para no distorsionar métricas RFM/LTV ni recibir campañas.",
       },
     ],
     sections: [
       {
         id: "acceso",
-        title: "Gestión de accesos",
-        summary: "Administra identidad, rol y vigencia.",
+        title: "Alta, postura MFA y ciclo de vida de cuentas",
+        summary: "Controla rol, vigencia y segundo factor con confirmación MFA reciente.",
         topics: [
           {
             id: "rol",
-            label: "Rol asignado",
-            description: "Define las capacidades operativas de la cuenta.",
+            label: `Selector de los ${HELP_LIVE_NUMBERS.assignableAdminRoles} roles operativos`,
+            description:
+              "Asigna Administradora, Jefa de operaciones, Atención al cliente, Taller e impresión, Despachos, Analista financiera o Editor de contenido.",
             interpretation:
-              "Contrasta la matriz de roles antes de cambiarlo; un rol superior puede revelar PII y finanzas.",
+              "Consulta la pestaña Referencia Rápida del Centro de ayuda para ver qué datos se enmascaran en cada rol.",
           },
           {
-            id: "activo",
-            label: "Activo o desactivado",
-            description: "Controla si la cuenta puede utilizar el panel.",
-            caution:
-              "Desactiva oportunamente al retirar personal; no compartas cuentas entre personas.",
-          },
-          {
-            id: "alta",
-            label: "Alta de administrador",
-            description: "Vincula una identidad verificada con un rol administrativo.",
+            id: "postura-2fa",
+            label: "Estado de enrolamiento MFA",
+            description: "Muestra si la persona ya completó su factor TOTP obligatorio.",
             interpretation:
-              "La persona deberá completar autenticación y enrolar MFA antes de operar.",
+              "Hasta que no enrole TOTP en /admin/seguridad, el layout bloquea cualquier otra ruta del panel.",
           },
           {
             id: "retiro",
-            label: "Retiro lógico",
-            description: "Conserva trazabilidad mientras impide nuevos accesos.",
-            interpretation: "No borres el historial de acciones asociado al usuario.",
+            label: "Desactivación lógica inmediata",
+            description:
+              "Cierra el paso al panel preservando intacto todo el historial de acciones en Auditoría.",
+            caution:
+              "Al retirar a alguien, reasigna también sus tickets, tareas y oportunidades abiertas.",
           },
         ],
       },
@@ -717,43 +927,56 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "crear-admin",
-        title: "Incorporar un usuario administrativo",
-        goal: "Otorgar acceso individual con permisos mínimos y MFA.",
+        title: "Dar de alta y entrenar a una persona nueva del equipo",
+        goal: "Habilitar acceso nominativo seguro y guiar su primer día sin riesgos.",
+        route: "/admin/usuarios",
+        roles: ["SUPERADMIN"],
         steps: [
-          "Verifica identidad, correo y responsabilidad de la persona.",
-          "Selecciona el rol con el menor privilegio suficiente.",
-          "Registra el alta y confirma que la cuenta quede activa.",
-          "Entrega las instrucciones por un canal seguro sin compartir contraseñas.",
-          "Verifica que la persona complete MFA y que su página inicial y menú correspondan al rol.",
-          "Revisa el primer acceso en Auditoría si es necesario.",
+          "Confirma el correo corporativo o personal verificado de la persona y elige el rol de menor privilegio necesario.",
+          "Ejecuta el alta confirmando tu código MFA reciente.",
+          "Pídele ingresar, enrolar su TOTP en /admin/seguridad y guardar sus 10 códigos de respaldo.",
+          "Indícale abrir /admin/ayuda en la pestaña Día 1 y Rutina Diaria (puedes previsualizar antes su vista exacta usando el selector «Ver ayuda como rol…»).",
         ],
-        expected: "La persona accede con cuenta propia, MFA y únicamente los módulos necesarios.",
+        expected:
+          "La persona entra con cuenta propia en AAL2, ve únicamente sus bandejas autorizadas y sigue su rutina paso a paso.",
       },
       {
         id: "retirar-admin",
-        title: "Retirar acceso",
-        goal: "Impedir nuevos usos conservando la trazabilidad.",
+        title: "Revocar el acceso de un integrante",
+        goal: "Cortar inmediatamente el ingreso sin perder trazabilidad histórica.",
+        route: "/admin/usuarios",
+        roles: ["SUPERADMIN"],
         steps: [
-          "Confirma la identidad y la decisión autorizada de retiro.",
-          "Reasigna tickets, tareas u oportunidades pendientes.",
-          "Desactiva la cuenta y verifica que no pueda volver a ingresar.",
-          "Conserva el historial y revisa sesiones o factores según el procedimiento de seguridad.",
+          "Reasigna sus tickets en Soporte, tareas en Bandeja Hoy u oportunidades en B2B.",
+          "Desactiva la cuenta en /admin/usuarios confirmando con MFA reciente.",
+          "Verifica en Auditoría sus últimas acciones ejecutadas.",
         ],
-        expected: "El acceso queda cerrado y los pendientes tienen nuevo responsable.",
+        expected:
+          "La cuenta no puede volver a operar ninguna ruta ni acción del panel y la bitácora histórica permanece íntegra.",
       },
     ],
     cautions: [
-      "No crees una cuenta SUPERADMIN por comodidad ni compartas una misma cuenta entre varias personas.",
+      "Otorgar rol Superadmin habilita reembolsos, aprobación de pagos directos B2B, gestión de usuarios y exportación de PII completa.",
+    ],
+    dontTouch: [
+      "Nunca crees cuentas genéricas compartidas (como `taller@...` usada por tres personas): destruyes la trazabilidad de Auditoría y MFA.",
+      "Nunca asignes Superadmin por salir del paso cuando basta Jefa de operaciones, Soporte, Taller o Despachos.",
+    ],
+    checklist: [
+      "Cuenta individual creada con el rol mínimo indispensable.",
+      "Enrolamiento MFA verificado por la persona en su primer ingreso.",
+      "Recorrido de Día 1 asignado en /admin/ayuda.",
     ],
     faqs: [
       {
-        question: "¿Cambiar el rol actualiza el onboarding?",
+        question: "¿Por qué en código existen 8 roles pero el selector de alta muestra 7?",
         answer:
-          "La ruta de aprendizaje disponible corresponde al rol actual; el progreso anterior se conserva por usuario.",
+          "Porque el rol heredado Gestora (MANAGER) tiene la misma matriz de permisos que Jefa de operaciones y se mantiene solo por compatibilidad sin downtime.",
       },
     ],
     related: ["seguridad", "auditoria", "ayuda"],
-    keywords: ["admin", "rol", "permisos", "activar", "desactivar", "MFA", "acceso"],
-    version: 1,
+    relatedPlaybooks: ["playbook-incidentes-seguridad-dian"],
+    keywords: ["admin", "rol", "permisos", "RBAC", "alta", "desactivar", "MFA", "acceso"],
+    version: 2,
   },
 ];

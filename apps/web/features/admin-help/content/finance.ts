@@ -1,3 +1,4 @@
+import { HELP_LIVE_NUMBERS, formatThousandsEsCo } from "../constants";
 import type { AdminModuleGuide } from "../types";
 
 export const FINANCE_GUIDES: AdminModuleGuide[] = [
@@ -6,66 +7,56 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
     title: "Finanzas",
     area: "Finanzas y analítica",
     route: "/admin/finanzas",
-    summary: "Reporte de ingresos, descuentos, fletes y exportación contable.",
+    summary:
+      "Libro financiero en hora Colombia: ingresos Wompi, Pagos Directos B2B con retenciones, puente de caja COD y CSV contable DIAN.",
     purpose:
-      "Consolida información financiera de pedidos para análisis y entrega contable. Permite leer componentes del ingreso y exportar registros sin confundir ventas, recaudos y disponibilidad de efectivo.",
+      "Consolida los ingresos reales del negocio con cortes exactos en `America/Bogota` (-05:00): separa recaudo en línea (Wompi), transferencias/Bre-B corporativas (mostrando tanto el ingreso bruto fiscal como el neto en banco tras retenciones practicadas), estado de remesas COD y exportación CSV protegida con MFA y minimización de PII.",
     whenToUse: [
-      "Para revisar resultados de un período.",
-      "Para descomponer ingresos, descuentos y envíos.",
-      "Para exportar información contable con filtros verificados.",
+      "Al cierre semanal o mensual para entregar soporte contable al contador.",
+      "Para conciliar el puente entre ingreso bruto fiscal y efectivo real recibido en banco.",
+      "Después de confirmar pagos directos B2B o reembolsos posventa.",
     ],
     concepts: [
       {
-        term: "Ingreso",
+        term: "Ingreso bruto fiscal vs Puente de caja real",
         definition:
-          "Valor registrado según los criterios del reporte; no equivale necesariamente a caja recibida.",
+          "En ventas B2B con retención en la fuente, el ingreso bruto se conserva íntegro para umbrales fiscales DIAN mientras el puente de caja descuenta las retenciones certificadas y separa contraentregas aún en calle.",
       },
       {
-        term: "Descuento",
+        term: "CSV contable con PII redactada",
         definition:
-          "Reducción comercial aplicada al total, separada del precio bruto de los ítems.",
-      },
-      {
-        term: "Flete",
-        definition:
-          "Cargo de envío asociado al pedido, presentado por separado cuando corresponde.",
+          "Para Analista Financiero conserva íntegros los datos tributarios DIAN (tipo/número documento, razón social, CUFE) y enmascara el correo comercial del cliente.",
       },
     ],
     sections: [
       {
         id: "reporte",
-        title: "Lectura financiera",
-        summary: "Resume totales y detalle según el período seleccionado.",
+        title: "Cortes horarios, desglose de recaudo y exportación",
+        summary: "Fuente oficial para contabilidad y cuadre bancario.",
         topics: [
           {
             id: "periodo",
-            label: "Período (hora Colombia)",
+            label: "Ventana exacta en hora Bogotá (-05:00)",
             description:
-              "Define qué pedidos entran en el reporte usando cortes exactos en zona America/Bogota (-05:00).",
+              "Evita desfases nocturnos de 7:00 p. m. a 11:59 p. m. típicos de servidores en UTC.",
             interpretation:
-              "Los cortes de día y mes calendario usan siempre hora Colombia para cuadrar con contabilidad local.",
+              "Compara siempre contra extractos cortados en la misma fecha local colombiana.",
           },
           {
             id: "ingresos",
-            label: "Ingresos, Pago Directo B2B y puente de caja real",
+            label: "Wompi, Pago Directo B2B y Contraentrega",
             description:
-              "Separa ingresos pagados en línea (Wompi), pagos directos corporativos (Bre-B / Transferencia netos de retenciones practicadas) y recaudos contraentrega remitidos, en calle o con discrepancia.",
+              "Descompone productos, fletes, descuentos, retenciones B2B y estado de remesas COD (conciliadas, pendientes o con discrepancia).",
             interpretation:
-              "En pedidos B2B con retención en la fuente, el ingreso bruto fiscal se mantiene íntegro y el puente de caja descuenta las retenciones certificadas para reflejar el efectivo real en banco.",
-          },
-          {
-            id: "descuentos",
-            label: "Descuentos y fletes",
-            description: "Componentes que explican el total final del pedido.",
-            interpretation: "No los mezcles con costos de fabricación o comisiones.",
+              "Recuerda descontar aparte la tarifa financiera cobrada por Wompi al liquidar a tu cuenta bancaria.",
           },
           {
             id: "export",
-            label: "Exportación CSV y protección PII",
+            label: `Exportación CSV con MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min)`,
             description:
-              "Descarga el detalle contable con verificación MFA reciente (≤ 10 min) y protección contra fórmulas.",
+              "Incluye blindaje contra inyección de fórmulas en Excel/Sheets y registro en Auditoría.",
             caution:
-              "Para Analista Financiero el correo del comprador sale enmascarado por mínimo privilegio, preservando íntegros los campos fiscales DIAN (tipo/número documento, razón social y CUFE).",
+              "Comparte el CSV únicamente con contabilidad autorizada y elimina copias temporales.",
           },
         ],
       },
@@ -73,109 +64,105 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "exportar-finanzas",
-        title: "Preparar un reporte contable",
-        goal: "Entregar un extracto completo y reproducible.",
+        title: "Cerrar y exportar el corte contable del período",
+        goal: "Entregar al contador cifras cuadradas con remesas, retenciones y devoluciones.",
+        route: "/admin/finanzas",
         steps: [
-          "Selecciona el período verificando el corte en hora Colombia (COT).",
-          "Contrasta totales, puente de caja real, conciliación COD y retractos del período.",
-          "Pulsa Exportar CSV y confirma tu código MFA si han pasado más de 10 minutos.",
-          "Comprueba columnas fiscales DIAN, registros y totales antes de compartir.",
-          "Entrega el archivo por un canal autorizado indicando período y fecha de corte.",
+          "Concilia primero las remesas COD pendientes en /admin/finanzas/conciliacion y verifica en /admin/retractos y /admin/garantias si hay reembolsos ejecutados.",
+          "En /admin/finanzas selecciona las fechas exactas del corte en hora Colombia.",
+          "Revisa ingresos brutos, descuentos, fletes, retenciones B2B y puente de caja real.",
+          `Pulsa Exportar CSV e ingresa tu código MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min).`,
+          "Comprueba totales de columnas antes de enviarlo por canal seguro al contador.",
         ],
         expected:
-          "Contabilidad recibe un archivo consistente con la revisión, zona horaria Colombia y mínimo privilegio.",
+          "El archivo contable cuadra con pedidos pagados, reembolsos y remesas registradas.",
       },
     ],
     cautions: [
-      "No uses el total del reporte como saldo bancario ni como prueba aislada de recaudo.",
+      "`BILLING_DOCUMENT_ENABLED` permanece desactivado mientras se formaliza proveedor tecnológico DIAN; vigila los umbrales en /admin/metricas y Bandeja Hoy.",
+    ],
+    dontTouch: [
+      "No tomes pedidos COD entregados pero aún no conciliados como dinero disponible en banco.",
+      "No edites a mano celdas de importes del CSV exportado antes de enviarlo a contabilidad.",
+    ],
+    checklist: [
+      "Remesas COD recibidas del período ya conciliadas.",
+      "Retenciones B2B y reembolsos posventa verificados.",
+      "CSV descargado con MFA y resguardado de forma segura.",
     ],
     faqs: [
       {
-        question: "¿Por qué Finanzas y Dashboard difieren?",
+        question:
+          "¿Por qué en el CSV de Analista Financiero el correo sale con asteriscos pero el NIT/cédula sale completo?",
         answer:
-          "Compara períodos, estados y definiciones; Finanzas es la fuente especializada para el reporte financiero.",
-      },
-      {
-        question: "¿Por qué veo el correo del comprador enmascarado en el CSV?",
-        answer:
-          "El rol Analista Financiero recibe los campos tributarios DIAN completos para conciliación contable, mientras el correo comercial se enmascara por protección de datos personales.",
+          "Por diseño de privacidad Ley 1581: contabilidad necesita el identificador fiscal DIAN íntegro, pero no requiere el correo electrónico comercial para contactar al comprador.",
       },
     ],
-    related: ["conciliacion", "costos", "metricas", "pedidos", "oportunidades"],
+    related: ["conciliacion", "bloqueos", "costos", "metricas", "pedidos", "oportunidades"],
+    relatedPlaybooks: [
+      "playbook-oportunidad-b2b-cierre",
+      "playbook-cod-conciliacion-bloqueos",
+      "playbook-incidentes-seguridad-dian",
+    ],
     keywords: [
+      "finanzas",
       "ingresos",
       "CSV",
       "contabilidad",
       "Bre-B",
       "retenciones",
-      "descuentos",
+      "puente de caja",
       "fletes",
-      "reporte",
       "DIAN",
     ],
-    version: 3,
+    version: 4,
   },
   {
     id: "conciliacion",
     title: "Conciliación contraentrega",
     area: "Finanzas y analítica",
     route: "/admin/finanzas/conciliacion",
-    summary: "Control de recaudos COD, remesas del carrier, diferencias y pendientes.",
+    summary: `Cuadre de efectivo COD contra remesas de transportadora, alerta > ${HELP_LIVE_NUMBERS.codAgingAlertDays} días y confirmación MFA.`,
     purpose:
-      "Compara lo entregado y recaudado contra lo reportado o remitido por la transportadora. Su objetivo es demostrar qué valores ya fueron conciliados y cuáles requieren investigación.",
+      "Controla cada peso recaudado al entregar pedidos contraentrega (tanto transportadoras de Aveonline como mensajería Envío Lucams), separando el evento logístico «Entregado» del ingreso efectivo de dinero en la remesa y aislando diferencias para reclamo o bloqueo antifraude.",
     whenToUse: [
-      "Después de entregas con pago contraentrega.",
-      "Al recibir una remesa o reporte del carrier.",
-      "Para investigar diferencias entre pedido, recaudo y remesa.",
+      "Cada vez que la transportadora o mensajería transfiera y envíe planilla de remesa.",
+      `Para atacar pedidos entregados hace más de ${HELP_LIVE_NUMBERS.codAgingAlertDays} días sin liquidación.`,
+      "Para documentar faltantes o rechazos reiterados antes de pasar a Bloqueos COD.",
     ],
     concepts: [
       {
-        term: "COD",
+        term: "Entregado ≠ Conciliado",
         definition:
-          "Cobro contra entrega; el pedido puede estar entregado antes de que el negocio reciba la remesa.",
+          "Un paquete COD entregado significa que el cliente recibió el producto; solo pasa a caja confirmada cuando verificas y registras el valor real remesado.",
       },
       {
-        term: "Remesa",
+        term: "Discrepancia documentada",
         definition:
-          "Valor que la transportadora reporta o transfiere al negocio por recaudos gestionados.",
-      },
-      {
-        term: "Discrepancia",
-        definition:
-          "Diferencia entre los valores esperados y los reportados que necesita explicación.",
+          "Brecha entre el valor esperado de la orden y el valor efectivamente girado en la remesa que queda marcada para reclamo formal.",
       },
     ],
     sections: [
       {
         id: "pendientes",
-        title: "Pendientes y diferencias",
-        summary: "Organiza pedidos entregados, recaudos esperados y remesas.",
+        title: "Cola por conciliar, envejecimiento y diferencias",
+        summary: "Exige MFA reciente para sellar cada conciliación.",
         topics: [
           {
-            id: "esperado",
-            label: "Valor esperado",
-            description: "Monto que debería haberse recaudado según el pedido.",
-            interpretation: "Verifica total, entrega parcial y condiciones del pedido.",
-          },
-          {
-            id: "remesado",
-            label: "Valor remesado",
-            description: "Monto efectivamente reportado por la transportadora.",
-            interpretation: "Registra el valor real, no el esperado, aunque exista diferencia.",
-          },
-          {
-            id: "discrepancia",
-            label: "Diferencia",
-            description: "Brecha entre recaudo esperado y recibido.",
-            caution: "No la ajustes a cero sin soporte; conserva evidencia y escala al carrier.",
-          },
-          {
-            id: "fecha",
-            label: "Antigüedad y confirmación MFA",
+            id: "envejecidos",
+            label: `Alerta de antigüedad (> ${HELP_LIVE_NUMBERS.codAgingAlertDays} días)`,
             description:
-              "Destaca entregas con más de 7 días sin remesa y exige MFA reciente (≤ 10 min) al conciliar.",
+              "Resalta entregas cuyo efectivo aún no ha sido reportado dentro del ciclo normal del operador.",
             interpretation:
-              "Prioriza las entregas envejecidas (> 7 días) antes de que cierre el ciclo de liquidación del carrier.",
+              "Atácalas primero antes de que venza la ventana de reclamación ante la transportadora.",
+          },
+          {
+            id: "valores",
+            label: "Valor esperado vs Valor remesado",
+            description:
+              "Registra exactamente el monto pagado/liquidado por el operador, nunca ajustes cosméticos.",
+            caution:
+              "Si hay diferencia, regístrala tal cual con el soporte de la planilla para dejar evidencia auditable.",
           },
         ],
       },
@@ -183,80 +170,98 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "conciliar-cod",
-        title: "Conciliar una remesa COD",
-        goal: "Cerrar valores verificados y aislar diferencias.",
+        title: "Conciliar remesa contraentrega con soporte verificable",
+        goal: "Cerrar entregas pagadas en banco y aislar al instante cualquier faltante.",
+        route: "/admin/finanzas/conciliacion",
         steps: [
-          "Obtén el reporte de la transportadora y filtra por número de pedido o guía.",
-          "Verifica entregas pendientes, especialmente aquellas con alerta de más de 7 días sin remesa.",
-          "Registra el valor efectivamente recibido o reporta discrepancia completando la reautenticación MFA.",
-          "Documenta discrepancias con soporte verificable y escala al carrier o a Bloqueos COD si hubo abuso.",
-          "Comprueba el pulso de 14 días y el balance acumulado de recaudo.",
+          "Descarga la planilla oficial de remesa del carrier o liquidación de ruta Envío Lucams y confirma el abono bancario.",
+          `Prioriza las órdenes con alerta de más de ${HELP_LIVE_NUMBERS.codAgingAlertDays} días desde entrega.`,
+          "Cruza número de guía y pedido `LCM`, digita el monto efectivamente recibido y anota referencia de remesa.",
+          `Confirma con tu código MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min).`,
+          "Si hubo abuso comprobado de no-show o rechazo malicioso, evalúa restricción en /admin/finanzas/bloqueos.",
         ],
         expected:
-          "Cada pedido COD queda conciliado con evidencia MFA o marcado con diferencia explícita en Pedidos.",
+          "El puente de caja en Finanzas refleja el efectivo real recibido y las diferencias quedan trazadas.",
       },
     ],
-    cautions: ["Entrega, recaudo por el mensajero y recepción bancaria son eventos distintos."],
+    cautions: [
+      "Verifica si la diferencia obedece a comisión de recaudo del carrier antes de reportarla como pérdida de efectivo.",
+    ],
+    dontTouch: [
+      "Nunca concilies un pedido COD solo porque en rastreo dice Entregado sin tener planilla/abono de remesa.",
+      "Nunca alteres el monto recibido para forzar que la diferencia dé cero sin soporte real.",
+    ],
+    checklist: [
+      "Abono bancario de la remesa verificado.",
+      `Entregas con > ${HELP_LIVE_NUMBERS.codAgingAlertDays} días revisadas.`,
+      "Discrepancias documentadas con número de guía y planilla.",
+    ],
     faqs: [
       {
-        question: "¿Puedo conciliar porque el pedido aparece entregado?",
-        answer: "No basta: necesitas verificar el recaudo y la remesa o evidencia equivalente.",
+        question:
+          "¿Aquí también entran los pedidos contraentrega de Envío Lucams en Bogotá/Soacha?",
+        answer:
+          "Sí. Todo recaudo contraentrega, sea por operador nacional o ruta propia, debe conciliarse contra el efectivo/transferencia entregada.",
       },
     ],
     related: ["finanzas", "bloqueos", "pedidos", "envios"],
-    keywords: ["COD", "remesa", "contraentrega", "discrepancia", "recaudo", "carrier"],
-    version: 2,
+    relatedPlaybooks: ["playbook-cod-conciliacion-bloqueos"],
+    keywords: [
+      "COD",
+      "conciliar remesa",
+      "contraentrega",
+      "discrepancia",
+      "recaudo",
+      "carrier",
+      "efectivo",
+    ],
+    version: 3,
   },
   {
     id: "bloqueos",
     title: "Bloqueos contraentrega",
     area: "Finanzas y analítica",
     route: "/admin/finanzas/bloqueos",
-    summary: "Restricciones antifraude de identidades para la modalidad de pago contraentrega.",
+    summary: `Lista de restricción antifraude COD por correo, teléfono o dirección normalizada (MFA ≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min).`,
     purpose:
-      "Impide ofrecer COD a señales de identidad con antecedentes de abuso, sin bloquear pagos anticipados en línea. Exige confirmación MFA reciente (≤ 10 min) para agregar o levantar bloqueos y enmascara PII en roles analíticos.",
+      "Protege a Lucams Shop frente a fletes perdidos y piezas personalizadas desperdiciadas por compradores con historial probado de no recibir/no pagar contraentrega, ocultándoles únicamente la opción COD pero permitiéndoles comprar pagando por anticipado con Wompi.",
     whenToUse: [
-      "Al confirmar abuso reiterado o incumplimiento COD.",
-      "Para revisar si una identidad está restringida.",
-      "Para levantar un bloqueo con evidencia y autorización MFA.",
+      "Tras confirmar no-show reiterado, dirección falsa intencional o rechazo injustificado de un pedido COD personalizado.",
+      "Para levantar una restricción cuando el cliente demuestra error involuntario y existe autorización.",
     ],
     concepts: [
       {
-        term: "Identidad bloqueada",
-        definition: "Señal como correo, teléfono o dirección que el sistema usa para impedir COD.",
+        term: "Restricción proporcional (solo COD)",
+        definition:
+          "No es un veto total a la persona: en el checkout desaparece contraentrega, pero Wompi permanece 100 % habilitado.",
       },
       {
-        term: "Normalización",
+        term: "Normalización determinista",
         definition:
-          "Transformación consistente que permite comparar datos aunque cambie su formato.",
+          "Estandariza correo, teléfono y dirección + ciudad para impedir evadir la regla con mayúsculas o espacios.",
       },
     ],
     sections: [
       {
         id: "restriccion",
-        title: "Gestión de bloqueos",
-        summary: "Registra alcance, motivo y estado de la restricción con MFA reciente.",
+        title: "Alta, evidencia y levantamiento con MFA",
+        summary: "Cada bloqueo y desbloqueo queda sellado en Auditoría.",
         topics: [
           {
-            id: "tipo",
-            label: "Tipo de identidad",
+            id: "senal",
+            label: "Elección de señal (correo, teléfono o dirección)",
             description:
-              "Define si la regla aplica a correo, teléfono o dirección con ciudad normalizada.",
-            interpretation: "Selecciona la señal respaldada por la evidencia.",
+              "Usa teléfono o correo personal antes de bloquear una dirección general de edificio/oficina donde compran terceros.",
+            caution:
+              "Bloquear la dirección genérica de una torre empresarial o universidad afectaría a otros compradores legítimos en COD.",
           },
           {
             id: "motivo",
-            label: "Motivo y auditoría",
+            label: "Motivo objetivo verificable",
             description:
-              "Explica el antecedente que justifica el bloqueo y queda trazado en Auditoría con PII enmascarado.",
-            caution: "Registra hechos verificables y evita datos o calificativos innecesarios.",
-          },
-          {
-            id: "alcance",
-            label: "Solo contraentrega",
-            description: "La restricción impide COD, no pagos verificados en línea con Wompi.",
-            interpretation:
-              "No prometas un bloqueo total de compra: el sistema solo restringe el riesgo de recaudo en efectivo.",
+              "Cita el número de pedido `LCM` y el hecho logístico concreto (ej. «Dos intentos fallidos con rechazo en portería en LCM-2026-0142»).",
+            caution:
+              "Nunca escribas insultos ni juicios subjetivos: el registro forma parte de la auditoría del negocio.",
           },
         ],
       },
@@ -264,118 +269,92 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "bloquear-cod",
-        title: "Registrar o retirar un bloqueo",
-        goal: "Aplicar una medida antifraude proporcional y revisable.",
+        title: "Aplicar o retirar un bloqueo contraentrega",
+        goal: "Frenar pérdidas por flete devuelto sin cerrar ventas prepagadas.",
+        route: "/admin/finanzas/bloqueos",
         steps: [
-          "Revisa pedidos y evidencia del incumplimiento en Conciliación COD o Pedidos.",
-          "Verifica que la identidad no esté ya registrada.",
-          "Ingresa tipo, valor y motivo (o pulsa Desbloquear) y confirma con MFA reciente (≤ 10 min).",
-          "Comprueba que el registro quede listado y trazado en Auditoría.",
-          "Escala cualquier homonimia o dirección compartida.",
+          "Confirma en el pedido `LCM` y en los eventos de guía que realmente hubo incumplimiento atribuible al comprador (y no falla de la transportadora).",
+          "Elige la señal precisa (priorizando teléfono/correo sobre direcciones multiusuario) y redacta el motivo citando el pedido.",
+          `Confirma el bloqueo (o desbloqueo) con tu código MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min).`,
         ],
         expected:
-          "La restricción se aplica solo a la identidad y modalidad previstas con trazabilidad MFA.",
+          "Futuros checkouts con esa señal exigirán pago anticipado en línea sin riesgo de flete perdido.",
       },
     ],
     cautions: [
-      "No bloquees por una sola sospecha sin evidencia ni uses datos de otra persona para probar la regla.",
+      "Verifica antes en los eventos de Aveonline que no haya sido un error de nomenclatura o falta de visita del mensajero.",
+    ],
+    dontTouch: [
+      "No bloquees direcciones completas de centros comerciales, hospitales o edificios corporativos grandes.",
+      "No uses lenguaje despectivo en el campo de motivo.",
+    ],
+    checklist: [
+      "Descartado que el fallo haya sido culpa de la transportadora.",
+      "Motivo objetivo redactado con número de pedido `LCM`.",
+      "Confirmado con MFA reciente.",
     ],
     faqs: [
       {
-        question: "¿La persona puede pagar en línea?",
+        question: "¿Si bloqueo a alguien aquí ya no puede comprar nunca más en Lucams Shop?",
         answer:
-          "Sí. El bloqueo COD oculta contraentrega pero mantiene habilitados los medios en línea.",
+          "Sí puede comprar: el checkout simplemente oculta contraentrega y le permite pagar en línea con Wompi (PSE, tarjeta, Nequi, etc.).",
       },
     ],
-    related: ["conciliacion", "pedidos", "finanzas"],
-    keywords: ["fraude", "COD", "bloqueo", "lista negra", "teléfono", "dirección", "MFA"],
-    version: 2,
+    related: ["conciliacion", "pedidos", "finanzas", "auditoria"],
+    relatedPlaybooks: ["playbook-cod-conciliacion-bloqueos"],
+    keywords: ["fraude", "COD", "bloqueo", "no-show", "teléfono", "dirección", "MFA"],
+    version: 3,
   },
   {
     id: "metricas",
     title: "Métricas",
     area: "Finanzas y analítica",
     route: "/admin/metricas",
-    summary: "Analítica CRM, RFM, LTV, embudo diario, cohortes y vigilancia fiscal.",
-    purpose:
-      "Ayuda a interpretar comportamiento, retención y valor de clientes a lo largo del tiempo. Complementa Finanzas con análisis conductual y señales de gestión, no con cifras de caja aisladas.",
+    summary: `Analítica CRM (RFM, LTV, cohortes), embudo first-party y vigilancia fiscal DIAN (${formatThousandsEsCo(HELP_LIVE_NUMBERS.fiscalUvtThreshold)} UVT).`,
+    purpose: `Reúne inteligencia de retención y valor de vida de clientes (aislando \`isStaff\`), conversión diaria del embudo y el tablero de vigilancia fiscal proactiva (\`ADR-196\`) sobre los topes anuales de ${formatThousandsEsCo(HELP_LIVE_NUMBERS.fiscalUvtThreshold)} UVT con proyección de cierre y niveles de alerta ${HELP_LIVE_NUMBERS.fiscalWatchPct} / ${HELP_LIVE_NUMBERS.fiscalWarningPct} / ${HELP_LIVE_NUMBERS.fiscalCriticalPct} %.`,
     whenToUse: [
-      "Para estudiar embudo, recurrencia y cohortes.",
-      "Para interpretar segmentos RFM y valor de vida.",
-      "Para revisar alertas y proyecciones de vigilancia fiscal.",
+      "Semanalmente para medir recompra, salud de cohortes y distribución RFM.",
+      "Para monitorear qué tan cerca está el acumulado anual (Wompi + Pagos Directos B2B) de los umbrales DIAN.",
+      "Antes de diseñar campañas en Segmentos CRM o Lifecycle Journeys.",
     ],
     concepts: [
       {
-        term: "RFM",
+        term: "Matriz RFM y LTV sin staff",
         definition:
-          "Segmentación por recencia, frecuencia y valor monetario del comportamiento histórico.",
+          "Clasifica clientes reales por recencia, frecuencia y monto excluyendo cuentas administrativas (`isStaff`).",
       },
       {
-        term: "LTV",
-        definition:
-          "Estimación del valor acumulado de la relación con un cliente según los criterios del modelo.",
-      },
-      {
-        term: "Cohorte",
-        definition:
-          "Grupo de clientes que comparte un período de origen para comparar comportamiento posterior.",
-      },
-      {
-        term: "UVT",
-        definition:
-          "Unidad de Valor Tributaria usada como referencia en los umbrales fiscales vigilados.",
+        term: `Vigilancia DIAN ${formatThousandsEsCo(HELP_LIVE_NUMBERS.fiscalUvtThreshold)} UVT`,
+        definition: `Suma ingresos brutos del año calendario (incluidos Wompi y \`DIRECT_TRANSFER\` B2B) frente al tope de facturación/IVA en UVT vigente y proyecta cierre de diciembre.`,
       },
     ],
     sections: [
       {
         id: "comportamiento",
-        title: "Comportamiento y retención",
-        summary: "Analiza cómo compran y regresan los clientes.",
+        title: "Retención, RFM y cohortes",
+        summary: "Mide fidelidad real más allá de las ventas de un solo día.",
         topics: [
           {
-            id: "rfm",
-            label: "RFM",
-            description: "Clasifica recencia, frecuencia y valor.",
+            id: "rfm-ltv",
+            label: "Segmentación RFM y valor acumulado (LTV)",
+            description: "Identifica campeones, leales, en riesgo o dormidos.",
             interpretation:
-              "Compara grupos con el mismo período y no uses la etiqueta como dato sensible.",
-          },
-          {
-            id: "ltv",
-            label: "LTV",
-            description: "Resume valor histórico o estimado de la relación.",
-            interpretation: "No equivale a utilidad neta ni garantiza compras futuras.",
-          },
-          {
-            id: "cohortes",
-            label: "Cohortes",
-            description: "Comparan la actividad posterior según el período de adquisición.",
-            interpretation: "Las cohortes recientes tienen menos tiempo de observación.",
+              "Conecta estos hallazgos con /admin/marketing/segmentos y /admin/lifecycle para activar recompra.",
           },
         ],
       },
       {
         id: "embudo-fiscal",
-        title: "Embudo y vigilancia fiscal",
-        summary: "Relaciona eventos del recorrido y señales de umbrales.",
+        title: "Embudo comercial y semáforo tributario DIAN",
+        summary: "Anticipa con meses de margen obligaciones formales de facturación.",
         topics: [
           {
-            id: "embudo",
-            label: "Embudo diario",
-            description: "Agrupa eventos del recorrido comercial por etapa.",
-            interpretation:
-              "Revisa consentimiento, cobertura de eventos y caídas entre pasos antes de concluir.",
-          },
-          {
             id: "fiscal",
-            label: "Umbral y proyección",
-            description: "Mide acumulado y estima cierre por ritmo reciente.",
-            interpretation: "La proyección no es una obligación liquidada; valida con contador.",
-          },
-          {
-            id: "alertas",
-            label: "70, 90 y 100 por ciento",
-            description: "Señales por acercamiento o cruce del umbral configurado.",
-            interpretation: "Confirma año, base de cálculo y obligación aplicable antes de actuar.",
+            label: `Acumulado YTD, proyección y niveles ${HELP_LIVE_NUMBERS.fiscalWatchPct}/${HELP_LIVE_NUMBERS.fiscalWarningPct}/${HELP_LIVE_NUMBERS.fiscalCriticalPct} %`,
+            description:
+              "El cron diario `lucams-fiscal-watch` evalúa el acumulado real y dispara notificaciones al superar cada umbral.",
+            caution:
+              "Al llegar al 70 % (observación) o 90 % (advertencia), inicia trámite de RUT/proveedor tecnológico con tu contador sin esperar al 100 %.",
           },
         ],
       },
@@ -383,88 +362,72 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "interpretar-metricas",
-        title: "Analizar una variación",
-        goal: "Pasar de una señal agregada a una explicación verificable.",
+        title: "Revisar retención comercial y postura de umbrales DIAN",
+        goal: "Tomar decisiones comerciales y tributarias con anticipación.",
+        route: "/admin/metricas",
         steps: [
-          "Define período, métrica y segmento que vas a comparar.",
-          "Revisa tamaño de la muestra y madurez de las cohortes.",
-          "Contrasta embudo, RFM y LTV sin mezclar sus definiciones.",
-          "Abre Finanzas o Pedidos para validar la base operativa.",
-          "Documenta hipótesis y acciones sin presentar correlación como causalidad.",
+          "Revisa primero el bloque de Vigilancia Fiscal comprobando % acumulado actual vs proyección anual en UVT.",
+          "Analiza caídas entre pasos del embudo diario (vista → Estudio → carrito → orden pagada).",
+          "Inspecciona evolución de cohortes y peso de clientes en riesgo para ajustar incentivos o recorridos Lifecycle.",
         ],
-        expected: "La decisión se apoya en métricas comprendidas y datos de origen verificados.",
+        expected:
+          "Cero sorpresas tributarias a fin de año y foco comercial puesto donde más impacta conversión y recompra.",
       },
     ],
     cautions: [
-      "Las alertas fiscales apoyan la gestión, pero no reemplazan asesoría contable o legal.",
+      "La vigilancia de UVT es una herramienta preventiva interna; la liquidación tributaria oficial y actualización de RUT se validan siempre con el contador.",
+    ],
+    dontTouch: [
+      "No ignores alertas del 70 % o 90 % de UVT: habilitar proveedor tecnológico y resolución DIAN toma semanas administrativas.",
+    ],
+    checklist: [
+      "Porcentaje YTD y proyección de 3.500 UVT verificados.",
+      "Embudo y retención contrastados contra acciones de Marketing.",
     ],
     faqs: [
       {
-        question: "¿Una proyección al 100 % significa que ya crucé el umbral?",
+        question: "¿Las ventas B2B por transferencia o Bre-B cuentan en el tope de 3.500 UVT?",
         answer:
-          "No necesariamente. Distingue acumulado actual de cierre estimado y revisa la alerta correspondiente.",
+          "Sí. Una vez confirmadas en el pedido, suman por su valor bruto dentro de la vigilancia fiscal diaria.",
       },
     ],
-    related: ["finanzas", "segmentos", "dashboard", "hoy"],
-    keywords: ["RFM", "LTV", "cohorte", "embudo", "UVT", "DIAN", "fiscal"],
-    version: 1,
+    related: ["finanzas", "segmentos", "lifecycle", "dashboard", "hoy"],
+    relatedPlaybooks: ["playbook-oportunidad-b2b-cierre", "playbook-incidentes-seguridad-dian"],
+    keywords: ["RFM", "LTV", "cohorte", "embudo", "UVT", "3500 UVT", "DIAN", "fiscal"],
+    version: 2,
   },
   {
     id: "performance",
     title: "Rendimiento web",
     area: "Finanzas y analítica",
     route: "/admin/performance",
-    summary: "Core Web Vitals reales por ruta y dispositivo, con percentiles y tendencias.",
+    summary:
+      "Telemetría real de usuarios (Core Web Vitals `p75`: LCP, INP y CLS) por ruta y dispositivo (Superadmin).",
     purpose:
-      "Permite identificar problemas de velocidad y estabilidad vividos por visitantes. Usa telemetría real para priorizar rutas, en lugar de depender únicamente de pruebas de laboratorio.",
+      "Mide con datos reales de visitantes (RUM first-party) qué tan rápido cargan y responden la portada, las páginas de producto, el Estudio Konva/3D y el checkout tanto en celulares reales como en escritorio.",
     whenToUse: [
-      "Cuando una página se perciba lenta o inestable.",
-      "Después de cambios visuales o de JavaScript.",
-      "Para comparar comportamiento móvil y escritorio.",
+      "Después de subir nuevos banners pesados en Mediateca o cambiar activos visuales.",
+      "Cuando notes caída de conversión móvil en el Estudio o en fichas de producto.",
     ],
     concepts: [
       {
-        term: "LCP",
-        definition: "Tiempo hasta renderizar el elemento principal; ayuda a medir carga percibida.",
-      },
-      { term: "INP", definition: "Medida de respuesta ante interacciones durante la visita." },
-      { term: "CLS", definition: "Acumulación de movimientos inesperados del diseño visual." },
-      {
-        term: "p75",
+        term: "LCP, INP y CLS en percentil 75 (`p75`)",
         definition:
-          "Percentil 75: aproximadamente tres de cada cuatro muestras quedan en ese valor o por debajo.",
+          "LCP mide velocidad de carga visual principal, INP fluidez al tocar/interactuar y CLS saltos inesperados de diseño para el 75 % de las visitas reales.",
       },
     ],
     sections: [
       {
         id: "vitals",
-        title: "Métricas y segmentación",
-        summary: "Descompone experiencia por métrica, ruta y dispositivo.",
+        title: "Lectura por ruta, móvil vs escritorio y tamaño de muestra",
+        summary: "Enfoca mejoras donde compran los clientes en Colombia.",
         topics: [
           {
-            id: "lcp",
-            label: "LCP",
-            description: "Evalúa la carga del contenido principal.",
+            id: "segmentacion",
+            label: "Móvil vs Escritorio y conteo de muestras",
+            description: "Separa desempeño en redes móviles reales frente a conexiones fijas.",
             interpretation:
-              "Revisa imágenes, servidor y bloqueos de renderizado en la ruta afectada.",
-          },
-          {
-            id: "inp",
-            label: "INP",
-            description: "Evalúa demoras al interactuar.",
-            interpretation: "Investiga JavaScript y tareas largas, no solo peso de imágenes.",
-          },
-          {
-            id: "cls",
-            label: "CLS",
-            description: "Evalúa estabilidad visual.",
-            interpretation: "Busca elementos sin dimensiones o contenido que empuja la interfaz.",
-          },
-          {
-            id: "muestra",
-            label: "Volumen y percentil",
-            description: "Contextualiza la representatividad del valor.",
-            interpretation: "No tomes un p75 con pocas muestras como tendencia concluyente.",
+              "Si el LCP sube solo tras cambiar un banner de portada, optimiza el peso de esa imagen en Mediateca.",
           },
         ],
       },
@@ -472,29 +435,39 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "diagnosticar-vital",
-        title: "Investigar una regresión de rendimiento",
-        goal: "Identificar ruta, dispositivo y métrica afectados.",
+        title: "Diagnosticar lentitud en una ruta pública",
+        goal: "Detectar si una degradación viene de medios pesados o código.",
+        route: "/admin/performance",
+        roles: ["SUPERADMIN"],
         steps: [
-          "Selecciona el período y localiza la métrica fuera del objetivo.",
-          "Filtra por ruta y dispositivo para reducir el alcance.",
-          "Revisa volumen de muestras y evolución temporal.",
-          "Contrasta con cambios recientes y errores de Observabilidad.",
-          "Documenta la hipótesis técnica y vuelve a medir después de corregir.",
+          "Filtra por dispositivo Móvil y revisa que la ruta tenga volumen suficiente de muestras.",
+          "Identifica cuál métrica está en ámbar/rojo (LCP: imágenes/servidor; INP: interacción pesada; CLS: saltos visuales).",
+          "Si ocurrió en portada o categoría tras un cambio editorial, revisa el peso de las imágenes recientes en /admin/contenido/mediateca.",
+          "Si acompaña errores del servidor, cruza con /admin/observability.",
         ],
         expected:
-          "El diagnóstico identifica una población y métrica concretas con seguimiento medible.",
+          "Aíslas con datos reales la ruta afectada sin adivinar desde tu propia conexión local.",
       },
     ],
-    cautions: ["No optimices una ruta basándote solo en tu conexión o en una única visita."],
+    cautions: [
+      "Con muy pocas muestras un único teléfono antiguo puede sesgar el `p75`; observa tendencia de varios días.",
+    ],
+    dontTouch: [
+      "No subas imágenes gigantes sin optimizar en Mediateca para el hero principal: degradan directamente el LCP móvil y el SEO.",
+    ],
+    checklist: [
+      "Rutas críticas (`/`, `/productos/[slug]`, `/estudio/[slug]`, `/checkout`) con `p75` saludable en móvil.",
+    ],
     faqs: [
       {
-        question: "¿Lighthouse y estos valores son iguales?",
+        question: "¿Por qué difiere de una corrida puntual de Lighthouse?",
         answer:
-          "No necesariamente: esta vista usa datos reales de usuarios; Lighthouse es una prueba controlada.",
+          "Lighthouse simula una sola carga de laboratorio; Rendimiento web agrega la experiencia real vivida por tus visitantes en sus dispositivos y redes.",
       },
     ],
-    related: ["observability", "integraciones", "dashboard"],
-    keywords: ["LCP", "INP", "CLS", "p75", "Web Vitals", "lento", "RUM"],
-    version: 1,
+    related: ["observability", "mediateca", "dashboard"],
+    relatedPlaybooks: ["playbook-incidentes-seguridad-dian"],
+    keywords: ["LCP", "INP", "CLS", "p75", "Web Vitals", "velocidad", "móvil", "RUM"],
+    version: 2,
   },
 ];
