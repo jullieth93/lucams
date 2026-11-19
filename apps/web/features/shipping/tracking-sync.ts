@@ -84,10 +84,14 @@ export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> 
         });
       }
       if (tracking.status === "PENDING") continue; // sin novedad real del carrier
+      const latest = history[0];
       const result = await processTrackingUpdate({
         trackingNumber,
         status: tracking.status,
         carrierStatusRaw: tracking.carrierStatusRaw,
+        ...(latest?.description ? { carrierDescription: latest.description } : {}),
+        ...(latest?.clarification ? { carrierClarification: latest.clarification } : {}),
+        ...(latest?.timestamp ? { occurredAt: latest.timestamp } : {}),
       });
       if (result.status === "ok") transitioned += 1;
     } catch (err) {

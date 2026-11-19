@@ -82,7 +82,7 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
             id: "envio",
             label: "Guía Aveonline, Envío Lucams y etiqueta térmica",
             description:
-              "Permite consultar eventos de rastreo, reintentar guía fallida tras corregir causa e imprimir `/admin/pedidos/[number]/guia`.",
+              "Permite consultar eventos de rastreo, reintentar guía fallida tras corregir causa e imprimir `/admin/pedidos/[number]/guia`. Las novedades operativas en ruta (`NOVEDAD`) generan aviso interno en Notificaciones sin abrir reconciliación ni alarmar al comprador; solo una devolución confirmada al remitente (`DEVUELTO`) o guía anulada activa reconciliación manual.",
             caution:
               "Para roles sin permiso de PII o guía (`PRINT_WORKSHOP`, `FINANCE_ANALYST`), las URLs del rótulo PDF se redactan en servidor porque el PDF contiene dirección y teléfono.",
           },
@@ -229,8 +229,10 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
       "guía",
       "despacho",
       "regalo",
+      "novedad",
+      "devolución",
     ],
-    version: 4,
+    version: 5,
   },
   {
     id: "clientes",

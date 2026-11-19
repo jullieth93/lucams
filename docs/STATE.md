@@ -46,7 +46,7 @@
 
 - Carrito auto-sanado (`ADR-171`), checkout de tres pasos (`ADR-155`), direcciones DANE + CP MinTIC (171 ciudades) y modo regalo sin precios en guía/correos.
 - Fletes HMAC por peso, ledger Wompi por intento, webhook con ventana de 25 h, COD con blocklist y conciliación, CSV contable DIAN con PII redactada y decremento atómico de stock post-pago.
-- Aveonline con PDF y `ShipmentEvent`; etiquetas autenticadas/auditadas; segregación Taller/Alistamiento, confidencialidad COP, costeo BOM y cupones personales no transferibles.
+- Aveonline con PDF, `ShipmentEvent` y separación `NOVEDAD` vs `DEVOLUCIÓN`; etiquetas auditadas, segregación Taller/Despachos, confidencialidad COP, costeo BOM y cupones personales.
 
 ### CRM 360, B2B, posventa y operación ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md), [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md))
 

@@ -91,8 +91,17 @@ export async function recordShipmentEvents(input: {
 }): Promise<number> {
   if (!input.events.length) return 0;
   try {
+    // Las novedades operativas del carrier (`EXCEPTION`: "NOVEDAD", "por tiempo", etc.)
+    // NO se persisten en `ShipmentEvent`: son incidencias internas de ruta que suelen
+    // resolverse en el reintento del día hábil siguiente y solo notifican al admin
+    // (caso LCM-2026-0006). El timeline del pedido conserva únicamente hitos reales de
+    // avance y devoluciones confirmadas (`RETURNED`).
     const rows = input.events
-      .filter((ev) => ev.carrierStatusRaw.trim().length > 0)
+      .filter((ev) => {
+        const raw = ev.carrierStatusRaw.trim();
+        if (!raw) return false;
+        return mapAveonlineStatus(raw) !== "EXCEPTION";
+      })
       .map((ev) => {
         const mapped: TrackingStatusValue = mapAveonlineStatus(ev.carrierStatusRaw);
         const isGenerated = normalizeCarrierStatus(ev.carrierStatusRaw) === "GENERADA";

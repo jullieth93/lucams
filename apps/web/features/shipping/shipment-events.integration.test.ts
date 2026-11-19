@@ -177,4 +177,36 @@ describe.skipIf(!hasDb)("ShipmentEvent — persistencia e idempotencia cross-sou
     });
     expect(otroMinuto).not.toBe(a);
   });
+
+  it("omite novedades operativas (EXCEPTION/NOVEDAD) en ShipmentEvent pero sí persiste devoluciones reales (RETURNED)", async () => {
+    const countBefore = await prisma.shipmentEvent.count({ where: { orderId } });
+    const skippedException = await recordShipmentEvents({
+      orderId,
+      trackingNumber,
+      source: "POLL",
+      events: [
+        {
+          carrierStatusRaw: "NOVEDAD",
+          description: "ENTREGA NO EFECTUADA POR INCONVENIENTES OPERATIVOS",
+          occurredAt: new Date("2026-11-18T23:31:00.000Z"),
+        },
+      ],
+    });
+    expect(skippedException).toBe(0);
+    expect(await prisma.shipmentEvent.count({ where: { orderId } })).toBe(countBefore);
+
+    const savedReturned = await recordShipmentEvents({
+      orderId,
+      trackingNumber,
+      source: "POLL",
+      events: [
+        {
+          carrierStatusRaw: "DEVUELTA",
+          description: "Devolución confirmada a origen",
+          occurredAt: new Date("2026-11-20T15:00:00.000Z"),
+        },
+      ],
+    });
+    expect(savedReturned).toBe(1);
+  });
 });

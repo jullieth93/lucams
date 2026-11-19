@@ -1318,6 +1318,7 @@ export class AveonlineProvider implements ShippingProvider {
           fechamostrar?: string;
           fecha?: string;
           descripcion?: string;
+          aclaracion?: string;
           estado?: string;
         }>;
       }>;
@@ -1334,13 +1335,14 @@ export class AveonlineProvider implements ShippingProvider {
       status,
       carrierStatusRaw: guia?.estado ?? "",
       history: (guia?.historicos ?? []).map((h) => {
-        // parseAveonlineDate entiende `fechamostrar` (MM/DD/YYYY HH:mm:ss, hora CO
-        // sin TZ) y `fecha` (YYYY-MM-DD HH:mm:ss) — antes `new Date(raw)` las leía
-        // en la TZ del servidor (UTC en Vercel): ~5 h de desfase en cada hito.
+        // parseAveonlineDate entiende ISO local (`YYYY-MM-DD HH:mm[:ss]`), novedades en
+        // español (`DD/MM/YYYY HH:mm[:ss]`, caso real LCM-2026-0006) y el formato doc
+        // (`MM/DD/YYYY HH:mm:ss`), siempre en hora Colombia (-05:00).
         const raw = h.fechamostrar ?? h.fecha; // real: fechamostrar; fecha = fallback defensivo
         return {
           status: h.estado ?? "",
           description: h.descripcion ?? "",
+          clarification: h.aclaracion ?? "",
           timestamp: raw ? parseAveonlineDate(raw) : new Date(),
         };
       }),
@@ -1416,21 +1418,50 @@ function isEnviaCarrier(carrier: string, idtransportador: string | number): bool
 
 /**
  * Aveonline manda fechas SIN zona horaria, en hora local de Colombia (America/Bogota,
- * UTC-5): webhook `fecha` como "2020-12-11 11:04:43" y polling `fechamostrar` como
- * "12/11/2020 11:04:43" (MM/DD/YYYY). `new Date(str)` las interpretaría en la TZ del
- * servidor (UTC en Vercel) → ~5 h de desfase. Normalizamos ambos formatos a ISO con
- * offset -05:00. Exportada: la reutiliza la persistencia de ShipmentEvent para que
- * webhook y polling produzcan el MISMO instante (dedup cross-source confiable).
+ * UTC-5):
+ *  - hitos regulares (`novedad: 0`) y webhook `fecha`: "2026-11-18 12:03:13" (YYYY-MM-DD HH:mm[:ss])
+ *  - novedades reales en polling (`novedad: 1`, caso LCM-2026-0006): "18/11/2026 18:31" (DD/MM/YYYY HH:mm, sin `:ss`)
+ *  - ejemplo documentado del histórico: "12/11/2020 11:04:43" (MM/DD/YYYY HH:mm:ss)
+ * Normalizamos todos a ISO con offset `-05:00` para evitar tanto el desfase de 5 h en UTC
+ * como el fallback no determinista `new Date()` (que duplicaba hitos en cada corrida de
+ * `tracking-sync` al cambiar el minuto).
  */
+function isSlashDateDayFirst(first: number, second: number, hasSeconds: boolean): boolean {
+  if (first > 12) return true;
+  if (second > 12) return false;
+  return !hasSeconds;
+}
+
 export function parseAveonlineDate(raw: string | undefined): Date {
   if (!raw) return new Date();
   const trimmed = raw.trim();
-  const isoLocal = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/.exec(trimmed);
-  if (isoLocal) return new Date(`${isoLocal[1]}T${isoLocal[2]}-05:00`);
-  const usLocal = /^(\d{2})\/(\d{2})\/(\d{4})[ T](\d{2}:\d{2}:\d{2})$/.exec(trimmed);
-  if (usLocal) return new Date(`${usLocal[3]}-${usLocal[1]}-${usLocal[2]}T${usLocal[4]}-05:00`);
+  const isoLocal = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::(\d{2}))?$/.exec(trimmed);
+  if (isoLocal) {
+    const sec = isoLocal[3] ?? "00";
+    return new Date(`${isoLocal[1]}T${isoLocal[2]}:${sec}-05:00`);
+  }
+  const slashLocal = /^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{2}:\d{2})(?::(\d{2}))?$/.exec(trimmed);
+  if (slashLocal) {
+    const first = Number(slashLocal[1]);
+    const second = Number(slashLocal[2]);
+    const isDayFirst = isSlashDateDayFirst(first, second, slashLocal[5] !== undefined);
+    const day = String(isDayFirst ? first : second).padStart(2, "0");
+    const month = String(isDayFirst ? second : first).padStart(2, "0");
+    const sec = slashLocal[5] ?? "00";
+    const parsed = new Date(`${slashLocal[3]}-${month}-${day}T${slashLocal[4]}:${sec}-05:00`);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
   const d = new Date(trimmed);
   return Number.isNaN(d.getTime()) ? new Date() : d;
+}
+
+/**
+ * Distingue una guía ANULADA / CANCELADA terminalmente por la transportadora frente a
+ * una `NOVEDAD` operativa de ruta (reintento al siguiente día hábil o aclaración en panel).
+ */
+export function isVoidedGuideStatus(raw: string): boolean {
+  const s = raw.toUpperCase();
+  return s.includes("ANULAD") || s.includes("CANCEL");
 }
 
 export function mapAveonlineStatus(raw: string): TrackingStatus["status"] {

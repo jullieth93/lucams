@@ -251,7 +251,7 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
     name: "Pedido devuelto por la transportadora",
     group: "Pedidos",
     description:
-      "Cuando Aveonline reporta RETURNED/EXCEPTION: el paquete viene de vuelta y el negocio decide el siguiente paso.",
+      "Cuando Aveonline confirma RETURNED (devolución real al remitente): el paquete viene de vuelta y el negocio coordina el siguiente paso con el cliente. Nunca se envía ante novedades operativas (EXCEPTION).",
     render: orderReturnedEmail,
     sampleData: { orderNumber: ORDER, customerName: CUSTOMER },
   }),
