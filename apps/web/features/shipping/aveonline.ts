@@ -1426,6 +1426,12 @@ function isEnviaCarrier(carrier: string, idtransportador: string | number): bool
  * como el fallback no determinista `new Date()` (que duplicaba hitos en cada corrida de
  * `tracking-sync` al cambiar el minuto).
  */
+function isSlashDateDayFirst(first: number, second: number, hasSeconds: boolean): boolean {
+  if (first > 12) return true;
+  if (second > 12) return false;
+  return !hasSeconds;
+}
+
 export function parseAveonlineDate(raw: string | undefined): Date {
   if (!raw) return new Date();
   const trimmed = raw.trim();
@@ -1438,13 +1444,7 @@ export function parseAveonlineDate(raw: string | undefined): Date {
   if (slashLocal) {
     const first = Number(slashLocal[1]);
     const second = Number(slashLocal[2]);
-    const hasSeconds = slashLocal[5] !== undefined;
-    // Desambiguación determinista:
-    //  - si el primer bloque > 12 (ej. "18/11/2026"), es inequívocamente DD/MM;
-    //  - si el segundo bloque > 12 (ej. "11/18/2026"), es inequívocamente MM/DD;
-    //  - si ambos <= 12: sin segundos (`HH:mm`) corresponde al formato real en español
-    //    `DD/MM/YYYY HH:mm` de novedades Aveonline; con segundos preserva `MM/DD/YYYY HH:mm:ss`.
-    const isDayFirst = first > 12 ? true : second > 12 ? false : !hasSeconds;
+    const isDayFirst = isSlashDateDayFirst(first, second, slashLocal[5] !== undefined);
     const day = String(isDayFirst ? first : second).padStart(2, "0");
     const month = String(isDayFirst ? second : first).padStart(2, "0");
     const sec = slashLocal[5] ?? "00";

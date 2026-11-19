@@ -1078,6 +1078,94 @@ async function findOrderByTrackingNumber(trackingNumber: string) {
     : null;
 }
 
+type TrackingMatchedOrder = NonNullable<Awaited<ReturnType<typeof findOrderByTrackingNumber>>>;
+
+async function clearLogisticsReconciliationOnDelivery(order: TrackingMatchedOrder): Promise<void> {
+  if (!order.needsReconciliation) return;
+  if (!LOGISTICS_RECONCILIATION_REASON_RE.test(order.reconciliationReason ?? "")) return;
+  await prisma.order
+    .updateMany({
+      where: { id: order.id, needsReconciliation: true },
+      data: {
+        needsReconciliation: false,
+        reconciliationNote:
+          "Cerrada automáticamente al confirmarse la entrega por la transportadora.",
+        reconciledAt: new Date(),
+      },
+    })
+    .catch(() => null);
+}
+
+async function handleReturnedTrackingUpdate(
+  order: TrackingMatchedOrder,
+  input: {
+    carrierStatusRaw: string;
+    carrierDescription?: string;
+    carrierClarification?: string;
+  },
+): Promise<void> {
+  const alreadyReconciledReturn = Boolean(
+    !order.needsReconciliation &&
+    order.reconciledAt &&
+    /DEVUELTO/i.test(order.reconciliationReason ?? ""),
+  );
+  if (!order.needsReconciliation && !alreadyReconciledReturn) {
+    const actionSuffix = order.status === "DELIVERED" ? " y reembolso" : " / reenvío";
+    await markNeedsReconciliation(
+      order.id,
+      `Envío DEVUELTO (${input.carrierStatusRaw}) — revisar stock${actionSuffix}`,
+    );
+  }
+  await notifyOrderReturned({
+    orderId: order.id,
+    carrierStatusRaw: input.carrierStatusRaw,
+    carrierDescription: input.carrierDescription,
+    carrierClarification: input.carrierClarification,
+  });
+  logger.warn({
+    event: "order.saga.tracking.returned",
+    orderNumber: order.number,
+    carrierRaw: input.carrierStatusRaw,
+  });
+}
+
+async function handleExceptionTrackingUpdate(
+  order: TrackingMatchedOrder,
+  input: {
+    carrierStatusRaw: string;
+    carrierDescription?: string;
+    carrierClarification?: string;
+    occurredAt?: Date;
+  },
+): Promise<void> {
+  const voidedGuide = isVoidedGuideStatus(input.carrierStatusRaw);
+  const alreadyReconciledVoided = Boolean(
+    !order.needsReconciliation &&
+    order.reconciledAt &&
+    /Guía anulada/i.test(order.reconciliationReason ?? ""),
+  );
+  if (voidedGuide && !order.needsReconciliation && !alreadyReconciledVoided) {
+    await markNeedsReconciliation(
+      order.id,
+      `Guía anulada por la transportadora (${input.carrierStatusRaw}) — generar nueva guía o revisar despacho`,
+    );
+  }
+  await notifyOrderShippingException({
+    orderId: order.id,
+    carrierStatusRaw: input.carrierStatusRaw,
+    carrierDescription: input.carrierDescription,
+    carrierClarification: input.carrierClarification,
+    occurredAt: input.occurredAt,
+    isVoidedGuide: voidedGuide,
+  });
+  logger.warn({
+    event: "order.saga.tracking.exception",
+    orderNumber: order.number,
+    carrierRaw: input.carrierStatusRaw,
+    voidedGuide,
+  });
+}
+
 export async function processTrackingUpdate(input: {
   trackingNumber: string;
   status: "PENDING" | "DISPATCHED" | "IN_TRANSIT" | "DELIVERED" | "RETURNED" | "EXCEPTION";
@@ -1146,24 +1234,7 @@ export async function processTrackingUpdate(input: {
     if (currentStatus === "SHIPPED" || currentStatus === "FULFILLING") {
       try {
         await transitionOrder(order.id, "DELIVERED");
-        // Si la orden tenía un flag logístico previo (ej. transición de tracking fallida antes)
-        // y nunca fue una anomalía financiera/stock, la entrega confirmada lo cierra limpio.
-        if (
-          order.needsReconciliation &&
-          LOGISTICS_RECONCILIATION_REASON_RE.test(order.reconciliationReason ?? "")
-        ) {
-          await prisma.order
-            .updateMany({
-              where: { id: order.id, needsReconciliation: true },
-              data: {
-                needsReconciliation: false,
-                reconciliationNote:
-                  "Cerrada automáticamente al confirmarse la entrega por la transportadora.",
-                reconciledAt: new Date(),
-              },
-            })
-            .catch(() => null);
-        }
+        await clearLogisticsReconciliationOnDelivery(order);
         await sendOrderDelivered(order.id);
         return { status: "ok", orderNumber: order.number, transitionedTo: "DELIVERED" };
       } catch (err) {
@@ -1206,68 +1277,9 @@ export async function processTrackingUpdate(input: {
       );
     }
   } else if (input.status === "RETURNED") {
-    // Devolución REAL al remitente confirmada por la transportadora (`DEVUELTO`, `DEVOLUCIÓN`).
-    // NO auto-cancela ni reembolsa sola (requiere decisión humana: reenvío, reembolso o reposición
-    // de stock al recibir el paquete). Si el admin ya cerró esta reconciliación (`reconciledAt`),
-    // `tracking-sync` no la reabre cada 15 minutos.
-    const alreadyReconciledReturn = Boolean(
-      !order.needsReconciliation &&
-      order.reconciledAt &&
-      /DEVUELTO/i.test(order.reconciliationReason ?? ""),
-    );
-    if (!order.needsReconciliation && !alreadyReconciledReturn) {
-      await markNeedsReconciliation(
-        order.id,
-        `Envío DEVUELTO (${input.carrierStatusRaw}) — revisar stock${
-          order.status === "DELIVERED" ? " y reembolso" : " / reenvío"
-        }`,
-      );
-    }
-    await notifyOrderReturned({
-      orderId: order.id,
-      carrierStatusRaw: input.carrierStatusRaw,
-      carrierDescription: input.carrierDescription,
-      carrierClarification: input.carrierClarification,
-    });
-    logger.warn({
-      event: "order.saga.tracking.returned",
-      orderNumber: order.number,
-      carrierRaw: input.carrierStatusRaw,
-    });
+    await handleReturnedTrackingUpdate(order, input);
   } else if (input.status === "EXCEPTION") {
-    // Incidente LCM-2026-0006: `NOVEDAD` operativa (ej. "por tiempo" al cierre de ruta) NO es una
-    // devolución al remitente ni un descuadre de pago/stock — el carrier suele reintentar entrega
-    // al día hábil siguiente. Solo si la guía fue `ANULADA`/`CANCELADA` se prende reconciliación;
-    // en una `NOVEDAD` operativa se informa únicamente al admin en `/admin/notificaciones`, sin
-    // tocar `needsReconciliation` ni enviar correo falso de devolución al comprador.
-    const voidedGuide = isVoidedGuideStatus(input.carrierStatusRaw);
-    if (voidedGuide) {
-      const alreadyReconciledVoided = Boolean(
-        !order.needsReconciliation &&
-        order.reconciledAt &&
-        /Guía anulada/i.test(order.reconciliationReason ?? ""),
-      );
-      if (!order.needsReconciliation && !alreadyReconciledVoided) {
-        await markNeedsReconciliation(
-          order.id,
-          `Guía anulada por la transportadora (${input.carrierStatusRaw}) — generar nueva guía o revisar despacho`,
-        );
-      }
-    }
-    await notifyOrderShippingException({
-      orderId: order.id,
-      carrierStatusRaw: input.carrierStatusRaw,
-      carrierDescription: input.carrierDescription,
-      carrierClarification: input.carrierClarification,
-      occurredAt: input.occurredAt,
-      isVoidedGuide: voidedGuide,
-    });
-    logger.warn({
-      event: "order.saga.tracking.exception",
-      orderNumber: order.number,
-      carrierRaw: input.carrierStatusRaw,
-      voidedGuide,
-    });
+    await handleExceptionTrackingUpdate(order, input);
   }
 
   return { status: "noop", orderNumber: order.number };
