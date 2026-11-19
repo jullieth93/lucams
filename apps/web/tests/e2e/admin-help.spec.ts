@@ -40,7 +40,7 @@ test.afterAll(async () => {
   await prisma.$disconnect();
 });
 
-test("ayuda contextual, onboarding, recorrido, búsqueda y feedback funcionan de punta a punta", async ({
+test("ayuda contextual reactiva, modo en /admin/ayuda, playbooks E2E, vista por rol, búsqueda y feedback funcionan de punta a punta", async ({
   page,
 }) => {
   await loginAdminWithTotp(page, {
@@ -50,6 +50,7 @@ test("ayuda contextual, onboarding, recorrido, búsqueda y feedback funcionan de
     dismissOnboarding: false,
   });
 
+  // 1. Bienvenida discreta en primer ingreso (compatible con dismissAdminHelpOnboarding)
   await page.getByRole("button", { name: "No mostrar automáticamente esta ruta" }).click();
   await expect(
     page.getByRole("button", { name: "No mostrar automáticamente esta ruta" }),
@@ -66,7 +67,16 @@ test("ayuda contextual, onboarding, recorrido, búsqueda y feedback funcionan de
     )
     .toBe(1);
 
-  await page.goto("/admin/pedidos");
+  // 2. En /admin/dashboard el botón abre ayuda de Dashboard; al navegar del lado cliente (<Link>) a Pedidos se actualiza en tiempo real
+  await expect(page.getByRole("button", { name: "Abrir ayuda de Dashboard" })).toBeVisible();
+  const mobileMenuButton = page.getByRole("button", { name: "Abrir menú" });
+  if (await mobileMenuButton.isVisible()) {
+    await mobileMenuButton.click();
+  }
+  await page.getByRole("link", { name: "Pedidos", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/admin\/pedidos$/);
+  await expect(page.getByRole("button", { name: "Abrir ayuda de Pedidos" })).toBeVisible();
+
   await page.getByRole("button", { name: "Abrir ayuda de Pedidos" }).click();
   await expect(page.getByRole("heading", { name: "Ayuda de Pedidos" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Procedimientos paso a paso" })).toBeVisible();
@@ -74,6 +84,12 @@ test("ayuda contextual, onboarding, recorrido, búsqueda y feedback funcionan de
   await expect(page).toHaveURL(/\/admin\/ayuda\?guia=pedidos/);
   await expect(page.getByRole("heading", { name: "Pedidos", exact: true })).toBeVisible();
 
+  // 3. Dentro de /admin/ayuda?guia=pedidos el botón flotante se transforma en «Índice rápido»
+  await expect(
+    page.getByRole("button", { name: "Abrir índice y buscador rápido de ayuda" }),
+  ).toBeVisible();
+
+  // 4. Checklist operativo paso a paso y feedback persistidos en BD
   await page.getByRole("button", { name: "Iniciar recorrido interactivo" }).click();
   await page.getByRole("button", { name: "Siguiente" }).click();
   await expect(page.getByText("Paso 2 de 4")).toBeVisible();
@@ -96,7 +112,24 @@ test("ayuda contextual, onboarding, recorrido, búsqueda y feedback funcionan de
     )
     .toBe(1);
 
+  // 5. En la portada de /admin/ayuda el botón flotante se oculta; funcionan pestañas, Playbooks, vista por rol y buscador
   await page.goto("/admin/ayuda");
+  await expect(
+    page.getByRole("button", { name: "Abrir índice y buscador rápido de ayuda" }),
+  ).toBeHidden();
+
+  await page.getByRole("button", { name: /2\. Flujos E2E/i }).click();
+  await expect(
+    page.getByRole("heading", { name: "Flujos transversales de punta a punta (Playbooks E2E)" }),
+  ).toBeVisible();
+
+  await page.getByLabel("Ver ayuda como rol:").selectOption("PRINT_WORKSHOP");
+  await expect(page).toHaveURL(/rol=PRINT_WORKSHOP/);
+  await expect(page.getByText(/Modo vista previa por rol/i)).toBeVisible();
+  await page.getByRole("link", { name: "Volver a mi vista (Administradora)" }).click();
+  await expect(page).not.toHaveURL(/rol=PRINT_WORKSHOP/);
+  await expect(page.getByText(/Modo vista previa por rol/i)).toBeHidden();
+
   await page.getByRole("searchbox", { name: "Buscar en las guías" }).fill("conciliar remesa");
   await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(/q=conciliar\+remesa/);

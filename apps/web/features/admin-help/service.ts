@@ -2,8 +2,12 @@ import "server-only";
 
 import type { AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
-import { buildModuleSteps, buildOnboardingSteps, getHelpGuideById } from "./registry";
-import type { AdminHelpProgress } from "./types";
+import {
+  getGuideAndSubrouteForPath,
+  getHelpGuideById,
+  resolveStepsForHelpTarget,
+} from "./registry";
+import type { AdminHelpProgress, AdminModuleGuide, AdminSubrouteFocus } from "./types";
 
 export async function getAdminHelpProgress(adminUserId: string): Promise<AdminHelpProgress[]> {
   const rows = await prisma.adminHelpProgress.findMany({
@@ -26,7 +30,7 @@ export async function getAdminHelpProgress(adminUserId: string): Promise<AdminHe
 function stepsForGuide(guideId: string, role: AdminRole) {
   const guide = getHelpGuideById(guideId, role);
   if (!guide) return null;
-  const steps = "role" in guide ? buildOnboardingSteps(guide) : buildModuleSteps(guide, role);
+  const steps = resolveStepsForHelpTarget(guide, role);
   return { guide, steps };
 }
 
@@ -90,6 +94,49 @@ export async function getAdminHelpFeedbackForGuide(
     },
   });
   return row ?? null;
+}
+
+export async function getContextualHelpForPathname(input: {
+  adminUserId: string;
+  role: AdminRole;
+  pathname: string;
+}): Promise<{
+  guide: AdminModuleGuide;
+  subroute: AdminSubrouteFocus | null;
+  progress: AdminHelpProgress | null;
+  feedback: { isHelpful: boolean; comment: string | null } | null;
+} | null> {
+  const { guide, subroute } = getGuideAndSubrouteForPath(input.pathname, input.role);
+  if (!guide) return null;
+
+  const [progressRow, feedback] = await Promise.all([
+    prisma.adminHelpProgress.findUnique({
+      where: {
+        adminUserId_guideId: { adminUserId: input.adminUserId, guideId: guide.id },
+      },
+      select: {
+        guideId: true,
+        version: true,
+        currentStep: true,
+        completedAt: true,
+        dismissedAt: true,
+      },
+    }),
+    getAdminHelpFeedbackForGuide(input.adminUserId, guide.id),
+  ]);
+
+  return {
+    guide,
+    subroute,
+    progress: progressRow
+      ? {
+          ...progressRow,
+          completedAt: progressRow.completedAt?.toISOString() ?? null,
+          dismissedAt: progressRow.dismissedAt?.toISOString() ?? null,
+        }
+      : null,
+    feedback,
+  };
 }
 
 export async function submitAdminHelpFeedback(input: {

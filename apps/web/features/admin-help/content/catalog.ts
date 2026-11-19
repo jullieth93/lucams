@@ -1,3 +1,4 @@
+import { HELP_LIVE_NUMBERS } from "../constants";
 import type { AdminModuleGuide } from "../types";
 
 export const CATALOG_GUIDES: AdminModuleGuide[] = [
@@ -7,100 +8,95 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     area: "Catálogo y producción",
     route: "/admin/productos",
     summary:
-      "Gestión integral del catálogo: contenido, variantes, precios, imágenes, SEO, receta y personalización.",
+      "Catálogo maestro: ficha comercial, opciones físicas de 1 unidad base, gemelas `-NOMAG`, receta BOM, Estudio y SEO.",
     purpose:
-      "Define qué se vende, cómo se presenta y qué especificaciones usa cada variante. La página principal administra el producto y las vistas de creación, edición y variantes controlan su configuración completa.",
+      "Gobierna toda la oferta de Lucams Shop: define si un artículo es bajo pedido en el Estudio (`MADE_TO_ORDER`) o producto terminado (`PHYSICAL_STOCK`), administra sus opciones físicas de 1 unidad base (tamaño, con/sin imán `-NOMAG`), fotos, empaque logístico, receta de materiales BOM, meses de garantía y visibilidad en tienda.",
     whenToUse: [
-      "Para crear o actualizar un producto y sus variantes.",
-      "Para corregir visibilidad, contenido, precios, imágenes o SEO.",
-      "Para revisar receta de materiales y esquema de personalización.",
+      "Para lanzar un producto nuevo o editar fotos, textos, precios base, peso/dimensiones o meses de garantía.",
+      "Para configurar opciones físicas (tamaño, imán vs sin imán) o ajustar la receta BOM de materiales.",
+      "Para pausar, archivar o revisar visibilidad en el escaparate web.",
     ],
     concepts: [
       {
-        term: "Producto",
+        term: "Opción base de 1 unidad (ADR-209)",
         definition:
-          "Entidad comercial principal que agrupa contenido y una o más variantes vendibles.",
+          "Cada variante modela únicamente atributos físicos de 1 unidad base (1 pieza, 1 pack de 6 o 1 set); todos los descuentos por volumen viven en Precios al por mayor (/admin/mayorista).",
       },
       {
-        term: "Variante",
-        definition: "Opción concreta con SKU, atributos, precio, stock y datos físicos propios.",
+        term: "MADE_TO_ORDER vs PHYSICAL_STOCK (ADR-208)",
+        definition:
+          "Todo producto conectado al Estudio es forzado por el servidor a `MADE_TO_ORDER` (sin stock terminado); solo productos prefabricados operan con `PHYSICAL_STOCK` e Inventario.",
+      },
+      {
+        term: "Gemela `-NOMAG`",
+        definition:
+          "Variante sin lámina magnética (acabado decorativo/fotográfico) asociada al mismo producto para que el comprador elija con o sin imán.",
       },
       {
         term: "Receta BOM",
         definition:
-          "Lista de materiales y cantidades utilizada para estimar el costo de fabricación.",
+          "Lista de insumos y cantidades por unidad que calcula automáticamente el costo sugerido en Costos y márgenes (/admin/costos).",
       },
     ],
     sections: [
       {
         id: "contenido",
-        title: "Información comercial",
-        summary: "Controla identidad, presentación y visibilidad en tienda.",
+        title: "Identidad comercial, visibilidad y SEO",
+        summary: "Controla cómo descubre y evalúa el comprador el producto en vitrina.",
         topics: [
           {
             id: "slug",
-            label: "Nombre y slug",
-            description: "Identifican el producto y construyen su URL pública.",
-            caution: "Cambiar el slug puede romper enlaces; crea la redirección correspondiente.",
+            label: "Nombre, slug y redirección 301 automática",
+            description:
+              "Construye la URL `/productos/[slug]`; al renombrar un slug existente el sistema registra redirección 301 automática.",
+            caution:
+              "Evita cambiar slugs en medio de campañas activas salvo necesidad real y compruébalo luego en /admin/redirects.",
           },
           {
             id: "visibilidad",
-            label: "Visibilidad en tienda",
-            description: "Resume si el producto puede mostrarse según su configuración y estado.",
-            interpretation:
-              "Revisa tanto el producto como sus variantes, imágenes y categorías si no aparece.",
-          },
-          {
-            id: "seo",
-            label: "SEO",
+            label: "Estado activo y publicación en tienda (`publishedOnStorefront`)",
             description:
-              "Título, descripción e información usada en buscadores y enlaces compartidos.",
-            interpretation: "Debe describir el producto real sin promesas que la tienda no cumple.",
+              "Para aparecer en la web y en Google Merchant un producto debe estar activo, publicado en tienda, con foto principal y al menos una variante activa.",
+            interpretation:
+              "Usa Pausar/Desactivar para retirar temporalmente; reserva la papelera solo para retiro definitivo.",
           },
           {
-            id: "imagenes",
-            label: "Imágenes",
-            description: "Material visual de la ficha pública y vistas del producto.",
-            caution: "Usa imágenes propias, nítidas y coherentes con la variante ofrecida.",
+            id: "garantia-seo",
+            label: "Plazo de garantía y SEO veraz",
+            description:
+              "Los meses de garantía configurados aquí se sellan de forma inmutable en cada `OrderItem` comprado.",
+            caution:
+              "Nunca prometas en descripción o SEO atributos físicos o plazos que Taller no cumpla (Ley 1480 arts. 23 y 29).",
           },
         ],
       },
       {
         id: "variantes",
-        title: "Variantes y fabricación",
-        summary: "Define la opción vendible y sus consecuencias económicas y técnicas.",
+        title: "Variantes físicas, peso logístico, Estudio y BOM",
+        summary: "Conecta la compra con cotización de fletes, lienzo Konva/3D y costeo.",
         topics: [
           {
-            id: "sku",
-            label: "SKU",
-            description: "Identificador único de la variante para operación e inventario.",
-            caution: "No reutilices SKU entre opciones distintas.",
-          },
-          {
-            id: "precio",
-            label: "Precio",
-            description: "Valor unitario almacenado internamente en centavos COP.",
-            interpretation: "Verifica el precio público y las escalas mayoristas antes de guardar.",
+            id: "sku-precio",
+            label: "SKU único y precio base en COP",
+            description:
+              "Cada opción exige SKU irrepetible y precio unitario entero (almacenado internamente en centavos COP).",
+            interpretation:
+              "No crees variantes de «pack x3» o «pack x10» para dar descuento: crea la opción base de 1 unidad y configura los tramos en /admin/mayorista.",
           },
           {
             id: "fisicos",
-            label: "Peso y dimensiones",
-            description: "Datos usados por cotización, empaque y reglas logísticas.",
-            interpretation: "Valores incompletos pueden impedir o distorsionar fletes.",
-          },
-          {
-            id: "personalizacion",
-            label: "Esquema de personalización",
-            description: "Define qué experiencia del Estudio y qué datos necesita la variante.",
+            label: "Peso (g) y dimensiones de empaque",
+            description:
+              "Alimentan el cálculo apilado de Aveonline y los filtros de peso en /admin/envios.",
             caution:
-              "Un cambio puede afectar diseños y pedidos futuros; valida el Estudio después de editarlo.",
+              "Un peso en cero o irreal distorsiona el flete cobrado al cliente frente a lo facturado por la transportadora.",
           },
           {
-            id: "bom",
-            label: "Materiales",
-            description: "Insumos y cantidades que componen la receta de la variante.",
-            interpretation:
-              "Alimenta el simulador de costos; no descuenta por sí solo inventario de materiales.",
+            id: "personalizacion-bom",
+            label: "Esquema del Estudio y pestaña Materiales (BOM)",
+            description: `Vincula plantilla aprobada (topes de ${HELP_LIVE_NUMBERS.maxDesignUnits} diseños/tanda, ${HELP_LIVE_NUMBERS.maxPhotoPackUnits} packs, ${HELP_LIVE_NUMBERS.maxCalendarUnits} calendarios, ${HELP_LIVE_NUMBERS.maxLetterSetUnits} sets de letras, ${HELP_LIVE_NUMBERS.maxDesignSlots} ranuras máx.) y define los insumos consumidos por unidad.`,
+            caution:
+              "Tras tocar el esquema de personalización, abre siempre el Estudio público para probar lienzo 2D, vista 3D y guardado.",
           },
         ],
       },
@@ -108,55 +104,113 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "publicar-producto",
-        title: "Crear o actualizar un producto",
-        goal: "Publicar una oferta completa, coherente y operable.",
+        title: "Crear o actualizar un producto de punta a punta",
+        goal: "Dejar la ficha lista para vender con flete exacto, margen positivo y Estudio verificado.",
+        route: "/admin/productos",
         steps: [
-          "Completa nombre, slug, descripción, categoría e imágenes.",
-          "Elige bajo pedido para productos del Estudio o stock físico para productos terminados; el servidor fuerza bajo pedido si interviene el Estudio.",
-          "Crea cada variante con SKU único, precio, peso y dimensiones correctos; solo en stock físico registra existencias y reserva de seguridad.",
-          "Configura personalización y receta de materiales cuando apliquen.",
-          "Revisa SEO, escalas de volumen, publicación en el canal web y visibilidad pública.",
-          "Guarda y abre la ficha pública para comprobar contenido, variantes y compra.",
-          "Si cambiaste el slug de un producto existente, registra la redirección desde la URL anterior.",
+          "Completa nombre, categoría, descripción honesta, meses de garantía e imágenes nítidas.",
+          "Define `MADE_TO_ORDER` (si pasa por el Estudio) o `PHYSICAL_STOCK` (producto terminado sin Estudio).",
+          "Configura las variantes físicas de 1 unidad base con SKU único, precio en pesos, peso en gramos y dimensiones.",
+          "Asigna la receta de insumos en la pestaña Materiales y luego aplica o valida su costo unitario en /admin/costos.",
+          "Si aplica descuento por cantidad, configúralo en /admin/mayorista verificando margen positivo sobre BOM.",
+          "Guarda, comprueba cobertura en /admin/canales/tienda y haz una prueba real en la PDP y en el Estudio.",
         ],
         expected:
-          "La ficha pública ofrece exactamente lo que inventario, producción y logística pueden cumplir.",
-        exceptions: [
-          "Si el producto no aparece, revisa archivado, estado activo, variantes y categoría antes de duplicarlo.",
-        ],
+          "El producto aparece en vitrina, cotiza envío real, abre su plantilla correcta en el Estudio y protege el margen bruto.",
       },
     ],
     cautions: [
-      "No edites SKU o personalización de forma improvisada cuando existan pedidos históricos; conserva la trazabilidad.",
-      "Los cambios de precio no deben presentarse como retroactivos a compras ya realizadas.",
-      "La purga definitiva desde la papelera es irreversible y exige escribir ELIMINAR más verificación MFA reciente (≤ 10 min).",
+      `Purgar definitivamente un producto desde la papelera es irreversible y exige escribir ELIMINAR más MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min).`,
+    ],
+    dontTouch: [
+      "No crees variantes multi-unidad para simular descuentos por volumen: para eso existe exclusivamente /admin/mayorista.",
+      "No cambies el esquema de personalización de un producto activo sin probar de inmediato el Estudio 2D/3D.",
+      "No reutilices el SKU de una variante histórica en otro producto distinto.",
+    ],
+    checklist: [
+      "Fotos cargadas, categoría activa y `publishedOnStorefront` revisado.",
+      "Variantes de 1 unidad base con SKU único, peso real y dimensiones.",
+      "Receta BOM vinculada y costo validado en /admin/costos.",
+      "Estudio público probado si el producto es personalizado.",
+    ],
+    subroutes: [
+      {
+        id: "producto-nuevo",
+        pattern: "/admin/productos/nuevo",
+        title: "Alta de producto nuevo",
+        summary:
+          "Estás creando un producto desde cero: define primero su modo de inventario (`MADE_TO_ORDER` vs `PHYSICAL_STOCK`) y su categoría principal.",
+        tips: [
+          "Guarda primero la ficha base para habilitar pestañas complementarias de imágenes, variantes y materiales BOM.",
+          "No actives visibilidad pública hasta terminar variantes, fotos, receta BOM y costo unitario.",
+        ],
+        highlightSectionIds: ["contenido", "variantes"],
+        highlightProcedureIds: ["publicar-producto"],
+      },
+      {
+        id: "producto-variantes",
+        pattern: "/admin/productos/[id]/variants",
+        title: "Gestión de opciones físicas y gemelas `-NOMAG`",
+        summary:
+          "Administras SKUs, precios base, pesos, dimensiones y variantes con/sin imán del producto actual.",
+        tips: [
+          "Modela solo opciones físicas de 1 unidad base (ej. tamaño o acabado con/sin imán); lleva cualquier precio por cantidad a /admin/mayorista.",
+          "Verifica peso y medidas en todas las opciones activas para no romper cotizaciones de Aveonline.",
+        ],
+        highlightSectionIds: ["variantes"],
+      },
+      {
+        id: "producto-edicion",
+        pattern: "/admin/productos/[id]",
+        title: "Edición integral de ficha de producto",
+        summary:
+          "Editas contenido comercial, fotos, personalización, receta BOM y estado de un producto existente.",
+        tips: [
+          "El costo unitario vigente se muestra aquí en lectura; usa el enlace directo a /admin/costos para actualizarlo.",
+          "Si cambias el slug, verifica en /admin/redirects que no hayas generado una cadena sobre cambios anteriores.",
+        ],
+        highlightSectionIds: ["contenido", "variantes"],
+        highlightProcedureIds: ["publicar-producto"],
+      },
     ],
     faqs: [
       {
-        question: "¿Dónde edito el costo unitario de fabricación del producto?",
+        question: "¿Dónde edito el costo unitario de fabricación de un producto?",
         answer:
-          "El costo unitario se gobierna de forma centralizada en Costos y márgenes (/admin/costos). En la pestaña Avanzado de la ficha verás el valor vigente en modo lectura con enlace directo.",
+          "De forma centralizada en Costos y márgenes (/admin/costos). En la ficha del producto ves el valor vigente y armas la receta de materiales que calcula el sugerido.",
       },
       {
-        question: "¿Qué hago antes de cambiar una URL?",
+        question: "¿Por qué no me deja poner stock en un producto personalizado?",
         answer:
-          "Al cambiar el slug de un producto, categoría u ocasión existente se registra redirección 301 automática; aun así verifica tus enlaces en Redirecciones.",
+          "Porque todo producto del Estudio es `MADE_TO_ORDER`: se fabrica bajo demanda y su capacidad depende de Materiales e insumos (/admin/materiales), no de stock terminado.",
       },
     ],
-    related: ["inventario", "categorias", "mayorista", "costos", "plantillas", "redirects"],
+    related: [
+      "inventario",
+      "mayorista",
+      "costos",
+      "materiales",
+      "plantillas",
+      "categorias",
+      "redirects",
+    ],
+    relatedPlaybooks: [
+      "playbook-catalogo-estudio-lanzamiento",
+      "playbook-economia-bom-precios-promos",
+    ],
     keywords: [
       "SKU",
       "variante",
+      "NOMAG",
       "precio",
       "SEO",
       "BOM",
       "receta",
       "personalización",
-      "publicar",
       "bajo pedido",
       "stock físico",
     ],
-    version: 2,
+    version: 3,
   },
   {
     id: "categorias",
@@ -164,59 +218,51 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     area: "Catálogo y producción",
     route: "/admin/categorias",
     summary:
-      "Árbol de categorías, contenido editorial, filtros, ventanas estacionales y producto destacado.",
+      "Jerarquía padre/hija del catálogo, facetas de filtrado, ventanas estacionales y producto insignia.",
     purpose:
-      "Organiza el catálogo y define cómo se navega cada grupo de productos. Las categorías padre e hijas estructuran la tienda, mientras sus textos y facetas orientan la exploración.",
+      "Estructura la navegación principal de la tienda: organiza categorías madre y subcategorías, textos introductorios SEO, qué facetas ve el visitante al filtrar, ventanas temporales de temporada y cuál es el producto estrella destacado.",
     whenToUse: [
-      "Para reorganizar la navegación del catálogo.",
-      "Para configurar filtros visibles, contenido o producto insignia.",
-      "Para programar una categoría estacional.",
+      "Al crear o reordenar una línea de productos en el menú público.",
+      "Para elegir qué filtros (tamaño, acabado, formato) aparecen en una categoría.",
+      "Para programar visibilidad estacional o fijar el producto insignia.",
     ],
     concepts: [
       {
-        term: "Categoría padre",
-        definition: "Nivel superior que agrupa subcategorías y orienta la jerarquía pública.",
+        term: "Árbol padre / hija",
+        definition:
+          "Relación jerárquica que construye migas de pan, menús y páginas de colección sin ciclos.",
       },
       {
-        term: "Facetas",
-        definition: "Filtros disponibles para acotar productos dentro de una categoría.",
+        term: "Facetas visibles",
+        definition:
+          "Subconjunto de atributos habilitados como filtros interactivos dentro de esa categoría.",
       },
       {
         term: "Ventana estacional",
-        definition: "Período configurado para la presencia o énfasis de una categoría temporal.",
+        definition:
+          "Rango opcional de fechas durante el cual una categoría de temporada cobra protagonismo.",
       },
     ],
     sections: [
       {
         id: "configuracion",
-        title: "Jerarquía y experiencia de categoría",
-        summary: "Administra estructura, presentación y descubrimiento.",
+        title: "Estructura, facetas y curaduría",
+        summary: "Alinea taxonomía, filtros y productos activos.",
         topics: [
           {
             id: "jerarquia",
-            label: "Padre e hijas",
-            description: "Determina la relación entre categorías y su navegación.",
-            caution: "Evita ciclos o cambios que dejen productos en una ubicación inesperada.",
+            label: "Categoría superior y slug",
+            description: "Ubica la colección en el árbol y define su URL pública.",
+            caution:
+              "Renombrar el slug genera redirección 301 automática, pero revisa que ningún banner del CMS siga apuntando al enlace viejo.",
           },
           {
-            id: "intro",
-            label: "Introducción enriquecida",
-            description: "Texto editorial que explica el contenido de la categoría.",
+            id: "filtros-destacado",
+            label: "Filtros activos y producto insignia",
+            description:
+              "Activa únicamente facetas presentes en las variantes reales de esa categoría y selecciona un producto activo como insignia.",
             interpretation:
-              "Debe ayudar a elegir y mantenerse sincronizado con los productos reales.",
-          },
-          {
-            id: "filtros",
-            label: "Filtros visibles",
-            description: "Selecciona qué facetas puede usar el visitante.",
-            interpretation:
-              "Muestra solo filtros con valores útiles en los productos de la categoría.",
-          },
-          {
-            id: "destacado",
-            label: "Producto insignia",
-            description: "Fija un producto representativo con distintivo visual.",
-            interpretation: "Debe estar activo y pertenecer coherentemente a la categoría.",
+              "Un filtro sin productos compatibles aparecerá vacío o confuso para el comprador.",
           },
         ],
       },
@@ -224,32 +270,56 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "configurar-categoria",
-        title: "Configurar una categoría",
-        goal: "Mejorar navegación sin perder acceso a productos existentes.",
+        title: "Configurar o actualizar una categoría",
+        goal: "Ofrecer navegación clara y filtros útiles en escritorio y móvil.",
+        route: "/admin/categorias",
         steps: [
-          "Define nombre, slug y posición jerárquica.",
-          "Redacta contenido acorde con los productos incluidos.",
-          "Selecciona filtros útiles y, opcionalmente, producto insignia y ventana estacional.",
-          "Guarda y revisa la categoría pública en escritorio y móvil.",
-          "Comprueba productos, filtros, URL y enlaces anteriores; crea redirección si cambiaste el slug.",
+          "Define nombre, slug, categoría padre (si es subcategoría) y texto introductorio fiel a los productos incluidos.",
+          "Marca las facetas de filtro que realmente existan en las variantes de esa colección.",
+          "Elige opcionalmente un producto activo como insignia y ventana estacional si aplica.",
+          "Guarda y recorre la página pública comprobando orden, filtros y versión móvil.",
         ],
         expected:
-          "La categoría presenta productos correctos y filtros funcionales desde una navegación coherente.",
+          "La colección pública carga con sus productos vigentes, filtros operativos y SEO limpio.",
       },
     ],
     cautions: [
-      "No elimines una categoría como atajo para ocultar productos; revisa primero sus relaciones y URLs públicas.",
+      "Desactivar o eliminar una categoría padre afecta el descubrimiento de los productos que solo colgaban de ella.",
+    ],
+    dontTouch: [
+      "No borres una categoría para «apagar temporalmente» una campaña anual (ej. Navidad): desactívala o ajusta su ventana estacional para conservar su URL y SEO.",
+    ],
+    checklist: [
+      "Productos activos asignados correctamente a la categoría.",
+      "Filtros probados en la página pública.",
+      "Producto insignia activo y perteneciente a la categoría.",
+    ],
+    subroutes: [
+      {
+        id: "categoria-edicion",
+        pattern: "/admin/categorias/[id]",
+        title: "Edición de categoría individual",
+        summary:
+          "Ajustas jerarquía, copy editorial, facetas visibles, ventana estacional y producto insignia de esta categoría.",
+        tips: [
+          "Si el producto insignia fue pausado o archivado, actualízalo aquí por uno vigente.",
+          "Comprueba en tienda móvil cómo luce la introducción antes de dar por cerrada la edición.",
+        ],
+        highlightSectionIds: ["configuracion"],
+        highlightProcedureIds: ["configurar-categoria"],
+      },
     ],
     faqs: [
       {
-        question: "¿Por qué un filtro no muestra resultados?",
+        question: "¿Por qué una faceta activada no filtra nada en la tienda?",
         answer:
-          "Puede no corresponder con los atributos de los productos activos; revisa variantes y facetas seleccionadas.",
+          "Porque las variantes activas de esa categoría no tienen valores cargados para ese atributo en /admin/productos.",
       },
     ],
     related: ["productos", "ocasiones", "redirects"],
-    keywords: ["jerarquía", "subcategoría", "facetas", "filtros", "destacado", "estacional"],
-    version: 1,
+    relatedPlaybooks: ["playbook-catalogo-estudio-lanzamiento"],
+    keywords: ["categoría", "subcategoría", "jerarquía", "facetas", "filtros", "insignia"],
+    version: 2,
   },
   {
     id: "ocasiones",
@@ -257,45 +327,41 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     area: "Catálogo y producción",
     route: "/admin/ocasiones",
     summary:
-      "Etiquetas transversales para descubrir productos según celebración, destinatario o momento.",
+      "Colecciones transversales por celebración o intención (`/ocasion/[slug]`) conectadas al recomendador de regalos.",
     purpose:
-      "Agrupa productos por ocasión sin alterar su categoría principal. Permite construir recorridos como fechas especiales o tipos de regalo manteniendo una taxonomía transversal.",
+      "Agrupa productos de distintas categorías alrededor de un momento de regalo (Cumpleaños, Aniversario, Navidad, Día de la Madre, Mascotas, Empresas) alimentando páginas `/ocasion/[slug]`, filtros y el recomendador público.",
     whenToUse: [
-      "Para crear o editar una ocasión de compra.",
-      "Para asociar productos a una celebración o momento.",
-      "Para revisar la presentación pública de una etiqueta.",
+      "Antes de una temporada comercial para curar la selección de productos de esa fecha.",
+      "Al lanzar un producto nuevo para sumarlo a todas las ocasiones donde encaja.",
     ],
     concepts: [
       {
-        term: "Ocasión",
+        term: "Taxonomía transversal (N:M)",
         definition:
-          "Etiqueta comercial transversal que puede reunir productos de varias categorías.",
+          "Un mismo producto pertenece a una categoría estructural, pero puede participar simultáneamente en múltiples ocasiones.",
       },
     ],
     sections: [
       {
         id: "etiqueta",
-        title: "Configuración de la ocasión",
-        summary: "Controla identidad, contenido y productos relacionados.",
+        title: "Identidad editorial y curaduría de productos",
+        summary: "Conecta inspiración de regalo con fichas comprables.",
         topics: [
           {
-            id: "slug",
-            label: "Nombre y slug",
-            description: "Texto visible e identificador de la URL de ocasión.",
-            caution: "Crea una redirección si cambias el slug de una ocasión publicada.",
-          },
-          {
             id: "productos",
-            label: "Productos asociados",
-            description: "Selección que aparece al explorar la ocasión.",
-            interpretation: "Revisa que estén activos y realmente sean apropiados para el momento.",
+            label: "Selección curada",
+            description:
+              "Lista de productos asociados que alimenta la landing de ocasión y el recomendador.",
+            interpretation:
+              "Asegúrate de incluir solo productos activos y coherentes con el motivo de celebración.",
           },
           {
-            id: "contenido",
-            label: "Descripción e imagen",
-            description: "Presentación editorial de la ocasión.",
-            interpretation:
-              "Debe orientar la elección sin duplicar innecesariamente la descripción de categoría.",
+            id: "slug-copy",
+            label: "Slug, imagen y descripción",
+            description:
+              "Construyen `/ocasion/[slug]` con redirección 301 automática si renombras el slug.",
+            caution:
+              "No dupliques literalmente el texto de una categoría: enfoca la redacción en la intención de regalo.",
           },
         ],
       },
@@ -303,30 +369,49 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "publicar-ocasion",
-        title: "Publicar una ocasión",
-        goal: "Crear un recorrido transversal coherente.",
+        title: "Curar una ocasión comercial",
+        goal: "Mantener landings de regalo y recomendador con oferta fresca y disponible.",
+        route: "/admin/ocasiones",
         steps: [
-          "Define nombre, slug y contenido de la ocasión.",
-          "Asocia productos activos y pertinentes.",
-          "Guarda y revisa la página pública y sus enlaces.",
-          "Crea redirección si reemplazaste una URL existente.",
+          "Abre la ocasión, revisa título, slug, imagen y descripción enfocada al momento de compra.",
+          "Vincula los productos activos pertinentes y retira los que no apliquen.",
+          "Guarda y abre `/ocasion/[slug]` y `/recomendador` para validar el resultado.",
         ],
-        expected: "La ocasión reúne una selección vigente y navegable sin modificar categorías.",
+        expected:
+          "Los compradores encuentran ideas listas para regalar sin toparse con colecciones vacías.",
       },
     ],
-    cautions: [
-      "Una ocasión no sustituye la categoría ni el inventario; retirarla no archiva sus productos.",
+    cautions: ["Quitar un producto de una ocasión no lo desactiva del catálogo general."],
+    dontTouch: ["No dejes una ocasión activa publicada con cero productos activos asociados."],
+    checklist: [
+      "Al menos 2–3 productos activos vinculados.",
+      "Página `/ocasion/[slug]` verificada en tienda.",
+    ],
+    subroutes: [
+      {
+        id: "ocasion-edicion",
+        pattern: "/admin/ocasiones/[id]",
+        title: "Edición y productos de la ocasión",
+        summary:
+          "Editas presentación SEO y selección de productos asociados a esta ocasión de regalo.",
+        tips: [
+          "Cada vez que actives un producto estacional (como Bola Navideña), verifica aquí su asociación con la ocasión respectiva.",
+        ],
+        highlightSectionIds: ["etiqueta"],
+        highlightProcedureIds: ["publicar-ocasion"],
+      },
     ],
     faqs: [
       {
-        question: "¿Un producto puede tener varias ocasiones?",
+        question: "¿En qué se diferencia una Ocasión de una Categoría?",
         answer:
-          "Sí, precisamente las ocasiones permiten descubrirlo en distintos momentos de compra.",
+          "La Categoría define qué es físicamente el producto (ej. Fotoimanes, Separadores); la Ocasión define para qué momento se regala (ej. Aniversario, Navidad) cruzando varias categorías.",
       },
     ],
     related: ["productos", "categorias", "redirects"],
-    keywords: ["celebración", "regalo", "etiqueta", "fecha especial", "ocasión"],
-    version: 1,
+    relatedPlaybooks: ["playbook-catalogo-estudio-lanzamiento"],
+    keywords: ["ocasión", "celebración", "regalo", "recomendador", "Navidad", "fecha especial"],
+    version: 2,
   },
   {
     id: "inventario",
@@ -334,60 +419,52 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     area: "Catálogo y producción",
     route: "/admin/inventario",
     summary:
-      "Existencias reales de productos terminados, reserva de seguridad, disponible neto y kardex por canal.",
+      "Control exclusivo de productos terminados (`PHYSICAL_STOCK`), reserva de seguridad (`safetyStock`), disponible neto y kardex por canal.",
     purpose:
-      "Controla únicamente variantes PHYSICAL_STOCK. Separa stock físico, safetyStock y disponible neto (stock − reserva, con piso 0); los productos MADE_TO_ORDER se administran por activación e insumos, sin contaminar este inventario.",
+      "Administra existencias reales de variantes prefabricadas (`PHYSICAL_STOCK`), separando stock físico en bodega, colchón de seguridad (`safetyStock`) y disponible neto vendible (`stock − safetyStock`, piso 0). Los productos personalizados `MADE_TO_ORDER` no contaminan esta vista porque se gobiernan por insumos de taller.",
     whenToUse: [
-      "Para revisar agotados o existencias bajas.",
-      "Para ajustar stock después de un conteo o movimiento real.",
-      "Para investigar diferencias mediante el kardex.",
+      "Para ingresar producción terminada o compras de artículos con stock físico.",
+      "Para ajustar diferencias tras conteo físico dejando motivo en kardex.",
+      "Para investigar agotados, disparos de alerta «Avísame cuando vuelva» (`back-in-stock`) o reversas por órdenes expiradas.",
     ],
     concepts: [
       {
-        term: "Stock",
+        term: "Disponible neto (`stock − safetyStock`)",
         definition:
-          "Cantidad disponible registrada para una variante; debe corresponder con la realidad operativa.",
+          "Unidades efectivamente ofrecidas a los canales de venta tras descontar la reserva de seguridad para evitar sobreventa.",
       },
       {
-        term: "Umbral",
-        definition: "Nivel a partir del cual una variante se considera baja y requiere revisión.",
+        term: "Decremento atómico y reversa",
+        definition:
+          "El sistema compromete/descuenta unidades de forma atómica y las restituye automáticamente en kardex si expira o se cancela una orden no despachada.",
       },
       {
-        term: "Kardex",
-        definition: "Historial de movimientos y ajustes que explica la evolución del stock.",
+        term: "Kardex auditable",
+        definition:
+          "Libro inmutable de entradas, salidas, reservas y ajustes manuales con usuario, canal, motivo y saldo resultante.",
       },
     ],
     sections: [
       {
         id: "existencias",
-        title: "Existencias y alertas",
-        summary: "Resume disponibilidad por variante y facilita filtros operativos.",
+        title: "Saldos, reserva de seguridad y movimientos",
+        summary: "Visibilidad clara de bodega sin mezclar productos bajo pedido.",
         topics: [
           {
             id: "disponible",
-            label: "Cantidad disponible",
-            description: "Existencia actual usada por la operación de catálogo.",
-            interpretation: "Contrástala con pedidos y conteo físico si hay diferencias.",
-          },
-          {
-            id: "bajo",
-            label: "Stock bajo",
-            description: "Filtro que compara disponibilidad con el umbral configurado.",
-            interpretation: "No significa agotado; indica necesidad de reposición o revisión.",
-          },
-          {
-            id: "ajuste",
-            label: "Ajuste manual",
-            description: "Corrige la cantidad registrada y deja movimiento en el historial.",
-            caution:
-              "Documenta el motivo y no uses ajustes para ocultar pérdidas o errores de proceso.",
-          },
-          {
-            id: "kardex",
-            label: "Movimientos",
-            description: "Entradas, salidas y correcciones asociadas a la variante.",
+            label: "Stock físico vs reserva (`safetyStock`)",
+            description:
+              "Permite proteger un colchón mínimo cuando compartas inventario entre canales.",
             interpretation:
-              "Revisa fecha, cantidad, saldo y referencia antes de hacer otro ajuste.",
+              "Si una variante tiene 5 en stock físico y 5 en `safetyStock`, su disponible neto en tienda será 0 (agotado público).",
+          },
+          {
+            id: "ajuste-kardex",
+            label: "Ajuste manual y lectura de kardex",
+            description:
+              "Registra conteos físicos con justificación obligatoria; subir de 0 a >0 disponible habilita avisos `back-in-stock` en el siguiente ciclo del cron.",
+            caution:
+              "Revisa siempre los últimos movimientos del kardex antes de aplicar un ajuste para no duplicar una entrada o reversa automática.",
           },
         ],
       },
@@ -395,41 +472,54 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "ajustar-stock",
-        title: "Corregir una existencia",
-        goal: "Alinear sistema y conteo físico conservando trazabilidad.",
+        title: "Conciliar conteo físico en bodega con el Kardex",
+        goal: "Alinear existencias reales de `PHYSICAL_STOCK` con trazabilidad completa.",
+        route: "/admin/inventario",
         steps: [
-          "Identifica producto y variante por SKU.",
-          "Realiza o verifica el conteo físico.",
-          "Revisa movimientos recientes para evitar duplicar una corrección.",
-          "Registra la diferencia con motivo claro.",
-          "Comprueba el nuevo saldo y la disponibilidad pública.",
+          "Localiza la variante por SKU y abre su historial de kardex reciente.",
+          "Contrasta tu conteo físico en estantería descontando paquetes ya cerrados pendientes de recoger.",
+          "Registra el ajuste indicando motivo verificable (conteo cíclico, lote ingresado, merma comprobada) y revisa `safetyStock`.",
+          "Comprueba el nuevo disponible neto y su estado en la página pública del producto.",
         ],
-        expected: "El saldo coincide con la operación y el kardex explica el ajuste.",
+        expected:
+          "El saldo en sistema refleja la bodega real, queda auditado y activa reposición automática de alertas si estaba agotado.",
       },
     ],
     cautions: [
-      "No edites stock desde varios lugares simultáneamente ni uses valores negativos para representar pedidos pendientes.",
+      "Subir stock disponible de un artículo agotado con interesados inscritos disparará correos automáticos de «Ya volvió» en el cron de media hora.",
+    ],
+    dontTouch: [
+      "No busques aquí fotoimanes o calendarios personalizados: sus insumos (papel, imán, tinta) se controlan en Materiales (/admin/materiales).",
+      "Nunca cargues stock ficticio que aún no esté físicamente listo para empacar.",
+    ],
+    checklist: [
+      "Kardex reciente revisado antes de ajustar.",
+      "Conteo físico contrastado contra pedidos pagados sin despachar.",
+      "Motivo claro documentado en el ajuste.",
     ],
     faqs: [
       {
-        question: "¿Stock bajo y agotado son iguales?",
+        question: "¿Por qué no aparecen aquí los productos del Estudio?",
         answer:
-          "No. Stock bajo depende del umbral; agotado indica que no hay unidades disponibles.",
+          "Porque son `MADE_TO_ORDER` (ADR-208): no existen como unidades prefabricadas en estantería; su disponibilidad depende de estar activos y contar con materia prima en /admin/materiales.",
       },
     ],
-    related: ["productos", "materiales", "pedidos"],
+    related: ["productos", "materiales", "pedidos", "canales"],
+    relatedPlaybooks: [
+      "playbook-catalogo-estudio-lanzamiento",
+      "playbook-economia-bom-precios-promos",
+    ],
     keywords: [
       "stock",
       "existencias",
       "kardex",
       "agotado",
-      "umbral",
-      "ajuste",
+      "safetyStock",
       "reserva",
       "disponible neto",
-      "bajo pedido",
+      "PHYSICAL_STOCK",
     ],
-    version: 2,
+    version: 3,
   },
   {
     id: "mayorista",
@@ -437,55 +527,50 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     area: "Catálogo y producción",
     route: "/admin/mayorista",
     summary:
-      "Escalas automáticas de descuento por volumen con validación anti-inversión y control de margen BOM.",
+      "Escalas automáticas por volumen (`minQty ≥ 2`) con precedencia `opción > producto > global` y alerta de margen BOM.",
     purpose:
-      "Define precios unitarios escalonados desde una cantidad mínima (por producto o globales). Editable por Superadmin y Gerencia Operativa, con auditoría de solo lectura para Analista Financiero.",
+      "Centraliza todos los descuentos por cantidad del carrito público (promos por llevar varios fotoimanes, packs, bolas o sets) verificando coherencia monotónica (a más unidades, menor precio unitario), tope real del selector del producto y margen bruto contra Costos.",
     whenToUse: [
-      "Para configurar o ajustar una escala de compra por cantidad.",
-      "Para auditar qué tramos tienen margen saludable o están bajo costo BOM.",
-      "Para verificar qué regla específica de producto hace sombra sobre la escala global.",
+      "Para configurar promociones por cantidad (ej. 3× o 5× unidades) sin crear variantes falsas.",
+      "Para auditar qué escalas hacen sombra sobre la regla global o están cerca del costo BOM.",
+      "Como Finanzas para revisar rentabilidad de tramos en modo solo lectura.",
     ],
     concepts: [
       {
-        term: "Coherencia monotónica",
+        term: "Jerarquía de sombra (`opción > producto > global`)",
         definition:
-          "El servidor bloquea tramos que igualen o superen el precio público de referencia o que cobren igual/más caro a mayor cantidad.",
+          "Si una opción tiene tramos propios activos, ignora los del producto y los globales; si el producto tiene tramos propios, ignora los globales.",
       },
       {
-        term: "Sombra sobre escala global",
+        term: "Coherencia monotónica estricta",
         definition:
-          "Cuando un producto tiene al menos un tramo propio activo, reemplaza por completo las escalas globales del catálogo.",
+          "El servidor rechaza cualquier tramo que cobre igual o más caro que el precio base o que un tramo de menor cantidad del mismo alcance.",
+      },
+      {
+        term: "Tope del selector por producto (ADR-209)",
+        definition: `Ningún tramo puede pedir más unidades de las que permite comprar el selector directo (${HELP_LIVE_NUMBERS.maxDesignUnits} uds., ${HELP_LIVE_NUMBERS.maxPhotoPackUnits} packs, ${HELP_LIVE_NUMBERS.maxCalendarUnits} calendarios, ${HELP_LIVE_NUMBERS.maxLetterSetUnits} sets de letras o ${HELP_LIVE_NUMBERS.maxSelfServicePhysicalUnits} en stock físico).`,
       },
     ],
     sections: [
       {
         id: "escalas",
-        title: "Configuración y simulador de margen",
-        summary: "Define alcance, umbrales, precios unitarios y revisa el margen frente a Costos.",
+        title: "Alcance, simulador de ahorro y semáforo BOM",
+        summary: "Valida el impacto económico exacto antes de activar un tramo.",
         topics: [
           {
             id: "alcance",
-            label: "Opción específica, producto o global",
+            label: "Selección de alcance",
             description:
-              "Determina si el tramo aplica a una opción/tamaño específico, a todas las opciones del producto o a todo el catálogo.",
+              "Elige opción puntual (ej. con imán vs `-NOMAG`), producto completo o catálogo global.",
             interpretation:
-              "Precedencia estricta: opción específica > producto completo > escala global. Las opciones del producto definen solo atributos físicos (tamaño/imán) y todo descuento por cantidad vive acá.",
+              "Cuando un producto tiene opciones con precios base distintos (ej. con imán vs sin imán), define escalas por opción para cuidar el margen de ambas.",
           },
           {
-            id: "minimo",
-            label: "Cantidad mínima (2 hasta el tope del producto)",
+            id: "precio-bom",
+            label: "Simulador en vivo y alerta de pérdida",
             description:
-              "Umbral desde el cual el carrito aplica automáticamente el precio unitario, acotado al selector de cada producto (15 unid., 6 packs, 4 calendarios, 10 sets o 100 en stock físico).",
-            interpretation:
-              "A mayor cantidad mínima, el precio unitario debe ser estrictamente menor. Cuando el umbral coincide con el máximo del selector (ej. 6 packs), se muestra sin el signo +.",
-          },
-          {
-            id: "precio",
-            label: "Precio unitario y alerta BOM",
-            description:
-              "Simula en vivo el ahorro %, el total mínimo y el margen frente al costo unitario.",
-            caution:
-              "Si el precio cae por debajo del costo BOM se resalta en rojo como alerta de liquidación; eliminar un tramo exige MFA reciente (≤ 10 min).",
+              "Calcula % de ahorro y margen frente al costo unitario vigente de /admin/costos.",
+            caution: `Si un tramo queda bajo costo BOM se marca en rojo; además recuerda que en checkout puede apilarse un cupón comercial y hasta ${HELP_LIVE_NUMBERS.loyaltyMaxEffectiveReturnPct} % de retorno en puntos.`,
           },
         ],
       },
@@ -493,91 +578,89 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "crear-escala",
-        title: "Crear y auditar una escala de volumen",
-        goal: "Publicar un tramo coherente sin erosionar el margen.",
+        title: "Publicar una escala por volumen protegiendo el margen",
+        goal: "Activar incentivos por cantidad en PDP y carrito sin vender a pérdida.",
+        route: "/admin/mayorista",
         steps: [
-          "Selecciona el producto específico o el alcance global.",
-          "Ingresa cantidad mínima (≥ 2) y precio unitario inferior al precio base.",
-          "Revisa en el simulador en vivo el ahorro % y el margen bruto frente a Costos.",
-          "Verifica que no haya conflicto de escala invertida con otros tramos activos.",
-          "Guarda y comprueba la salud del tramo en el gráfico de márgenes.",
+          "Verifica primero en /admin/costos que el producto tenga su costo unitario BOM actualizado.",
+          "Selecciona en /admin/mayorista el alcance exacto (opción específica, producto o global).",
+          "Ingresa cantidad mínima (`≥ 2`, dentro del tope del selector) y el nuevo precio unitario en pesos COP.",
+          "Comprueba en el simulador que el margen siga saludable aun si el cliente aplica un cupón vigente.",
+          "Guarda y verifica la tabla de ahorro publicada en la PDP del producto.",
         ],
         expected:
-          "El carrito recalcula automáticamente el precio unitario al alcanzar el umbral y conserva coherencia económica.",
+          "La PDP anuncia el tramo exacto y el carrito recalcula automáticamente al alcanzar esa cantidad.",
       },
     ],
     cautions: [
-      "Un cupón de campaña puede combinarse en el checkout sobre el subtotal resultante; contrasta el margen combinado.",
-      "Eliminar definitivamente un tramo requiere confirmación MFA reciente (≤ 10 min); si es temporal, desactívalo.",
+      `Eliminar definitivamente un tramo exige MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min); usa Desactivar cuando solo quieras pausarlo.`,
+    ],
+    dontTouch: [
+      "Nunca actives una escala en rojo (bajo costo BOM) sin autorización expresa de Dirección.",
+      "No olvides que agregar un primer tramo a un producto apaga por sombra todas las escalas globales sobre ese producto.",
+    ],
+    checklist: [
+      "Costo BOM del producto verificado en /admin/costos.",
+      "Orden decreciente de precios por tramo comprobado.",
+      "Margen combinado revisado frente a cupones activos en /admin/cupones.",
     ],
     faqs: [
       {
-        question: "¿Por qué el sistema bloquea guardar o reactivar un tramo?",
-        answer:
-          "Porque la cantidad mínima supera el tope del selector de ese producto, el precio iguala o supera el precio público de referencia, o rompe el orden decreciente frente a otro tramo activo del mismo alcance.",
-      },
-      {
-        question: "¿La escala es exclusiva para empresas?",
-        answer:
-          "No: las escalas activas aplican automáticamente en el carrito público al cumplir las unidades mínimas; para cotizaciones a medida desde 25 unidades usa Oportunidades B2B.",
+        question: `¿Qué hago si un cliente quiere cotizar más de ${HELP_LIVE_NUMBERS.minB2bUnits} o ${HELP_LIVE_NUMBERS.maxSelfServicePhysicalUnits} unidades?`,
+        answer: `Las escalas de este módulo cubren autoservicio directo en carrito; para proyectos corporativos o eventos desde ${HELP_LIVE_NUMBERS.minB2bUnits} unidades dirígelo a /empresas-y-eventos y cotízalo en Oportunidades B2B.`,
       },
     ],
-    related: ["productos", "costos", "cupones", "oportunidades"],
-    keywords: ["volumen", "mayorista", "descuento", "cantidad", "escala", "B2B", "margen"],
-    version: 2,
+    related: ["productos", "costos", "cupones", "fidelizacion", "oportunidades"],
+    relatedPlaybooks: ["playbook-economia-bom-precios-promos"],
+    keywords: ["volumen", "mayorista", "descuento", "cantidad", "escala", "promo", "sombra", "BOM"],
+    version: 3,
   },
   {
     id: "materiales",
     title: "Materiales e insumos",
     area: "Catálogo y producción",
     route: "/admin/materiales",
-    summary: "Catálogo de insumos de taller, costos unitarios, unidades y alertas de bajo stock.",
+    summary:
+      "Materia prima de taller (papel fotográfico, imán, laminado, tinta, bolas, empaque), stock mínimo y costo unitario para BOM.",
     purpose:
-      "Mantiene la información base de materia prima para el taller y el costeo por receta BOM. Cada material define su unidad, stock actual vs mínimo y costo unitario que alimenta el costo sugerido en Costos y márgenes.",
+      "Controla las existencias operativas de taller y el costo de reposición por unidad de medida que alimenta las recetas BOM de todo el catálogo personalizado y de propuestas B2B.",
     whenToUse: [
-      "Para registrar o actualizar insumos de fabricación (papel, tinta, imanes, empaques).",
-      "Para actualizar el costo por unidad usado en recetas BOM.",
-      "Para revisar alertas de baja disponibilidad de materiales en taller.",
+      "Cada vez que compres un lote de insumos con nuevo precio de proveedor.",
+      "Para controlar alertas de bajo stock de materia prima antes de picos estacionales.",
+      "Antes de armar la receta BOM de un producto nuevo.",
     ],
     concepts: [
       {
-        term: "Unidad de consumo",
+        term: "Coherencia de unidad de consumo",
         definition:
-          "Medida en la que se expresa el stock y cada receta BOM (unidad, pliego, metro, ml, paquete).",
+          "La unidad declarada en el material (unidad, hoja/pliego, metro, ml, caja) debe ser idéntica a la fracción usada en la receta del producto.",
       },
       {
-        term: "Stock mínimo",
+        term: "Propagación hacia Costos",
         definition:
-          "Umbral operativo por debajo del cual un insumo activo se marca con alerta de Bajo stock.",
+          "Actualizar el costo de un material recalcula al instante el «Sugerido por BOM» en /admin/costos, mostrando brecha hasta que confirmes el nuevo costo vigente.",
       },
     ],
     sections: [
       {
         id: "insumo",
-        title: "Datos del material",
-        summary: "Configura información que alimenta las recetas BOM y el costo sugerido.",
+        title: "Costo por unidad, recetas vinculadas y umbral de taller",
+        summary: "Base real de rentabilidad y continuidad de producción.",
         topics: [
           {
-            id: "costo",
-            label: "Costo por unidad",
+            id: "costo-unidad",
+            label: "Costo unitario en COP",
             description:
-              "Valor en pesos asociado a la unidad de medida registrada (guardado internamente en centavos COP).",
-            interpretation:
-              "Debe corresponder a la misma unidad usada en las recetas BOM de productos.",
+              "Registra el costo real puesto en taller para una unidad de medida (no el precio de toda la caja si la unidad es pieza/hoja).",
+            caution:
+              "Confundir el costo del paquete completo con el costo de una pieza multiplica por error el costo BOM de los productos.",
           },
           {
-            id: "recetas",
-            label: "Recetas BOM vinculadas",
-            description: "Indica cuántos productos usan el insumo en su receta de fabricación.",
+            id: "alerta-stock",
+            label: "Stock actual vs stock mínimo",
+            description: "Dispara señal preventiva de reabastecimiento interno de taller.",
             interpretation:
-              "Actualizar su costo recalcula de inmediato el costo sugerido en Costos y márgenes.",
-          },
-          {
-            id: "stock",
-            label: "Disponibilidad y alerta",
-            description: "Control operativo de insumos de taller frente a su stock mínimo.",
-            interpretation:
-              "Es independiente del stock de productos terminados gestionado en Inventario.",
+              "No bloquea compras web automáticamente: si un insumo crítico se agota por completo, pausa temporalmente el producto afectado en /admin/productos.",
           },
         ],
       },
@@ -585,30 +668,40 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "actualizar-material",
-        title: "Actualizar un material",
-        goal: "Mantener recetas BOM y costos sugeridos con datos coherentes.",
+        title: "Actualizar costo o stock de materia prima y propagar a Costos",
+        goal: "Mantener márgenes de tienda y de propuestas B2B anclados a precios reales de compra.",
+        route: "/admin/materiales",
         steps: [
-          "Verifica material y unidad de consumo.",
-          "Actualiza costo unitario o existencias con información real de compra.",
-          "Revisa cuántos productos usan el insumo en su receta BOM.",
-          "Abre Costos y márgenes para revisar la diferencia frente al costo vigente.",
+          "Localiza el insumo y verifica su unidad de medida exacta.",
+          "Calcula el costo real por esa unidad (incluyendo transporte del proveedor si aplica) y guarda.",
+          "Actualiza el stock físico de taller y su umbral mínimo.",
+          "Entra enseguida a /admin/costos, filtra «Difieren de BOM» y actualiza los productos impactados.",
         ],
-        expected: "Las recetas calculan con una unidad y costo actualizados sin ambigüedad.",
+        expected:
+          "Tanto el catálogo web como el constructor de propuestas B2B calculan márgenes con costos reales vigentes.",
       },
     ],
     cautions: [
-      "Cambiar unidades sin revisar las recetas de los productos puede multiplicar o dividir el costo sugerido.",
+      "Agotar en taller un insumo sin pausar el producto correspondiente generará pedidos pagados bloqueados en producción.",
+    ],
+    dontTouch: [
+      "Nunca cambies la unidad de medida de un insumo (ej. de pliego a unidad) sin ajustar en el mismo acto todas las recetas de productos que lo usan.",
+    ],
+    checklist: [
+      "Costo calculado en la misma unidad que usan las recetas BOM.",
+      "Brechas revisadas inmediatamente después en /admin/costos.",
     ],
     faqs: [
       {
-        question: "¿Materiales e Inventario son lo mismo?",
+        question: "¿Las ventas web descuentan automáticamente hojas o imanes en Materiales?",
         answer:
-          "No. Materiales gestiona insumos de fabricación de taller; Inventario controla existencias de variantes vendibles.",
+          "No: la receta BOM gobierna el costeo unitario; el stock de Materiales se actualiza por control de taller/compras, mientras Inventario (/admin/inventario) descuenta automáticamente productos terminados `PHYSICAL_STOCK`.",
       },
     ],
-    related: ["costos", "productos", "inventario"],
-    keywords: ["insumo", "BOM", "taller", "unidad", "costo", "materia prima"],
-    version: 2,
+    related: ["costos", "productos", "inventario", "oportunidades"],
+    relatedPlaybooks: ["playbook-economia-bom-precios-promos"],
+    keywords: ["insumo", "materia prima", "papel", "imán", "tinta", "BOM", "taller", "costo"],
+    version: 3,
   },
   {
     id: "costos",
@@ -616,59 +709,46 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     area: "Catálogo y producción",
     route: "/admin/costos",
     summary:
-      "Gobierno centralizado del costo unitario, costo sugerido por receta BOM y margen bruto.",
+      "Única fuente de edición del costo unitario de fabricación, brecha contra receta BOM y semáforo de margen bruto.",
     purpose:
-      "Centraliza el costo de fabricación por unidad de cada producto activo y calcula su margen bruto frente al precio mínimo de venta de sus variantes. Superadmin y Operaciones actualizan costos; Analista Financiero consulta y audita en modo de solo lectura.",
+      "Gobierna de forma centralizada `Product.cost` (en centavos COP), compara contra la suma viva de su receta BOM (`Usar sugerido`) y audita el margen bruto frente a la variante activa más económica. Alimenta tanto las alertas de `/admin/mayorista` como el piso de rentabilidad del constructor de propuestas B2B.",
     whenToUse: [
-      "Para registrar o actualizar el costo unitario de fabricación de un producto.",
-      "Para aplicar con un clic el costo sugerido por su receta BOM («Usar sugerido»).",
-      "Para auditar productos en pérdida o con margen ajustado (< 20%) antes de ajustar precios o escalas mayoristas.",
+      "Después de actualizar precios de insumos en /admin/materiales.",
+      "Al dar de alta un producto nuevo antes de activarlo o crearle descuentos.",
+      "Mensualmente para auditar que ningún producto activo esté sin costo, desfasado de BOM o en pérdida.",
     ],
     concepts: [
       {
-        term: "Costo unitario vigente",
+        term: "Costo vigente vs Sugerido BOM",
         definition:
-          "Valor en centavos COP guardado en el producto para calcular su margen bruto real.",
+          "El sugerido recalcula en vivo desde Materiales; el costo vigente solo cambia cuando Operaciones o Superadmin lo guarda o pulsa «Usar sugerido».",
       },
       {
-        term: "Sugerido por materiales (BOM)",
+        term: "Semáforo de margen bruto mínimo",
         definition:
-          "Suma informativa de cantidad × costo unitario de la receta del producto; solo actualiza el costo vigente cuando pulsas «Usar sugerido».",
-      },
-      {
-        term: "Margen bruto mínimo",
-        definition:
-          "Diferencia entre el precio activo más bajo de las variantes del producto y su costo unitario.",
+          "Evalúa contra la variante activa más barata: verde ≥ 20 %, ámbar 0–20 % (riesgo frente a pasarela/merma) y rosa < 0 % (pérdida directa).",
       },
     ],
     sections: [
       {
         id: "simulador",
-        title: "Lectura de costos y rentabilidad",
-        summary: "Compara costo manual, receta BOM y precio mínimo de venta.",
+        title: "Filtros de brecha, adopción de BOM y auditoría",
+        summary: "Prioriza correcciones en segundos.",
         topics: [
           {
-            id: "costo-unitario",
-            label: "Costo unitario",
-            description: "Única superficie donde se edita el costo de fabricación del producto.",
+            id: "filtros-salud",
+            label: "Sin costo, Difieren de BOM y En pérdida",
+            description: "Tres filtros rápidos en cabecera para atacar desviaciones críticas.",
             interpretation:
-              "Operaciones y Superadmin pueden guardarlo; Analista Financiero lo ve en modo lectura.",
+              "Un producto activo jamás debe operar con costo $0: falsearía los márgenes de Mayorista y permitiría cotizar bajo costo en B2B.",
           },
           {
-            id: "receta",
-            label: "Sugerido por receta BOM",
+            id: "usar-sugerido",
+            label: "Botón «Usar sugerido»",
             description:
-              "Cálculo automático según los insumos asignados en la pestaña Materiales del producto.",
+              "Copia y guarda con trazabilidad de auditoría el cálculo exacto de la receta BOM.",
             interpretation:
-              "Si difiere de tu costo vigente, verás una insignia ámbar con la brecha exacta.",
-          },
-          {
-            id: "margen",
-            label: "Margen bruto ($ y %)",
-            description:
-              "Rentabilidad calculada en el escenario conservador (variante más económica).",
-            interpretation:
-              "Verde ≥ 20 % (sano), ámbar 0–20 % (ajustado frente a fletes/pasarela), rosa < 0 % (en pérdida).",
+              "Analista Financiero consulta toda esta matriz en modo de solo lectura para control contable.",
           },
         ],
       },
@@ -676,35 +756,41 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "simular-margen",
-        title: "Actualizar y auditar el costo de un producto",
-        goal: "Mantener márgenes saludables con trazabilidad de auditoría.",
+        title: "Sincronizar costos BOM y sanear márgenes del catálogo",
+        goal: "Garantizar cero productos sin costo y visibilidad real antes de promociones.",
+        route: "/admin/costos",
         steps: [
-          "Filtra por «Sin costo», «Difieren de BOM» o «En pérdida» para priorizar.",
-          "Verifica la receta BOM del producto si el sugerido parece atípico.",
-          "Ingresa el costo unitario en pesos o pulsa «Usar sugerido» (si tienes rol de Operaciones o Superadmin).",
-          "Comprueba que el margen resultante supere el umbral saludable antes de activar descuentos o escalas.",
+          "Activa los filtros «Sin costo», «Difieren de BOM» y «En pérdida».",
+          "Si el sugerido BOM luce extraño, abre la pestaña Materiales del producto para corregir cantidades de la receta.",
+          "Pulsa «Usar sugerido» o guarda el costo unitario verificado.",
+          "Si algún producto queda en ámbar o rosa, revisa enseguida su precio base en /admin/productos y sus tramos en /admin/mayorista.",
         ],
-        expected: "El costo queda auditado en bitácora y sincronizado con la ficha del producto.",
+        expected:
+          "Todo el catálogo activo cuenta con costo fidedigno auditado y márgenes protegidos.",
       },
     ],
     cautions: [
-      "El margen bruto sobre costo de fabricación no incluye comisiones de pasarela ni impuestos; no lo confundas con utilidad neta.",
+      "El margen aquí mostrado es bruto de fabricación: recuerda dejar colchón suficiente para comisión de Wompi, empaque secundario y campañas.",
+    ],
+    dontTouch: [
+      "Nunca pongas costo $0 o simbólico ($1) para destrabar una propuesta B2B o escala mayorista.",
+    ],
+    checklist: [
+      "0 productos activos en el filtro «Sin costo».",
+      "0 productos activos en el filtro «En pérdida».",
+      "Diferencias frente a receta BOM revisadas y justificadas.",
     ],
     faqs: [
       {
-        question: "¿Por qué veo la tabla en modo de solo lectura?",
+        question: "¿Por qué este costo bloquea precios en Oportunidades B2B?",
         answer:
-          "El rol Analista Financiero tiene acceso de auditoría financiera (lectura), mientras la edición de costos unitarios pertenece a Operaciones y Superadmin.",
-      },
-      {
-        question: "¿Por qué cambió el costo sugerido sin editar el producto?",
-        answer:
-          "Porque cambió el costo por unidad de algún insumo en Materiales o la cantidad en su receta BOM.",
+          "El constructor de propuestas B2B lee `Product.cost` para impedir que se envíen cotizaciones por debajo del costo de fabricación sin autorización de Superadmin.",
       },
     ],
-    related: ["materiales", "productos", "mayorista", "finanzas"],
-    keywords: ["margen", "rentabilidad", "BOM", "receta", "costo", "fabricación"],
-    version: 2,
+    related: ["materiales", "productos", "mayorista", "oportunidades", "finanzas"],
+    relatedPlaybooks: ["playbook-economia-bom-precios-promos", "playbook-oportunidad-b2b-cierre"],
+    keywords: ["margen", "rentabilidad", "BOM", "receta", "costo", "pérdida", "fabricación"],
+    version: 3,
   },
   {
     id: "plantillas",
@@ -712,46 +798,41 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     area: "Catálogo y producción",
     route: "/admin/plantillas",
     summary:
-      "Revisión, aprobación y disponibilidad de plantillas usadas en el Estudio de personalización.",
+      "Inspección visual real, aprobación y ocultamiento de lienzos Konva/3D para personalización.",
     purpose:
-      "Controla qué plantillas están disponibles para clientes y permite inspeccionar su vista previa real antes de aprobarlas. Conecta configuración editorial con la experiencia de diseño y producción.",
+      "Controla qué plantillas geométricas (`PersonalizationTemplate`) están aprobadas y visibles para los compradores dentro del Estudio 2D/3D y asegura que sus márgenes de sangrado coincidan con el corte real a 300 DPI.",
     whenToUse: [
-      "Para revisar una plantilla nueva o modificada.",
-      "Para ocultar o restaurar una plantilla del Estudio.",
-      "Para comprobar geometría y vista previa por variante.",
+      "Antes de habilitar una plantilla nueva o modificada en un producto personalizado.",
+      "Para ocultar temporalmente una plantilla sin romper pedidos ni borradores existentes.",
+      "Para depurar plantillas huérfanas nunca aprobadas.",
     ],
     concepts: [
       {
-        term: "Plantilla",
+        term: "Sangrado y zona segura 300 DPI",
         definition:
-          "Configuración de lienzo, capas y superficies que guía la personalización de una variante.",
+          "Geometría del lienzo que garantiza que el render de taller cubra bordes de corte y doblez (ej. lomo en Mini Libros o cara B en Bola Navideña).",
       },
     ],
     sections: [
       {
         id: "revision",
-        title: "Vista previa y disponibilidad",
-        summary: "Muestra el comportamiento visual y el estado de aprobación.",
+        title: "Vista previa real y estado de publicación",
+        summary: "Lo que apruebas aquí es exactamente el lienzo que abre el cliente.",
         topics: [
           {
             id: "preview",
-            label: "Vista previa real",
-            description: "Render usado para comprobar cómo se presenta la plantilla.",
-            interpretation:
-              "Revisa todas las escenas o superficies relevantes, no solo la miniatura.",
+            label: "Previsualización interactiva",
+            description:
+              "Permite inspeccionar proporciones, máscaras, caras y variantes vinculadas antes de exponerla.",
+            caution:
+              "Revisa todas las caras (anverso y reverso/interior cuando aplique), no solo la tarjeta miniatura.",
           },
           {
             id: "aprobada",
-            label: "Aprobada o visible",
-            description: "Determina si la plantilla puede ofrecerse al cliente.",
-            caution: "Aprobar sin revisar puede publicar geometrías o contenido incorrectos.",
-          },
-          {
-            id: "variante",
-            label: "Variantes relacionadas",
-            description: "Indica dónde se utiliza la plantilla.",
-            interpretation:
-              "Si hay varias opciones, verifica que el cliente pueda elegir correctamente.",
+            label: "Aprobada vs Oculta",
+            description:
+              "Ocultar retira la opción para nuevos diseños sin corromper órdenes históricas.",
+            caution: `Eliminar definitivamente una plantilla huérfana exige escribir ELIMINAR más MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min).`,
           },
         ],
       },
@@ -759,96 +840,87 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "aprobar-plantilla",
-        title: "Revisar y publicar una plantilla",
-        goal: "Ofrecer una experiencia de personalización correcta.",
+        title: "Validar y aprobar una plantilla para el Estudio",
+        goal: "Asegurar coincidencia 1:1 entre el visor del cliente y el archivo 300 DPI de Taller.",
+        route: "/admin/plantillas",
         steps: [
-          "Abre la plantilla y revisa sus variantes.",
-          "Inspecciona la vista previa y todas las superficies disponibles.",
-          "Comprueba dimensiones, posición, capas y legibilidad.",
-          "Aprueba o restaura solo si el resultado es correcto.",
-          "Abre el Estudio público y valida selección, edición y guardado básico.",
+          "Abre la vista previa de la plantilla y revisa sus variantes compatibles.",
+          "Comprueba relación de aspecto, zonas de recorte, textos y todas sus caras.",
+          "Aprueba la plantilla y entra al Estudio público (`/estudio/[slug]`) subiendo fotos de prueba.",
+          "Verifica el visor 3D y el guardado de borrador antes de anunciar el producto.",
         ],
         expected:
-          "La plantilla funciona en el Estudio y coincide con las superficies de producción.",
+          "El cliente personaliza sin desbordes y Taller recibe renders alineados al troquel físico.",
       },
     ],
     cautions: [
-      "Ocultar una plantilla no debe usarse para alterar diseños o pedidos históricos.",
-      "Eliminar definitivamente una plantilla huérfana no aprobada es irreversible y exige escribir ELIMINAR más código MFA reciente (≤ 10 min).",
+      "Si ocultas la única plantilla aprobada de un producto personalizado, los clientes no podrán diseñarlo.",
+    ],
+    dontTouch: [
+      "Nunca apruebes una plantilla sin abrir primero su previsualización completa y probarla en el Estudio.",
+    ],
+    checklist: [
+      "Geometría y caras verificadas en vista previa.",
+      "Prueba real hecha en `/estudio/[slug]` en móvil y escritorio.",
     ],
     faqs: [
       {
-        question: "¿Aprobar una plantilla la imprime automáticamente?",
+        question: "¿Ocultar una plantilla daña los pedidos ya pagados que la usaron?",
         answer:
-          "No. Solo la habilita para personalización; producción depende del pedido, diseño y moderación.",
+          "No. Los diseños guardados y pedidos históricos conservan su instantánea para renderizar e imprimir en Taller.",
       },
     ],
     related: ["productos", "disenos", "moderacion", "pedidos"],
-    keywords: ["Estudio", "lienzo", "capas", "preview", "aprobar", "personalización"],
-    version: 2,
+    relatedPlaybooks: ["playbook-catalogo-estudio-lanzamiento"],
+    keywords: ["Estudio", "plantilla", "lienzo", "Konva", "3D", "sangrado", "aprobar"],
+    version: 3,
   },
   {
     id: "disenos",
     title: "Artes de galería para el Estudio",
     area: "Catálogo y producción",
     route: "/admin/disenos",
-    summary: "Activos digitales sin SKU ni stock físico para personalizar en el Estudio.",
+    summary:
+      "Fondos/artes prediseñados y sets de fichas ilustradas del abecedario (sin SKU ni stock físico).",
     purpose:
-      "Administra artes de galería y fichas ilustradas que los clientes aplican a sus personalizaciones. No son productos terminados ni consumen inventario físico. La pestaña de fichas concentra los abecedarios ilustrados; la antigua ruta independiente Fichas converge aquí.",
+      "Reúne en un solo módulo (incluyendo la antigua ruta `/admin/fichas`) los recursos gráficos listos que el comprador aplica con un toque en el Estudio y las colecciones temáticas de letras, números y símbolos para editores de nombres.",
     whenToUse: [
-      "Para agregar o revisar diseños prediseñados.",
-      "Para organizar imágenes por variante o tema.",
-      "Para administrar sets y fichas de letras, números y símbolos.",
+      "Para cargar colecciones estacionales de marcos o artes listos por variante.",
+      "Para crear o completar un abecedario ilustrado en la pestaña Fichas del abecedario.",
+      "Para archivar recursos obsoletos sin afectar pedidos pasados.",
     ],
     concepts: [
       {
-        term: "Diseño prediseñado",
+        term: "Activo digital del Estudio",
         definition:
-          "Recurso visual listo para aplicar en el Estudio sin que el cliente suba una fotografía propia.",
+          "Recurso gráfico aplicable dentro del lienzo; no se vende suelto ni lleva inventario físico.",
       },
       {
-        term: "Set de fichas",
+        term: "Set de fichas completo",
         definition:
-          "Colección temática de imágenes asociadas a caracteres para editores de nombres y letras.",
+          "Abecedario ilustrado que debe cubrir A–Z, Ñ, tildes/números o símbolos previstos para que ningún nombre deje huecos.",
       },
     ],
     sections: [
       {
         id: "galeria",
-        title: "Galería prediseñada",
-        summary: "Organiza imágenes y su disponibilidad por variante.",
+        title: "Pestaña Galería prediseñada y Pestaña Fichas",
+        summary: "Calidad de impresión a 300 DPI y cobertura completa de caracteres.",
         topics: [
           {
-            id: "variante",
-            label: "Variante compatible",
-            description: "Determina dónde puede aplicarse el recurso.",
-            interpretation: "Verifica proporciones y zona de diseño antes de asociarlo.",
-          },
-          {
-            id: "imagen",
-            label: "Imagen y miniatura",
-            description: "Contenido visual que verá el cliente.",
+            id: "resolucion-derechos",
+            label: "Nitidez para 300 DPI y derechos de autor",
+            description:
+              "El arte elegido por el cliente se inyecta directamente en el render final de Taller.",
             caution:
-              "Usa recursos con derechos de uso y calidad suficiente para el resultado final.",
-          },
-        ],
-      },
-      {
-        id: "fichas",
-        title: "Fichas del abecedario",
-        summary: "Gestiona sets temáticos y correspondencia entre caracteres e imágenes.",
-        topics: [
-          {
-            id: "set",
-            label: "Set temático",
-            description: "Agrupa una colección completa bajo un estilo.",
-            interpretation: "Mantén consistencia visual y cobertura de caracteres requeridos.",
+              "Sube únicamente ilustraciones propias o con licencia comercial vigente y resolución suficiente para impresión física.",
           },
           {
-            id: "caracter",
-            label: "Carácter y ficha",
-            description: "Relaciona cada letra, número o símbolo con su imagen.",
-            caution: "Revisa Ñ, números y caracteres especiales antes de publicar el set.",
+            id: "fichas-cobertura",
+            label: "Cobertura de Ñ y caracteres en sets de letras",
+            description: "Asocia cada carácter con su arte PNG correspondiente.",
+            caution:
+              "Verifica siempre la letra Ñ y dígitos antes de activar un set nuevo en Colombia.",
           },
         ],
       },
@@ -856,39 +928,49 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "publicar-recurso",
-        title: "Publicar recursos para el Estudio",
-        goal: "Ofrecer material completo y visualmente consistente.",
+        title: "Cargar y verificar artes o sets de letras en el Estudio",
+        goal: "Habilitar recursos nítidos y completos sin huecos de caracteres.",
+        route: "/admin/disenos",
         steps: [
-          "Selecciona el tipo de recurso y la variante o set.",
-          "Carga imágenes con nombres y caracteres correctos.",
-          "Revisa miniaturas, proporciones y cobertura del set.",
-          "Abre el Estudio y aplica el recurso en una personalización de prueba.",
-          "Comprueba que el resultado se conserve al guardar el diseño.",
+          "Elige la pestaña Galería prediseñada o Fichas del abecedario y selecciona la variante o set destino.",
+          "Sube los archivos en alta resolución verificando proporción y asignación exacta de cada carácter.",
+          "Revisa especialmente la letra Ñ, vocales y símbolos habituales en sets de nombres.",
+          "Abre el Estudio público y escribe un nombre de prueba (ej. con Ñ) o aplica el arte para confirmar encuadre.",
         ],
-        expected: "Los recursos aparecen donde corresponde y funcionan dentro del editor.",
+        expected:
+          "Los clientes aplican el arte o arman nombres completos con calidad lista para imprenta.",
       },
     ],
     cautions: [
-      "No subas material con datos personales o sin derechos de uso.",
-      "Eliminar permanentemente un diseño archivado borra sus archivos del servidor y exige escribir ELIMINAR más código MFA reciente (≤ 10 min).",
+      `La eliminación permanente de un arte archivado borra sus archivos del Storage y exige escribir ELIMINAR más MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min).`,
+    ],
+    dontTouch: [
+      "Jamás subas personajes con copyright de terceros ni imágenes descargadas de internet sin licencia comercial.",
+      "No publiques un set de abecedario incompleto donde falten letras frecuentes o la Ñ.",
+    ],
+    checklist: [
+      "Licencia comercial o autoría propia confirmada.",
+      "Resolución apta para impresión a 300 DPI.",
+      "Cobertura completa de letras (incluida Ñ) probada en el Estudio.",
     ],
     faqs: [
       {
-        question: "¿Dónde está la antigua página Fichas?",
-        answer: "Redirige a la pestaña integrada en Diseños prediseñados.",
+        question: "¿Qué pasa si entro a la ruta antigua /admin/fichas?",
+        answer:
+          "Se resuelve automáticamente hacia este módulo, donde los abecedarios ilustrados viven integrados en su pestaña propia.",
       },
     ],
     related: ["plantillas", "productos", "moderacion"],
+    relatedPlaybooks: ["playbook-catalogo-estudio-lanzamiento"],
     keywords: [
       "galería",
       "abecedario",
       "letras",
       "fichas",
-      "imágenes",
-      "Estudio",
       "artes digitales",
-      "sin stock",
+      "Estudio",
+      "prediseñados",
     ],
-    version: 3,
+    version: 4,
   },
 ];

@@ -1,3 +1,4 @@
+import { HELP_LIVE_NUMBERS, formatThousandsEsCo } from "../constants";
 import type { AdminModuleGuide } from "../types";
 
 export const OPERATION_GUIDES: AdminModuleGuide[] = [
@@ -7,74 +8,62 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
     area: "Operación",
     route: "/admin/dashboard",
     summary:
-      "Panorama ejecutivo de ventas, conversión, operación y alertas que requieren atención.",
+      "Tablero ejecutivo diario: pulso comercial, embudo de conversión, alertas operativas y accesos rápidos por rol.",
     purpose:
-      "Permite entender el estado general del negocio y decidir qué área necesita atención. Es una vista de lectura y priorización; los cambios operativos se realizan en cada módulo especializado.",
+      "Da lectura ejecutiva inmediata al abrir el turno: separa ingresos pagados reales frente a intenciones o contraentregas en tránsito, resume conversión del embudo y señala bloqueos activos para saltar al módulo especializado donde se ejecutan las acciones.",
     whenToUse: [
-      "Al comenzar la jornada para identificar desviaciones o alertas.",
-      "Al comparar ventas, actividad comercial y carga operativa.",
-      "Antes de entrar a un módulo para investigar un indicador concreto.",
+      "En los primeros 2 minutos de la jornada junto con Bandeja Hoy.",
+      "Para detectar caídas bruscas de conversión, picos de pedidos retenidos o alertas fiscales/técnicas.",
+      "Antes de tomar decisiones de precios, campañas o capacidad de taller.",
     ],
     concepts: [
       {
-        term: "Indicador",
+        term: "Orden creada vs orden pagada",
         definition:
-          "Una medida resumida del período consultado. Debe interpretarse junto con su fecha, unidad y contexto operativo.",
+          "Una orden en espera de pago o contraentrega aún no recaudada no equivale a caja confirmada; contrasta siempre en Finanzas.",
       },
       {
-        term: "Alerta",
+        term: "Embudo sin cookies invasivas",
         definition:
-          "Una señal de que existe una condición pendiente o anómala; no siempre representa un error del sistema.",
+          "Mide vistas de catálogo, apertura del Estudio, carrito y compra bajo las reglas de consentimiento vigentes.",
       },
     ],
     sections: [
       {
         id: "indicadores",
-        title: "Indicadores del negocio",
-        summary: "Resume desempeño comercial y operativo para orientar la revisión diaria.",
+        title: "Pulso comercial y embudo",
+        summary: "Compara volumen, ticket y conversión dentro de la ventana temporal seleccionada.",
         topics: [
           {
             id: "ventas",
-            label: "Ventas y pedidos",
-            description: "Presenta los totales y tendencias de la actividad comercial registrada.",
+            label: "Ingresos y pedidos del período",
+            description:
+              "Resume el ritmo comercial en hora Colombia (-05:00), excluyendo compras marcadas de personal interno (`isStaff`).",
             interpretation:
-              "Verifica el período y distingue intención de compra, pedido creado y pedido pagado antes de comparar cifras.",
+              "Para cierres contables, retenciones B2B o conciliación COD usa siempre Finanzas (/admin/finanzas), nunca una captura del Dashboard.",
           },
           {
             id: "conversion",
-            label: "Conversión",
-            description: "Relaciona visitas o intenciones con resultados comerciales.",
-            interpretation:
-              "Una variación puede deberse a tráfico, disponibilidad, precios o pagos; investiga el embudo antes de atribuirla a una sola causa.",
-          },
-          {
-            id: "accesos",
-            label: "Accesos a módulos",
+            label: "Embudo de conversión",
             description:
-              "Lleva a las bandejas donde se consulta el detalle y se ejecutan acciones.",
-            interpretation: "Úsalos después de identificar el indicador que necesitas profundizar.",
+              "Muestra en qué paso se enfrían los visitantes (ficha, Estudio, carrito o pago).",
+            interpretation:
+              "Si cae el paso de envío o pago, revisa de inmediato /admin/envios e /admin/integraciones.",
           },
         ],
       },
       {
         id: "alertas",
-        title: "Alertas y pendientes",
-        summary: "Agrupa señales operativas que pueden exigir seguimiento.",
+        title: "Señales prioritarias y atajos operativos",
+        summary: " Conecta cada desviación con su bandeja de resolución.",
         topics: [
           {
-            id: "severidad",
-            label: "Prioridad de la alerta",
+            id: "prioridad",
+            label: "Tarjetas de atención inmediata",
             description:
-              "Diferencia avisos informativos de condiciones que afectan operación o plazos.",
+              "Destaca SLAs legales próximos a vencer, diseños por moderar, taller bloqueado o remesas COD envejecidas.",
             interpretation:
-              "Atiende primero riesgos legales, pagos, producción bloqueada y entregas comprometidas.",
-          },
-          {
-            id: "origen",
-            label: "Origen del dato",
-            description: "Cada tarjeta procede de un proceso o módulo concreto.",
-            interpretation:
-              "Confirma el detalle en la fuente antes de contactar al cliente o modificar un registro.",
+              "Atiende siempre primero vencimientos legales (Posventa/Hábeas Data) y bloqueos de producción o despacho.",
           },
         ],
       },
@@ -82,116 +71,106 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "revision-diaria",
-        title: "Realizar la revisión ejecutiva diaria",
-        goal: "Convertir los indicadores en una lista priorizada de revisiones operativas.",
+        title: "Ejecutar el chequeo ejecutivo de apertura (5 minutos)",
+        goal: "Detectar cuellos de botella reales antes de arrancar producción o atención.",
+        route: "/admin/dashboard",
         steps: [
-          "Confirma el período de tiempo que está resumiendo el dashboard.",
-          "Revisa alertas críticas y plazos antes que las métricas de tendencia.",
-          "Compara ventas, pedidos y conversión sin asumir que representan el mismo evento.",
-          "Abre el módulo de origen de cada desviación y valida sus registros detallados.",
-          "Registra o asigna el seguimiento en Bandeja Hoy cuando corresponda.",
+          "Confirma el rango de fechas activo en la cabecera del Dashboard.",
+          "Revisa primero las alertas rojas o ámbar (SLAs legales, salud técnica, vigilancia DIAN o bloqueos de taller).",
+          "Inspecciona el embudo para descartar caídas anormales en cotización de envío o pasarela de pago.",
+          "Pasa a Bandeja Hoy (/admin/hoy) para ordenar las tareas concretas de tu rol.",
         ],
         expected:
-          "Sales del dashboard con pendientes verificados y una prioridad clara de atención.",
-        exceptions: [
-          "Si una cifra parece desactualizada, comprueba el período y la fuente antes de tomar decisiones.",
-          "Si no tienes acceso al módulo de origen, escala el hallazgo al rol responsable.",
-        ],
+          "Identificas en menos de cinco minutos si la tienda opera fluido o qué módulo requiere intervención inmediata.",
       },
     ],
     cautions: [
-      "No uses un indicador resumido como única evidencia para reembolsar, bloquear o modificar un pedido.",
-      "Las cifras financieras definitivas se verifican en Finanzas, no por aproximación visual.",
+      "El Dashboard es estrictamente de lectura: ninguna cifra aquí sustituye la verificación del expediente en Pedidos, Posventa o Finanzas.",
+    ],
+    dontTouch: [
+      "No autorices reembolsos ni ajustes contables tomando solo los totales resumidos del Dashboard.",
+      "No interpretes una caída puntual de embudo de pocas horas como falla de producto sin revisar antes Salud técnica e Integraciones.",
+    ],
+    checklist: [
+      "Sin alertas críticas de salud técnica ni integraciones caídas.",
+      "SLAs legales y bloqueos de taller encaminados hacia Bandeja Hoy.",
     ],
     faqs: [
       {
-        question: "¿Por qué una cifra no coincide con la de otro módulo?",
+        question: "¿Por qué una compra de prueba hecha con mi correo admin no infla las métricas?",
         answer:
-          "Revisa período, estados incluidos, zona horaria y definición de la métrica. El detalle especializado es la fuente para investigar la diferencia.",
+          "Porque las cuentas administrativas marcan automáticamente `Contact.isStaff = true` (ADR-195), aislándolas de segmentos y analítica comercial.",
       },
       {
-        question: "¿Puedo cambiar un pedido desde el dashboard?",
+        question: "¿Por qué un total del Dashboard difiere de Finanzas?",
         answer:
-          "No. Abre Pedidos y sigue el procedimiento correspondiente según tu rol y el estado actual.",
+          "Finanzas desglosa cortes contables exactos, puente de caja real, retenciones B2B y estado de remesas COD; usa siempre Finanzas para contabilidad.",
       },
     ],
     related: ["hoy", "pedidos", "finanzas", "metricas", "notificaciones"],
-    keywords: ["inicio", "KPI", "ventas", "conversión", "alertas", "resumen"],
-    version: 1,
+    relatedPlaybooks: ["playbook-pedido-web-300dpi", "playbook-incidentes-seguridad-dian"],
+    keywords: ["inicio", "KPI", "ventas", "conversión", "embudo", "alertas", "resumen"],
+    version: 2,
   },
   {
     id: "hoy",
     title: "Bandeja Hoy",
     area: "Operación",
     route: "/admin/hoy",
-    summary: "Cola priorizada de tareas, plazos, bloqueos y compromisos operativos del día.",
+    summary:
+      "Centro de mando diario por rol: SLAs legales, tareas CRM vencidas, bloqueos de taller/arte B2B, remesas COD y vigilancia DIAN.",
     purpose:
-      "Convierte pendientes de distintos módulos en una agenda de trabajo según tu rol. No reemplaza las bandejas especializadas: te ayuda a decidir qué atender primero.",
+      "Convierte todas las señales dispersas del backoffice en tu fila única de trabajo diario, filtrada estrictamente según los permisos de tu rol. Ordena por riesgo real: primero plazos legales colombianos, luego promesas de producción/despacho y seguimiento comercial.",
     whenToUse: [
-      "Al iniciar y retomar la jornada operativa.",
-      "Cuando necesites identificar vencimientos legales o compromisos de entrega.",
-      "Para revisar tus tareas y los bloqueos que impiden avanzar.",
+      "Como primera pantalla operativa cada mañana y después del almuerzo.",
+      "Antes de la hora límite de despacho local para asegurar que ningún pedido pagado quede rezagado.",
+      "Al cierre del turno para confirmar que cero casos legales quedaron vencidos.",
     ],
     concepts: [
       {
-        term: "SLA",
-        definition:
-          "Tiempo objetivo o límite para atender un caso. En posventa puede depender de días hábiles y reglas legales.",
+        term: "Semáforo SLA legal",
+        definition: `Reloj en días hábiles colombianos (con festivos Ley Emiliani) o calendario según el caso: ${HELP_LIVE_NUMBERS.pqrBusinessDays}d hábiles PQR/Garantía, ${HELP_LIVE_NUMBERS.habeasConsultationBusinessDays}d hábiles Hábeas Data y ${HELP_LIVE_NUMBERS.retractRefundCalendarDays}d calendario reembolso de retracto.`,
       },
       {
-        term: "Pendiente",
+        term: "Bloqueo operativo",
         definition:
-          "Una tarea, alerta o condición que necesita acción humana; su presencia no implica que puedas resolverla desde esta pantalla.",
+          "Pedido pagado que no puede fabricarse o enviarse porque espera moderación de diseño, arte maestro B2B 300 DPI o reintento de guía.",
       },
     ],
     sections: [
       {
         id: "prioridades",
-        title: "Prioridades operativas",
-        summary: "Ordena el trabajo por urgencia, vencimiento e impacto.",
+        title: "Orden de ataque de los pendientes",
+        summary: "Qué atender primero para proteger cumplimiento legal y promesa al cliente.",
         topics: [
           {
             id: "vencidos",
-            label: "Vencidos",
-            description: "Elementos cuyo tiempo objetivo ya terminó.",
-            interpretation:
-              "Revisa primero la causa y toma la acción permitida en el módulo de origen.",
-            caution: "No cambies fechas o estados solo para ocultar un vencimiento.",
+            label: "1. Vencidos y por vencer hoy (SLAs)",
+            description:
+              "Tickets de soporte, consultas Hábeas Data, garantías y retractos con reloj legal agotado o en sus últimas 48 horas.",
+            caution:
+              "Nunca cierres un caso sin respuesta real solo para apagar el semáforo rojo: todo cambio queda en auditoría.",
           },
           {
-            id: "proximos",
-            label: "Próximos a vencer",
-            description: "Compromisos que aún pueden atenderse dentro del plazo.",
-            interpretation:
-              "Prioriza los que dependen de terceros, producción o respuesta del cliente.",
+            id: "taller-despacho",
+            label: "2. Bloqueos de moderación, taller y guías",
+            description:
+              "Diseños pendientes en Moderación, paquetes 300 DPI listos para fabricar o pedidos B2B esperando carga de arte maestro.",
+            interpretation: "Desbloquéalos antes de la hora de corte configurada en /admin/envios.",
           },
           {
-            id: "tareas",
-            label: "Tareas CRM",
-            description: "Actividades asignadas con responsable, prioridad y fecha compromiso.",
-            interpretation: "Actualiza su estado al terminar para mantener la cola confiable.",
-          },
-        ],
-      },
-      {
-        id: "bloqueos",
-        title: "Bloqueos y alertas",
-        summary: "Muestra condiciones que impiden cerrar pedidos, casos o procesos.",
-        topics: [
-          {
-            id: "taller",
-            label: "Bloqueos de taller",
-            description: "Pedidos o diseños que requieren revisión antes de continuar producción.",
+            id: "tareas-crm",
+            label: "3. Tareas CRM, propuestas B2B y remesas COD",
+            description: `Compromisos comerciales con fecha, oportunidades B2B activas y contraentregas entregadas hace más de ${HELP_LIVE_NUMBERS.codAgingAlertDays} días sin conciliar.`,
             interpretation:
-              "Abre el pedido y diferencia moderación, archivos, stock y fabricación.",
+              "Ejecuta primero la gestión en el módulo de origen y luego marca la tarea completada.",
           },
           {
             id: "fiscal",
-            label: "Vigilancia fiscal",
-            description:
-              "Alertas por acercamiento o superación de umbrales configurados por el negocio.",
+            label: `4. Vigilancia fiscal DIAN (${formatThousandsEsCo(HELP_LIVE_NUMBERS.fiscalUvtThreshold)} UVT)`,
+            description: `Muestra avisos preventivos al cruzar ${HELP_LIVE_NUMBERS.fiscalWatchPct} %, ${HELP_LIVE_NUMBERS.fiscalWarningPct} % o ${HELP_LIVE_NUMBERS.fiscalCriticalPct} % del tope anual.`,
             interpretation:
-              "Es una señal de gestión; confirma las obligaciones con el contador, no una liquidación tributaria.",
+              "Escala al contador con antelación cuando se active nivel de observación o advertencia.",
           },
         ],
       },
@@ -199,89 +178,98 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "gestionar-jornada",
-        title: "Gestionar la jornada desde Bandeja Hoy",
-        goal: "Resolver o encaminar los pendientes sin perder trazabilidad.",
+        title: "Operar la rutina diaria desde Bandeja Hoy",
+        goal: "Despejar riesgos legales, destrabar producción y dejar trazabilidad limpia al cerrar el día.",
+        route: "/admin/hoy",
         steps: [
-          "Filtra mentalmente los elementos que pertenecen a tu rol y responsabilidad.",
-          "Atiende vencidos legales, operativos y compromisos con cliente en ese orden de riesgo.",
-          "Abre el registro de origen y verifica su estado actual antes de actuar.",
-          "Ejecuta la acción en el módulo especializado y anota la información relevante.",
-          "Marca la tarea como realizada solo cuando el resultado esperado esté confirmado.",
-          "Escala lo bloqueado indicando causa, responsable y siguiente paso.",
+          "Abre Bandeja Hoy al iniciar turno y atiende de inmediato cualquier ítem vencido de Retractos, Garantías o Soporte.",
+          "Limpia la cola de Moderación (/admin/moderacion) para no frenar a Taller de Impresión.",
+          "Abre los pedidos listos para taller o despacho (/admin/pedidos) antes de la hora límite de recogida/ruta local.",
+          "Ejecuta tus tareas CRM de Contacto 360 u Oportunidades B2B y regístralas en su ficha antes de marcarlas hechas.",
+          "Si un bloqueo excede tu rol (ej. reembolso final o pago directo B2B con MFA), deja nota clara con número de pedido y escala a Superadmin.",
         ],
         expected:
-          "La bandeja refleja pendientes reales, responsables claros y próximos pasos verificables.",
+          "Terminas el bloque con cero SLAs desatendidos, taller alimentado y pendientes escalados con contexto verificable.",
       },
     ],
     cautions: [
-      "Cerrar una tarea no cambia automáticamente el estado del pedido, ticket o reclamo relacionado.",
-      "No compartas datos personales al escalar un pendiente; utiliza los identificadores internos.",
+      "Marcar una tarea CRM como completada NO cambia el estado del pedido, ticket, garantía ni oportunidad.",
+    ],
+    dontTouch: [
+      "No pospongas fechas de tareas vencidas repetidamente sin contactar al cliente o registrar el bloqueo real.",
+      "No pegues datos personales sensibles (documentos, teléfonos, direcciones) en títulos cortos de tareas internas.",
+    ],
+    checklist: [
+      "Cero retractos, garantías o tickets Hábeas Data vencidos sin gestión.",
+      "Cola de Moderación despejada para Taller.",
+      "Tareas CRM del día cerradas o reprogramadas con nota real en Contacto 360.",
     ],
     faqs: [
       {
-        question: "¿Por qué veo menos elementos que otra persona?",
+        question: "¿Por qué mi compañero ve tarjetas distintas en Bandeja Hoy?",
         answer:
-          "La bandeja se adapta al rol y a las capacidades asignadas; no todos los pendientes son visibles para todos.",
+          "Porque el servidor filtra cada bloque según las capacidades RBAC de tu rol (por ejemplo, Taller ve producción y moderación, mientras Finanzas ve remesas COD y pasivos posventa).",
       },
       {
-        question: "¿Un elemento desaparece al abrirlo?",
+        question: "¿Por qué sigue apareciendo una alerta después de abrirla?",
         answer:
-          "No. Debe resolverse la condición de origen o actualizarse la tarea para que deje de aparecer.",
+          "Porque Bandeja Hoy lee el estado real en vivo: desaparece automáticamente cuando apruebas el diseño, despachas el pedido, respondes el ticket o concilias la remesa.",
       },
     ],
-    related: ["dashboard", "pedidos", "soporte", "garantias", "retractos"],
-    keywords: ["agenda", "pendientes", "tareas", "SLA", "vencidos", "prioridad"],
-    version: 1,
+    related: ["dashboard", "pedidos", "moderacion", "soporte", "garantias", "retractos"],
+    relatedPlaybooks: [
+      "playbook-pedido-web-300dpi",
+      "playbook-posventa-ley-1480-1581",
+      "playbook-oportunidad-b2b-cierre",
+    ],
+    keywords: ["agenda", "rutina", "hoy", "pendientes", "tareas", "SLA", "vencidos", "prioridad"],
+    version: 2,
   },
   {
     id: "notificaciones",
     title: "Notificaciones",
     area: "Operación",
     route: "/admin/notificaciones",
-    summary: "Centro interno de avisos operativos, comerciales y de salud filtrado según tu rol.",
+    summary:
+      "Bandeja interna de eventos recientes (pedidos, pagos B2B, stock bajo, alertas técnicas y resumen diario) acotada a tu rol.",
     purpose:
-      "Conserva avisos dentro del alcance de tus permisos (pedidos, oportunidades B2B, stock o salud técnica) y distingue los pendientes de lectura con pulso de 14 días. Marcar como leído organiza tu bandeja sin alterar ni silenciar alertas reservadas a otros ámbitos.",
+      "Registra en orden cronológico los avisos emitidos por el sistema cuyo destino (`actionUrl`) pertenece a los módulos autorizados para tu rol, evitando badges fantasma de áreas ajenas. Marcar como leída limpia tu contador personal sin apagar la alerta de fondo.",
     whenToUse: [
-      "Cuando el contador del menú indica avisos sin leer.",
-      "Para localizar el enlace al módulo afectado por una alerta.",
-      "Para revisar antecedentes de un aviso operativo.",
+      "Cuando el contador numérico del menú lateral muestre avisos pendientes.",
+      "Para saltar con un clic al pedido, insumo, oportunidad o incidente que disparó un aviso.",
+      "Para revisar el pulso de eventos de los últimos 14 días.",
     ],
     concepts: [
       {
-        term: "No leída",
-        definition: "Notificación que aún no has marcado como revisada en el centro interno.",
+        term: "Alcance RBAC del badge",
+        definition: "Solo cuentas y visualizas notificaciones de rutas que tu rol puede abrir.",
       },
       {
-        term: "Agrupación",
+        term: "Lectura personal vs resolución operativa",
         definition:
-          "Mecanismo que reduce repeticiones del mismo evento para evitar ruido en la bandeja.",
+          "Marcar como leída despeja tu campana, pero el pedido, stock o incidente sigue abierto hasta que se gestione en su módulo.",
       },
     ],
     sections: [
       {
         id: "bandeja",
-        title: "Lectura de la bandeja",
-        summary: "Presenta fecha, severidad, detalle y destino de cada aviso.",
+        title: "Severidad, enlace directo y control de lectura",
+        summary: "Triaje rápido entre avisos informativos, advertencias y alertas críticas.",
         topics: [
           {
             id: "severidad",
-            label: "Severidad",
-            description: "Clasifica el aviso como informativo, advertencia o condición crítica.",
-            interpretation:
-              "La severidad orienta la urgencia; valida siempre el contenido y el módulo de origen.",
+            label: "Nivel de severidad",
+            description:
+              "Diferencia eventos rutinarios (nuevo pedido) frente a advertencias (bajo stock, pago directo B2B reportado) o incidentes críticos.",
+            interpretation: "Abre siempre primero los avisos críticos y de pagos o posventa.",
           },
           {
             id: "accion",
-            label: "Enlace de acción",
+            label: "Salto directo al registro",
             description:
-              "Dirige al registro o bandeja relacionada cuando existe un destino disponible.",
-            interpretation: "Ábrelo para confirmar el estado vivo antes de actuar.",
-          },
-          {
-            id: "lectura",
-            label: "Estado de lectura",
-            description: "Controla el contador de pendientes del menú.",
-            interpretation: "Leído significa revisado por ti, no resuelto por el negocio.",
+              "Lleva exactamente al detalle de la orden, oportunidad, inventario o panel de observabilidad.",
+            interpretation:
+              "Valida que nadie más del equipo lo haya atendido ya antes de repetir una acción.",
           },
         ],
       },
@@ -289,84 +277,99 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "atender-notificacion",
-        title: "Atender una notificación",
-        goal: "Revisar el aviso y resolver correctamente su causa.",
+        title: "Procesar avisos sin perder alertas críticas",
+        goal: "Mantener el contador en cero habiendo encaminado cada evento real.",
+        route: "/admin/notificaciones",
         steps: [
-          "Lee título, detalle, severidad y fecha del aviso.",
-          "Abre el enlace relacionado y verifica si la condición sigue vigente.",
-          "Realiza la acción permitida en el módulo correspondiente.",
-          "Regresa y marca la notificación como leída cuando ya no necesites conservarla como pendiente personal.",
+          "Revisa primero las notificaciones críticas o de advertencia antes que las informativas.",
+          "Haz clic en el enlace de destino y confirma el estado actual del registro.",
+          "Ejecuta la gestión necesaria en el módulo correspondiente.",
+          "Marca la notificación como leída únicamente cuando ya haya quedado atendida o asignada.",
         ],
-        expected:
-          "El aviso queda revisado y su condición de origen resuelta o asignada para seguimiento.",
+        expected: "Tu campana refleja únicamente novedades reales aún no revisadas.",
       },
     ],
     cautions: [
-      "No marques toda la bandeja como leída antes de identificar avisos críticos sin revisar.",
+      "Evita usar «Marcar todas como leídas» al inicio del día sin antes barrer las alertas rojas o ámbar.",
+    ],
+    dontTouch: [
+      "No asumas que marcar una alerta técnica como leída detiene los avisos del dead-man switch en Salud técnica.",
+    ],
+    checklist: [
+      "Revisé todas las notificaciones críticas y de pagos reportados antes de limpiar el listado.",
     ],
     faqs: [
       {
-        question: "¿Marcar como leído elimina la alerta del sistema?",
+        question: "¿Si marco una notificación como leída desaparece para los demás?",
         answer:
-          "No. Solo cambia tu estado de lectura; el proceso que generó la alerta conserva su propio estado.",
+          "Mantén presente el alcance del centro de avisos: revisa siempre el estado vivo del pedido o ticket para coordinarte con el resto del equipo.",
       },
     ],
-    related: ["dashboard", "hoy", "observability"],
-    keywords: ["campana", "avisos", "alertas", "sin leer", "mensajes internos"],
-    version: 1,
+    related: ["hoy", "dashboard", "observability", "pedidos"],
+    keywords: ["campana", "avisos", "alertas", "sin leer", "notificaciones"],
+    version: 2,
   },
   {
     id: "ayuda",
     title: "Centro de ayuda",
     area: "Operación",
     route: "/admin/ayuda",
-    summary: "Manuales operativos, buscador, recorridos y rutas de aprendizaje del Admin.",
+    summary:
+      "Manual operativo vivo: rutina Día 1 por rol, los 8 Flujos E2E, guías por pantalla/subruta, glosario y reglas clave.",
     purpose:
-      "Explica el propósito y uso de cada módulo según tus permisos. Permite consultar conceptos, campos, procedimientos y recorridos sin modificar información del negocio.",
+      "Entrena desde cero a cualquier integrante nuevo según su rol y sirve como manual de consulta inmediata para operación compleja, plazos legales, fórmulas de margen y casos borde. Todo el contenido vive junto al código y se verifica automáticamente en pruebas.",
     whenToUse: [
-      "Cuando no conozcas la finalidad o el efecto de una pantalla.",
-      "Antes de ejecutar un procedimiento poco frecuente o delicado.",
-      "Para aprender las responsabilidades de tu rol y retomar guías pendientes.",
+      "En tu primer día para completar la pestaña Día 1 y Rutina Diaria de tu rol.",
+      "Cuando necesites ejecutar de punta a punta un proceso transversal en la pestaña Flujos E2E.",
+      "Desde cualquier pantalla pulsando `? Ayuda` (o la tecla `?`) para ver qué hace esa vista o subruta exacta y qué NO tocar.",
+      "Como Superadmin, usando el selector «Ver ayuda como rol…» para auditar y capacitar a cada perfil del equipo.",
     ],
     concepts: [
       {
-        term: "Guía contextual",
+        term: "Ayuda contextual en vivo (`?`)",
         definition:
-          "Contenido asociado a la pantalla actual, incluidos sus formularios y detalles.",
+          "El botón flotante detecta en tiempo real la ruta y subruta actual (incluidos detalles y formularios) sin recargar el navegador.",
       },
       {
-        term: "Recorrido interactivo",
+        term: "Playbook E2E",
         definition:
-          "Secuencia opcional de pasos con progreso guardado; nunca ejecuta acciones por ti.",
+          "Guía transversal paso a paso que cruza varios módulos de principio a fin con responsables por rol, compuertas MFA y enlaces directos.",
+      },
+      {
+        term: "Checklist con progreso guardado",
+        definition:
+          "Lista interactiva por guía o flujo cuyo avance queda guardado en tu usuario sin ejecutar jamás acciones comerciales por su cuenta.",
       },
     ],
     sections: [
       {
-        id: "explorar",
-        title: "Explorar y buscar",
-        summary: "Encuentra contenido por módulo, tarea, campo, estado o concepto.",
+        id: "pilares",
+        title: "Los 4 pilares del Centro de ayuda",
+        summary: "Diseñados para responder en segundos tanto en inducción como en incidentes.",
         topics: [
           {
-            id: "buscador",
-            label: "Buscador",
+            id: "dia-1",
+            label: "1. Día 1 y Rutina Diaria",
             description:
-              "Consulta títulos, propósito, conceptos, campos, procedimientos y preguntas frecuentes.",
+              "Explica tu misión, datos protegidos por Ley 1581, orden exacto de trabajo por franjas del día y qué nunca debes tocar.",
             interpretation:
-              "Prueba con el nombre visible del campo o con una pregunta como «cómo conciliar».",
+              "Ideal para incorporar a una persona nueva sin depender de explicaciones improvisadas.",
           },
           {
-            id: "modulos",
-            label: "Catálogo y filtro por áreas",
+            id: "playbooks",
+            label: "2. Flujos E2E (Playbooks)",
             description:
-              "Muestra únicamente guías disponibles para tu rol y permite filtrarlas por área operativa.",
+              "Cubre los 8 recorridos transversales del negocio (Pedido 300 DPI, B2B + Bre-B/DIAN, COD, Posventa legal, BOM/Precios, Catálogo, Lifecycle e Incidentes).",
             interpretation:
-              "Usa las píldoras de área o abre una tarjeta para leer la guía completa e ir directo al módulo.",
+              "Resalta qué pasos ejecuta tu rol y qué pasos entrega o recibe de otra área.",
           },
           {
-            id: "progreso",
-            label: "Progreso de aprendizaje",
-            description: "Conserva paso, finalización y descarte de los recorridos por usuario.",
-            interpretation: "Puedes cerrar un recorrido y retomarlo después desde el mismo módulo.",
+            id: "modulos-referencia",
+            label: "3. Manuales por Módulo y 4. Referencia Rápida",
+            description:
+              "Diccionario completo de cada pantalla y subruta, más tabla maestra de SLAs legales, topes numéricos, matriz de roles, glosario A–Z y atajos (`⌘K`, `?`).",
+            interpretation:
+              "Usa el buscador superior instantáneo (sin tildes) para filtrar los 4 pilares al mismo tiempo.",
           },
         ],
       },
@@ -374,37 +377,53 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "consultar-guia",
-        title: "Resolver una duda operativa",
-        goal: "Encontrar una respuesta aplicable a tu pantalla y permisos.",
+        title: "Sacar el máximo provecho en operación o capacitación",
+        goal: "Resolver dudas en segundos y entrenar con cero riesgo operativo.",
+        route: "/admin/ayuda",
         steps: [
-          "Escribe el módulo, campo o tarea en el buscador.",
-          "Abre el resultado que coincida con la acción que necesitas realizar.",
-          "Revisa requisitos, permisos y precauciones antes de los pasos.",
-          "Inicia el recorrido opcional si prefieres acompañamiento.",
-          "Ejecuta la acción en el módulo correspondiente y verifica el resultado esperado.",
-          "Califica la guía si necesitamos mejorar su contenido.",
+          "Desde cualquier pantalla del panel pulsa la tecla `?` o el botón `? Ayuda` para abrir la ficha exacta de esa ruta o subruta.",
+          "Cuando entres por primera vez (o entrenes a alguien), completa la pestaña Día 1 y Rutina Diaria de ese rol.",
+          "Antes de ejecutar un caso complejo (ej. cierre B2B con retención, retracto o escala mayorista), abre su Flujo E2E y marca el checklist paso a paso.",
+          "Si detectas algo confuso, deja retroalimentación al final de la guía sin escribir datos reales de clientes.",
         ],
         expected:
-          "Puedes completar la tarea comprendiendo su efecto y sin depender de una respuesta genérica.",
+          "Operas con seguridad jurídica, técnica y comercial sin adivinar estados ni permisos.",
       },
     ],
     cautions: [
-      "Los ejemplos son orientativos y no sustituyen la validación del registro real.",
-      "El contenido nunca debe incluir datos personales reales de clientes.",
+      "Ningún checklist del Centro de ayuda modifica pedidos, pagos ni configuraciones reales.",
+    ],
+    dontTouch: [
+      "Nunca pegues nombres, correos, teléfonos, direcciones ni llaves privadas en la caja de comentarios de retroalimentación de una guía.",
+    ],
+    checklist: [
+      "Revisé la pestaña Día 1 y Rutina Diaria de mi rol.",
+      "Probé abrir la ayuda contextual con `?` y saltar entre módulos con `⌘K` / `Ctrl+K`.",
     ],
     faqs: [
       {
-        question: "¿El recorrido realiza cambios por mí?",
+        question:
+          "¿Qué hace el botón flotante cuando ya estoy leyendo una guía larga dentro de /admin/ayuda?",
         answer:
-          "No. Solo explica y guarda tu avance; todas las operaciones se confirman en la interfaz normal.",
+          "Se oculta en la portada principal para no estorbar y, cuando entras al detalle de una guía o flujo E2E, se convierte en «Índice rápido» para saltar a otro tema sin perder tiempo.",
       },
       {
-        question: "¿Puedo repetir el onboarding?",
-        answer: "Sí. Abre la ruta de tu rol desde el centro y reiníciala cuando quieras.",
+        question: "¿Cómo sé qué guías ve una persona de Taller o Soporte?",
+        answer:
+          "Si eres Superadmin, usa el selector «Ver ayuda como rol…» en la parte superior de /admin/ayuda para inspeccionar exactamente su experiencia filtrada.",
       },
     ],
-    related: ["dashboard", "seguridad"],
-    keywords: ["manual", "aprender", "onboarding", "recorrido", "buscar", "duda", "tutorial"],
-    version: 1,
+    related: ["hoy", "dashboard", "seguridad", "usuarios"],
+    keywords: [
+      "manual",
+      "aprender",
+      "onboarding",
+      "rutina",
+      "flujos",
+      "playbook",
+      "glosario",
+      "atajos",
+    ],
+    version: 2,
   },
 ];
