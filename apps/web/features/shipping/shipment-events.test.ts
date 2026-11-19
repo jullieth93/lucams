@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  buildPollShipmentEventInputs,
   buildShipmentEventDedupKey,
   formatCarrierEventDescription,
   friendlyCarrierEventLabel,
@@ -66,5 +67,48 @@ describe("formatCarrierEventDescription", () => {
         "18:30 : NOMBRE: 2986 ACLARACION:por tiempo",
       ),
     ).toBe("ENTREGA NO EFECTUADA POR INCONVENIENTES OPERATIVOS (por tiempo)");
+  });
+});
+
+describe("buildPollShipmentEventInputs", () => {
+  it("conserva el timestamp oficial del carrier cuando historicos[] ya trae ENTREGADA", () => {
+    const carrierTs = new Date("2026-11-19T19:09:30.000Z");
+    const out = buildPollShipmentEventInputs({
+      status: "DELIVERED",
+      carrierStatusRaw: "ENTREGADA DIGITALIZADA",
+      history: [
+        { status: "ENTREGADA DIGITALIZADA", description: "Portería", timestamp: carrierTs },
+      ],
+      deliveredAtFallback: new Date("2026-11-19T19:09:59.000Z"),
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0]).toEqual({
+      carrierStatusRaw: "ENTREGADA DIGITALIZADA",
+      description: "Portería",
+      clarification: undefined,
+      occurredAt: carrierTs,
+    });
+  });
+
+  it("inyecta hito terminal determinista anclado a deliveredAt cuando guia.estado=DELIVERED pero historicos[] no lo trae", () => {
+    const deliveredAt = new Date("2026-11-19T19:09:59.783Z");
+    const out = buildPollShipmentEventInputs({
+      status: "DELIVERED",
+      carrierStatusRaw: "ENTREGADA DIGITALIZADA",
+      history: [
+        {
+          status: "EN REPARTO",
+          description: "",
+          timestamp: new Date("2026-11-19T17:09:34.000Z"),
+        },
+      ],
+      deliveredAtFallback: deliveredAt,
+    });
+    expect(out).toHaveLength(2);
+    expect(out[1]).toEqual({
+      carrierStatusRaw: "ENTREGADA DIGITALIZADA",
+      description: "",
+      occurredAt: deliveredAt,
+    });
   });
 });

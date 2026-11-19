@@ -29,7 +29,10 @@ import {
   type WebhookEvent as ShippingWebhookEvent,
 } from "@/features/shipping/provider";
 import { processTrackingUpdate, type TrackingUpdateResult } from "@/features/orders/saga";
-import { recordShipmentEvents } from "@/features/shipping/shipment-events";
+import {
+  buildPollShipmentEventInputs,
+  recordShipmentEvents,
+} from "@/features/shipping/shipment-events";
 
 import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit";
 
@@ -191,6 +194,38 @@ async function claimAveonlineWebhookEvent(
   return { kind: "claimed", id: webhookRow.id };
 }
 
+async function backfillShipmentEventsFromProviderBestEffort(
+  orderId: string,
+  orderTrackingNumber: string,
+  result: TrackingUpdateResult,
+): Promise<void> {
+  if (!process.env.AVEONLINE_USUARIO || !process.env.AVEONLINE_CLAVE) return;
+  try {
+    const provider = await getShippingProvider();
+    const tracking = await provider.getTracking(orderTrackingNumber);
+    const events = buildPollShipmentEventInputs({
+      status: tracking.status,
+      carrierStatusRaw: tracking.carrierStatusRaw,
+      history: tracking.history,
+      deliveredAtFallback: result.deliveredAt,
+    });
+    if (events.length === 0) return;
+    await recordShipmentEvents({
+      orderId,
+      trackingNumber: orderTrackingNumber,
+      source: "POLL",
+      events,
+      guideCreatedAt: result.shipmentClaimedAt,
+    });
+  } catch (err) {
+    logger.warn({
+      event: "webhook.aveonline.history_backfill_failed",
+      trackingNumber: orderTrackingNumber,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function maybeRecordWebhookShipmentEvents(
   event: ShippingWebhookEvent,
   result: TrackingUpdateResult,
@@ -199,7 +234,18 @@ async function maybeRecordWebhookShipmentEvents(
   const hasStableTimestamp =
     Boolean(event.hasCarrierTimestamp) ||
     event.carrierStatusRaw.trim().toUpperCase() === "GENERADA";
-  if (!hasStableTimestamp) return;
+  if (!hasStableTimestamp) {
+    // AveCRM envía webhooks sin fecha (`no-ts`, caso real LCM-2026-0006 `ENTREGADA
+    // DIGITALIZADA`): en lugar de inventar `new Date()`, consultamos `getTracking`
+    // ahí mismo para registrar `historicos[]` con la fecha real de Colombia al
+    // instante. Si Aveonline falla transitoriamente, `tracking-sync` converge luego.
+    await backfillShipmentEventsFromProviderBestEffort(
+      result.orderId,
+      result.orderTrackingNumber,
+      result,
+    );
+    return;
+  }
 
   const history =
     event.history.length > 0

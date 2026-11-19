@@ -27,11 +27,19 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { processTrackingUpdate } from "@/features/orders/saga";
-import { recordShipmentEvents } from "@/features/shipping/shipment-events";
+import {
+  buildPollShipmentEventInputs,
+  recordShipmentEvents,
+} from "@/features/shipping/shipment-events";
 
 const TRACKING_SYNC_BATCH = 25;
 // Una guía viva típica dura días; >90 días activa es un caso ya resuelto a mano.
 const TRACKING_SYNC_MAX_AGE_DAYS = 90;
+// Ventana de convergencia para órdenes ya marcadas DELIVERED por webhook `no-ts`
+// (o cierre manual) que aún no tienen el hito DELIVERED persistido en ShipmentEvent
+// (caso real LCM-2026-0004 y LCM-2026-0006): apenas se registra el hito ENTREGADA,
+// `shipmentEvents: { none: { status: "DELIVERED" } }` deja de matchear para siempre.
+const DELIVERED_BACKFILL_MAX_AGE_DAYS = 21;
 
 export type TrackingSyncResult = {
   checked: number;
@@ -58,6 +66,8 @@ function buildLatestCarrierIncidentContext(
 async function syncSingleOrderGuide(order: {
   id: string;
   number: string;
+  status: string;
+  deliveredAt: Date | null;
   trackingNumber: string;
   shipmentClaimedAt: Date | null;
 }): Promise<boolean> {
@@ -65,24 +75,26 @@ async function syncSingleOrderGuide(order: {
   const tracking = await provider.getTracking(order.trackingNumber);
   // Historial granular del carrier → ShipmentEvent (2026-11-04). El polling es la
   // fuente que trae DESCRIPCIONES (`historicos[].descripcion`) y hace backfill de
-  // hitos que el webhook no entregó; dedup cross-source por minuto (best-effort).
-  // `?? []`: proveedores/mocks sin historial son válidos (sin historial, sin hitos).
+  // hitos que el webhook `no-ts` no entregó (incluyendo el hito final DELIVERED en
+  // órdenes recién entregadas — caso real LCM-2026-0004 y LCM-2026-0006).
   const history = tracking.history ?? [];
-  if (history.length > 0) {
+  const events = buildPollShipmentEventInputs({
+    status: tracking.status,
+    carrierStatusRaw: tracking.carrierStatusRaw,
+    history,
+    deliveredAtFallback: order.deliveredAt,
+  });
+  if (events.length > 0) {
     await recordShipmentEvents({
       orderId: order.id,
       trackingNumber: order.trackingNumber,
       source: "POLL",
-      events: history.map((h) => ({
-        carrierStatusRaw: h.status,
-        description: h.description,
-        clarification: h.clarification,
-        occurredAt: h.timestamp,
-      })),
+      events,
       guideCreatedAt: order.shipmentClaimedAt,
     });
   }
   if (tracking.status === "PENDING") return false; // sin novedad real del carrier
+  if (order.status === "DELIVERED" && tracking.status !== "RETURNED") return false;
 
   const result = await processTrackingUpdate({
     trackingNumber: order.trackingNumber,
@@ -98,15 +110,30 @@ export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> 
     return { checked: 0, transitioned: 0, failed: 0, skippedReason: "not_configured" };
   }
 
+  const now = Date.now();
   const orders = await prisma.order.findMany({
     where: {
       deletedAt: null,
-      status: { in: ["FULFILLING", "SHIPPED"] },
       trackingNumber: { not: null },
       NOT: { trackingNumber: { startsWith: "INTERNO-" } },
-      createdAt: { gte: new Date(Date.now() - TRACKING_SYNC_MAX_AGE_DAYS * 86_400_000) },
+      createdAt: { gte: new Date(now - TRACKING_SYNC_MAX_AGE_DAYS * 86_400_000) },
+      OR: [
+        { status: { in: ["FULFILLING", "SHIPPED"] } },
+        {
+          status: "DELIVERED",
+          deliveredAt: { gte: new Date(now - DELIVERED_BACKFILL_MAX_AGE_DAYS * 86_400_000) },
+          shipmentEvents: { none: { status: "DELIVERED" } },
+        },
+      ],
     },
-    select: { id: true, number: true, trackingNumber: true, shipmentClaimedAt: true },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      deliveredAt: true,
+      trackingNumber: true,
+      shipmentClaimedAt: true,
+    },
     orderBy: { updatedAt: "asc" }, // las que llevan más tiempo sin actualización, primero
     take: TRACKING_SYNC_BATCH,
   });
@@ -119,6 +146,8 @@ export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> 
       const didTransition = await syncSingleOrderGuide({
         id: order.id,
         number: order.number,
+        status: order.status,
+        deliveredAt: order.deliveredAt,
         trackingNumber: order.trackingNumber,
         shipmentClaimedAt: order.shipmentClaimedAt,
       });
