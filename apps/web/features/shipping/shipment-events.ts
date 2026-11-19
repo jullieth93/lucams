@@ -180,6 +180,45 @@ async function enrichExistingEmptyDescriptions(
   }
 }
 
+/**
+ * Construye los eventos de `POLL` a partir de `ShippingProvider.getTracking`, añadiendo un
+ * hito terminal determinista cuando Aveonline ya reporta `status === "DELIVERED"` a nivel
+ * de guía (`guia.estado`, p. ej. `"ENTREGADA DIGITALIZADA"`) pero `historicos[]` aún no
+ * incluye una fila mapeable a `DELIVERED`. Ancla el timestamp a `deliveredAtFallback`
+ * (`Order.deliveredAt`, inmutable en DB) para garantizar `dedupKey` estable.
+ */
+export function buildPollShipmentEventInputs(input: {
+  status: TrackingStatusValue;
+  carrierStatusRaw: string;
+  history?: Array<{
+    status: string;
+    description?: string;
+    clarification?: string;
+    timestamp: Date;
+  }>;
+  deliveredAtFallback?: Date | null;
+}): ShipmentEventInput[] {
+  const mapped: ShipmentEventInput[] = (input.history ?? []).map((h) => ({
+    carrierStatusRaw: h.status,
+    description: h.description,
+    clarification: h.clarification,
+    occurredAt: h.timestamp,
+  }));
+
+  if (
+    input.status === "DELIVERED" &&
+    !mapped.some((ev) => mapAveonlineStatus(ev.carrierStatusRaw) === "DELIVERED")
+  ) {
+    mapped.push({
+      carrierStatusRaw: input.carrierStatusRaw || "ENTREGADA",
+      description: "",
+      occurredAt: input.deliveredAtFallback ?? new Date(),
+    });
+  }
+
+  return mapped;
+}
+
 /** Hitos de la guía de una orden, cronológicos ascendente, para el timeline cliente/admin. */
 export async function listShipmentEvents(orderId: string) {
   return prisma.shipmentEvent.findMany({

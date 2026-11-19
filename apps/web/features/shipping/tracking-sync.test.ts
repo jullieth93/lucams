@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   getTracking: vi.fn(),
   processTrackingUpdate: vi.fn(),
+  recordShipmentEvents: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: { order: { findMany: mocks.findMany } } }));
@@ -26,13 +27,21 @@ vi.mock("@/features/orders/saga", () => ({
   processTrackingUpdate: mocks.processTrackingUpdate,
 }));
 
+vi.mock("@/features/shipping/shipment-events", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/shipping/shipment-events")>();
+  return {
+    ...actual,
+    recordShipmentEvents: mocks.recordShipmentEvents,
+  };
+});
+
 vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 import { syncActiveShipmentTracking } from "./tracking-sync";
 
-const { findMany, getTracking, processTrackingUpdate } = mocks;
+const { findMany, getTracking, processTrackingUpdate, recordShipmentEvents } = mocks;
 
 describe("syncActiveShipmentTracking", () => {
   beforeEach(() => {
@@ -48,14 +57,59 @@ describe("syncActiveShipmentTracking", () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
-  it("solo sondea órdenes con guía activa: FULFILLING/SHIPPED, excluye INTERNO-* y guías >90d", async () => {
+  it("sondea guías activas (FULFILLING/SHIPPED) y DELIVERED recientes sin hito DELIVERED, excluyendo INTERNO-* y >90d", async () => {
     findMany.mockResolvedValue([]);
     await syncActiveShipmentTracking();
     const where = findMany.mock.calls[0][0].where;
-    expect(where.status).toEqual({ in: ["FULFILLING", "SHIPPED"] });
     expect(where.trackingNumber).toEqual({ not: null });
     expect(where.NOT).toEqual({ trackingNumber: { startsWith: "INTERNO-" } });
     expect(where.createdAt.gte).toBeInstanceOf(Date);
+    expect(where.OR).toEqual([
+      { status: { in: ["FULFILLING", "SHIPPED"] } },
+      {
+        status: "DELIVERED",
+        deliveredAt: { gte: expect.any(Date) },
+        shipmentEvents: { none: { status: "DELIVERED" } },
+      },
+    ]);
+  });
+
+  it("orden ya DELIVERED por webhook no-ts → hace backfill de ShipmentEvent sin re-disparar processTrackingUpdate", async () => {
+    const deliveredAt = new Date("2026-11-19T19:09:59.000Z");
+    findMany.mockResolvedValue([
+      {
+        id: "o-del",
+        number: "LCM-2026-0006",
+        status: "DELIVERED",
+        deliveredAt,
+        trackingNumber: "014165715442",
+        shipmentClaimedAt: new Date("2026-11-15T03:23:54.000Z"),
+      },
+    ]);
+    getTracking.mockResolvedValue({
+      trackingNumber: "014165715442",
+      status: "DELIVERED",
+      carrierStatusRaw: "ENTREGADA DIGITALIZADA",
+      history: [],
+    });
+
+    const res = await syncActiveShipmentTracking();
+
+    expect(recordShipmentEvents).toHaveBeenCalledWith({
+      orderId: "o-del",
+      trackingNumber: "014165715442",
+      source: "POLL",
+      events: [
+        {
+          carrierStatusRaw: "ENTREGADA DIGITALIZADA",
+          description: "",
+          occurredAt: deliveredAt,
+        },
+      ],
+      guideCreatedAt: new Date("2026-11-15T03:23:54.000Z"),
+    });
+    expect(processTrackingUpdate).not.toHaveBeenCalled();
+    expect(res).toMatchObject({ checked: 1, transitioned: 0, failed: 0 });
   });
 
   it("guía con estado real alimenta processTrackingUpdate con el trackingNumber PERSISTIDO", async () => {

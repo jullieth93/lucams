@@ -113,14 +113,22 @@ function webhookRequest(payload: unknown, secret: string = SECRET): Request {
 
 describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numérica", () => {
   const prevSecret = process.env.AVEONLINE_WEBHOOK_SECRET;
+  const prevAveUser = process.env.AVEONLINE_USUARIO;
+  const prevAveClave = process.env.AVEONLINE_CLAVE;
 
   beforeAll(() => {
     process.env.AVEONLINE_WEBHOOK_SECRET = SECRET;
+    delete process.env.AVEONLINE_USUARIO;
+    delete process.env.AVEONLINE_CLAVE;
   });
 
   afterAll(async () => {
     if (prevSecret === undefined) delete process.env.AVEONLINE_WEBHOOK_SECRET;
     else process.env.AVEONLINE_WEBHOOK_SECRET = prevSecret;
+    if (prevAveUser === undefined) delete process.env.AVEONLINE_USUARIO;
+    else process.env.AVEONLINE_USUARIO = prevAveUser;
+    if (prevAveClave === undefined) delete process.env.AVEONLINE_CLAVE;
+    else process.env.AVEONLINE_CLAVE = prevAveClave;
 
     if (createdGuias.length > 0) {
       await prisma.webhookEvent
@@ -321,6 +329,66 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
       select: { status: true },
     });
     expect(order?.status).toBe("SHIPPED");
+  });
+
+  it("webhook AveCRM DELIVERED sin fecha ('no-ts', caso LCM-2026-0006) → consulta getTracking y persiste el hito ENTREGADA en ShipmentEvent al instante", async () => {
+    const guia = freshGuia();
+    createdGuias.push(String(guia));
+    const canonicalStored = `0${guia}`;
+    const orderId = await makeFulfillingOrder(canonicalStored);
+
+    process.env.AVEONLINE_USUARIO = "demo";
+    process.env.AVEONLINE_CLAVE = "demo";
+    const providerInstance = await getShippingProvider();
+    const carrierDeliveryTs = new Date("2026-11-19T19:08:00.000Z");
+    const spy = vi.spyOn(providerInstance, "getTracking").mockResolvedValueOnce({
+      trackingNumber: canonicalStored,
+      status: "DELIVERED",
+      carrierStatusRaw: "ENTREGADA DIGITALIZADA",
+      history: [
+        {
+          status: "ENTREGADA DIGITALIZADA",
+          description: "Entregado en portería",
+          timestamp: carrierDeliveryTs,
+        },
+      ],
+    });
+
+    try {
+      const res = await POST(
+        webhookRequest({
+          status: "ok",
+          guia, // sin cero inicial y sin fecha (`no-ts`), tal cual llegó en PRD
+          estado: [{ nombre: "ENTREGADA DIGITALIZADA" }],
+        }),
+      );
+      expect(res.status).toBe(200);
+
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { status: true, deliveredAt: true },
+      });
+      expect(order?.status).toBe("DELIVERED");
+      expect(order?.deliveredAt).not.toBeNull();
+      expect(spy).toHaveBeenCalledWith(canonicalStored);
+
+      const events = await prisma.shipmentEvent.findMany({
+        where: { orderId },
+        orderBy: { occurredAt: "asc" },
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        status: "DELIVERED",
+        carrierStatusRaw: "ENTREGADA DIGITALIZADA",
+        description: "Entregado en portería",
+        source: "POLL",
+      });
+      expect(events[0]?.occurredAt.toISOString()).toBe(carrierDeliveryTs.toISOString());
+    } finally {
+      spy.mockRestore();
+      delete process.env.AVEONLINE_USUARIO;
+      delete process.env.AVEONLINE_CLAVE;
+    }
   });
 
   it("LUC-SEC-003: webhook autenticado por payload.token NO persiste el token ni el body crudo (allowlist)", async () => {
