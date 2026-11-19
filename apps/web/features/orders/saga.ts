@@ -896,6 +896,7 @@ async function findOrderByTrackingNumber(trackingNumber: string) {
     status: true,
     trackingNumber: true,
     shipmentClaimedAt: true,
+    deliveredAt: true,
     needsReconciliation: true,
     reconciliationReason: true,
     reconciledAt: true,
@@ -926,6 +927,7 @@ export type TrackingUpdateResult = {
   orderNumber?: string;
   orderTrackingNumber?: string;
   shipmentClaimedAt?: Date | null;
+  deliveredAt?: Date | null;
   transitionedTo?: string;
 };
 
@@ -1140,6 +1142,7 @@ export async function processTrackingUpdate(input: {
     orderNumber: order.number,
     orderTrackingNumber: order.trackingNumber ?? input.trackingNumber,
     shipmentClaimedAt: order.shipmentClaimedAt,
+    deliveredAt: order.deliveredAt,
   };
 
   const currentStatus = await promotePaidOrderWithGuide(order.id, order.status);
@@ -1150,7 +1153,9 @@ export async function processTrackingUpdate(input: {
       currentStatus,
       input.carrierStatusRaw,
     );
-    if (transitionedTo) return { status: "ok", ...baseOrderMeta, transitionedTo };
+    if (transitionedTo) {
+      return { status: "ok", ...baseOrderMeta, deliveredAt: new Date(), transitionedTo };
+    }
     return { status: "noop", ...baseOrderMeta };
   }
 
