@@ -97,7 +97,7 @@ export function getColombianHolidaysForYear(year: number): ReadonlySet<string> {
   }
 
   // 2. Trasladables por Ley Emiliani
-  const emiliani: ReadonlyArray<[number, number]> = [
+  const emiliani: Array<[number, number]> = [
     [1, 6], // Epifanía / Reyes Magos
     [3, 19], // San José
     [6, 29], // San Pedro y San Pablo
@@ -106,6 +106,10 @@ export function getColombianHolidaysForYear(year: number): ReadonlySet<string> {
     [11, 1], // Todos los Santos
     [11, 11], // Independencia de Cartagena
   ];
+  // Ley 2578 de 2026 (sancionada 1 jun 2026): 9 de julio (Virgen de Chiquinquirá), trasladable Emiliani.
+  if (year >= 2026) {
+    emiliani.push([7, 9]);
+  }
   for (const [month, day] of emiliani) {
     const shifted = shiftToNextMondayUtc(new Date(Date.UTC(year, month - 1, day)));
     set.add(formatYmdUtc(shifted));

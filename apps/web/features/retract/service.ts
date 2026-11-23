@@ -9,9 +9,8 @@
  * elegibilidad se calcula al vuelo: item de catálogo estándar (sin customDesign ni
  * designId), orden DELIVERED, dentro de la ventana, sin solicitud previa.
  *
- * Nota: la ventana cuenta días hábiles Lun-Vie; NO descuenta festivos colombianos
- * (raros; el admin aprueba cada solicitud y puede cubrir bordes). Es levemente más
- * estricto que la ley en semanas con festivo — documentado, con válvula admin.
+ * La ventana cuenta días hábiles colombianos (Lun–Vie excluyendo festivos oficiales
+ * de Colombia vía `@/lib/colombian-sla`, en reloj de pared `America/Bogota`).
  */
 
 import "server-only";
@@ -22,7 +21,13 @@ import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { maskEmail, maskPersonName } from "@/lib/pii-mask";
 import { sendRetractApproved, sendRetractRejected, sendRetractRefunded } from "./emails";
 import { RETRACT_WINDOW_BUSINESS_DAYS } from "@/lib/consumer-law";
-import { computeRetractSlaDueAt, evaluateSlaStatus, type SlaEvaluation } from "@/lib/colombian-sla";
+import {
+  addColombianBusinessDaysEndOfDay,
+  computeRetractSlaDueAt,
+  evaluateSlaStatus,
+  isColombianBusinessDay,
+  type SlaEvaluation,
+} from "@/lib/colombian-sla";
 import { restoreRedeemedPointsForRetract } from "@/features/loyalty/service";
 import { resolvePostSaleContact } from "@/features/identity/resolution-service";
 import {
@@ -41,27 +46,24 @@ export { RETRACT_WINDOW_BUSINESS_DAYS };
 const COT_OFFSET_MS = 5 * 60 * 60 * 1000;
 
 /**
- * Avanza `n` días hábiles (Lun-Vie, en calendario colombiano) desde `from`. No
- * descuenta festivos CO (raros; el admin aprueba cada solicitud).
+ * Avanza `n` días hábiles colombianos (Lun–Vie excluyendo festivos oficiales CO, en
+ * reloj de pared `America/Bogota`) desde `from`.
  */
 export function addBusinessDays(from: Date, n: number): Date {
+  const targetDays = Math.max(0, Math.trunc(n));
   const cot = new Date(from.getTime() - COT_OFFSET_MS); // reloj de pared COT
   let added = 0;
-  while (added < n) {
+  while (added < targetDays) {
     cot.setUTCDate(cot.getUTCDate() + 1);
-    const day = cot.getUTCDay(); // 0=Dom … 6=Sáb (en COT)
-    if (day !== 0 && day !== 6) added++;
+    const instantUtc = new Date(cot.getTime() + COT_OFFSET_MS);
+    if (isColombianBusinessDay(instantUtc)) added++;
   }
   return new Date(cot.getTime() + COT_OFFSET_MS); // instante UTC real
 }
 
-/** Fin de la ventana: 23:59:59.999 hora Colombia del último día hábil, inclusive. */
+/** Fin de la ventana: 23:59:59.999 hora Colombia del último día hábil colombiano, inclusive. */
 export function retractWindowEnd(deliveredAt: Date): Date {
-  const endCot = new Date(
-    addBusinessDays(deliveredAt, RETRACT_WINDOW_BUSINESS_DAYS).getTime() - COT_OFFSET_MS,
-  );
-  endCot.setUTCHours(23, 59, 59, 999); // fin del día en COT
-  return new Date(endCot.getTime() + COT_OFFSET_MS);
+  return addColombianBusinessDaysEndOfDay(deliveredAt, RETRACT_WINDOW_BUSINESS_DAYS);
 }
 
 export function isWithinRetractWindow(deliveredAt: Date, now: Date): boolean {
