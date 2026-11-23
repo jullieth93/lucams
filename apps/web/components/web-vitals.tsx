@@ -105,15 +105,22 @@ type VitalsPayload = {
   target?: string;
 };
 
+// Fase 4 (#15) — batching en cliente: agrupa métricas del mismo pageview en un
+// solo POST/beacon `{ metrics: [...] }` para reducir invocaciones a /api/vitals.
+export const VITALS_BATCH_MAX_ITEMS = 10;
+export const VITALS_FLUSH_DELAY_MS = 2_000;
+
 // Envío fire-and-forget; el endpoint nunca devuelve error útil al
 // cliente. sendBeacon primero (no bloquea la navegación), fetch
 // keepalive como fallback.
-function sendVital(payload: VitalsPayload) {
-  const body = JSON.stringify(payload);
+function sendVitalsBatch(metrics: VitalsPayload[]) {
+  if (metrics.length === 0) return;
+  const body = JSON.stringify({ metrics });
   if (typeof navigator !== "undefined" && "sendBeacon" in navigator) {
     try {
-      navigator.sendBeacon("/api/vitals", new Blob([body], { type: "application/json" }));
-      return;
+      if (navigator.sendBeacon("/api/vitals", new Blob([body], { type: "application/json" }))) {
+        return;
+      }
     } catch {
       // fallthrough a fetch
     }
@@ -160,6 +167,42 @@ export function WebVitalsReporter() {
     longtaskSupported: false,
   });
   const doneRef = useRef(false);
+  const queueRef = useRef<VitalsPayload[]>([]);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushQueue = useCallback(() => {
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    if (queueRef.current.length === 0) return;
+    const pending = queueRef.current.splice(0, queueRef.current.length);
+    // Re-validar consentimiento al vaciar la cola: si el usuario revocó
+    // "Analíticas" mientras las métricas esperaban el timer, se descartan.
+    if (!hasAnalyticsConsent()) return;
+    for (let i = 0; i < pending.length; i += VITALS_BATCH_MAX_ITEMS) {
+      sendVitalsBatch(pending.slice(i, i + VITALS_BATCH_MAX_ITEMS));
+    }
+  }, []);
+
+  const enqueueVital = useCallback(
+    (payload: VitalsPayload) => {
+      if (!hasAnalyticsConsent()) return;
+      queueRef.current.push(payload);
+      const isHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+      if (queueRef.current.length >= VITALS_BATCH_MAX_ITEMS || isHidden) {
+        flushQueue();
+        return;
+      }
+      if (flushTimerRef.current === null) {
+        flushTimerRef.current = setTimeout(() => {
+          flushTimerRef.current = null;
+          flushQueue();
+        }, VITALS_FLUSH_DELAY_MS);
+      }
+    },
+    [flushQueue],
+  );
 
   // Core Web Vitals con atribución por elemento. Se registran UNA sola vez:
   // el callback lee pathname/consentimiento desde refs/funciones, así un
@@ -167,6 +210,7 @@ export function WebVitalsReporter() {
   // useReportWebVitals al re-reportar métricas bufferadas a cada callback
   // nuevo).
   useEffect(() => {
+    const queue = queueRef.current;
     const report = (metric: MetricWithAttribution) => {
       const currentPath = pathnameRef.current;
       if (!currentPath) return;
@@ -189,7 +233,7 @@ export function WebVitalsReporter() {
               ? metric.attribution?.element
               : undefined;
       const target = typeof rawTarget === "string" ? rawTarget.slice(0, 200) : undefined;
-      sendVital({
+      enqueueVital({
         name: metric.name,
         value: metric.value,
         rating: metric.rating,
@@ -207,90 +251,114 @@ export function WebVitalsReporter() {
     onINP(report);
     onLCP(report);
     onTTFB(report);
-  }, []);
+    return () => {
+      if (flushTimerRef.current !== null) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      queue.length = 0;
+    };
+  }, [enqueueVital]);
 
-  // Envía el acumulado de la ruta indicada y resetea los contadores.
-  const flushAggregate = useCallback((forPathname: string) => {
-    const agg = aggRef.current;
-    const snapshot = { ...agg };
-    agg.longMs = 0;
-    agg.longCount = 0;
-    agg.bytes = 0;
-    agg.resources = 0;
-    if (!hasAnalyticsConsent()) return;
-    const route = normalizeRoute(forPathname);
-    // Firefox/Safari no soportan longtask: sin observer no hay dato real y
-    // una fila 0/0 es ruido que parece "todo bien" en los agregados.
-    if (snapshot.longtaskSupported) {
-      sendVital({
-        name: "LONGTASK",
-        value: Math.round(snapshot.longMs),
-        rating: longTaskRating(snapshot.longMs),
-        delta: snapshot.longCount,
+  // Envía el acumulado de la ruta indicada (junto a cualquier métrica en cola) y resetea los contadores.
+  const flushAggregate = useCallback(
+    (forPathname: string) => {
+      const agg = aggRef.current;
+      const snapshot = { ...agg };
+      agg.longMs = 0;
+      agg.longCount = 0;
+      agg.bytes = 0;
+      agg.resources = 0;
+      if (!hasAnalyticsConsent()) {
+        queueRef.current.length = 0;
+        return;
+      }
+      const route = normalizeRoute(forPathname);
+      // Firefox/Safari no soportan longtask: sin observer no hay dato real y
+      // una fila 0/0 es ruido que parece "todo bien" en los agregados.
+      if (snapshot.longtaskSupported) {
+        queueRef.current.push({
+          name: "LONGTASK",
+          value: Math.round(snapshot.longMs),
+          rating: longTaskRating(snapshot.longMs),
+          delta: snapshot.longCount,
+          route,
+        });
+      }
+      queueRef.current.push({
+        name: "PAGEWEIGHT",
+        value: snapshot.bytes,
+        rating: pageWeightRating(snapshot.bytes),
+        delta: snapshot.resources,
         route,
       });
-    }
-    sendVital({
-      name: "PAGEWEIGHT",
-      value: snapshot.bytes,
-      rating: pageWeightRating(snapshot.bytes),
-      delta: snapshot.resources,
-      route,
-    });
-  }, []);
+      flushQueue();
+    },
+    [flushQueue],
+  );
 
   // Observers: se montan una vez por carga de página (el root layout no se
   // desmonta en navegación SPA). El flush final va en pagehide/visibilitychange.
   useEffect(() => {
-    if (typeof PerformanceObserver === "undefined") return;
+    const hasPerfObserver = typeof PerformanceObserver !== "undefined";
     const agg = aggRef.current;
-
-    // Bytes del documento mismo (los resources no incluyen el navigation entry).
-    // Guard `navCounted`: en dev StrictMode el effect corre dos veces sobre el
-    // MISMO aggRef y sin guarda el documento se contaba doble.
-    const nav = performance.getEntriesByType?.("navigation")?.[0] as
-      PerformanceNavigationTiming | undefined;
-    if (!agg.navCounted && nav && typeof nav.transferSize === "number") {
-      agg.bytes += nav.transferSize;
-      agg.resources += 1;
-      agg.navCounted = true;
-    }
 
     let resourceObs: PerformanceObserver | undefined;
     let longtaskObs: PerformanceObserver | undefined;
-    try {
-      resourceObs = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          const resource = entry as PerformanceResourceTiming;
-          if (typeof resource.transferSize === "number") {
-            agg.bytes += resource.transferSize;
-            agg.resources += 1;
+
+    if (hasPerfObserver) {
+      // Bytes del documento mismo (los resources no incluyen el navigation entry).
+      // Guard `navCounted`: en dev StrictMode el effect corre dos veces sobre el
+      // MISMO aggRef y sin guarda el documento se contaba doble.
+      const nav = performance.getEntriesByType?.("navigation")?.[0] as
+        PerformanceNavigationTiming | undefined;
+      if (!agg.navCounted && nav && typeof nav.transferSize === "number") {
+        agg.bytes += nav.transferSize;
+        agg.resources += 1;
+        agg.navCounted = true;
+      }
+
+      try {
+        resourceObs = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            const resource = entry as PerformanceResourceTiming;
+            if (typeof resource.transferSize === "number") {
+              agg.bytes += resource.transferSize;
+              agg.resources += 1;
+            }
           }
-        }
-      });
-      resourceObs.observe({ type: "resource", buffered: true });
-    } catch {
-      // Navegador sin soporte de resource timing observer — queda solo
-      // el peso del documento.
-    }
-    try {
-      longtaskObs = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          agg.longCount += 1;
-          agg.longMs += entry.duration;
-        }
-      });
-      longtaskObs.observe({ type: "longtask", buffered: true });
-      agg.longtaskSupported = true;
-    } catch {
-      // Sin soporte de longtask (Firefox/Safari) — NO se envía fila LONGTASK
-      // (ver header): un 0/0 sintético ensucia los agregados del panel.
+        });
+        resourceObs.observe({ type: "resource", buffered: true });
+      } catch {
+        // Navegador sin soporte de resource timing observer — queda solo
+        // el peso del documento.
+      }
+      try {
+        longtaskObs = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            agg.longCount += 1;
+            agg.longMs += entry.duration;
+          }
+        });
+        longtaskObs.observe({ type: "longtask", buffered: true });
+        agg.longtaskSupported = true;
+      } catch {
+        // Sin soporte de longtask (Firefox/Safari) — NO se envía fila LONGTASK
+        // (ver header): un 0/0 sintético ensucia los agregados del panel.
+      }
     }
 
     const finalFlush = () => {
-      if (doneRef.current) return;
-      doneRef.current = true;
-      if (pathnameRef.current) flushAggregate(pathnameRef.current);
+      if (!doneRef.current) {
+        doneRef.current = true;
+        if (hasPerfObserver && pathnameRef.current) {
+          flushAggregate(pathnameRef.current);
+          return;
+        }
+      }
+      // Si el visitante volvió de otra pestaña e interactuó (INP/CLS en cola),
+      // vaciamos igual la cola al volver a ocultarse o cerrar sin duplicar agregados.
+      flushQueue();
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") finalFlush();
@@ -306,7 +374,7 @@ export function WebVitalsReporter() {
       resourceObs?.disconnect();
       longtaskObs?.disconnect();
     };
-  }, [flushAggregate]);
+  }, [flushAggregate, flushQueue]);
 
   // Navegación SPA (cambio de ruta sin recarga): flush de la ruta anterior
   // para mantener 1 fila por pageview por ruta, y seguimos acumulando.
@@ -314,8 +382,11 @@ export function WebVitalsReporter() {
     if (pathnameRef.current === pathname) return;
     const prev = pathnameRef.current;
     pathnameRef.current = pathname;
-    if (prev && !doneRef.current) flushAggregate(prev);
-  }, [pathname, flushAggregate]);
+    if (prev && !doneRef.current) {
+      if (typeof PerformanceObserver !== "undefined") flushAggregate(prev);
+      else flushQueue();
+    }
+  }, [pathname, flushAggregate, flushQueue]);
 
   return null;
 }

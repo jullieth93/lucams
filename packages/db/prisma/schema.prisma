@@ -1767,6 +1767,7 @@ model WebVital {
 
   @@index([name, route, createdAt])
   @@index([route, createdAt])
+  @@index([createdAt])
 }
 
 // Bloque D — captura de errores del servidor en DB (sin Sentry, mandato #7).
