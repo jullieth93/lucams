@@ -25,6 +25,7 @@ vi.mock("next/cache", () => ({
 }));
 
 import { prisma } from "@/lib/db";
+import { sendEmail } from "@/lib/resend";
 import { subscribeBackInStock, sendBackInStockNotifications } from "./service";
 
 const RUN = `bis${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
@@ -114,6 +115,23 @@ describe("subscribeBackInStock + sendBackInStockNotifications", () => {
       ok: false,
       reason: "in_stock",
     });
+
+    // 7) Si se vuelve a agotar y el usuario se resuscribe (con mayúsculas/espacios) dentro de <24h,
+    // normaliza el email a la misma fila pero renueva el ciclo para que Resend reciba un nuevo idempotencyKey.
+    const callsForEmail = () =>
+      vi.mocked(sendEmail).mock.calls.filter(([arg]) => arg?.to === email);
+    const firstKey = callsForEmail().at(-1)?.[0]?.idempotencyKey;
+    await prisma.productVariant.update({ where: { id: variantId }, data: { stock: 0 } });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(await subscribeBackInStock(productId, `  ${email.toUpperCase()}  `, null)).toEqual({
+      ok: true,
+    });
+    await prisma.productVariant.update({ where: { id: variantId }, data: { stock: 3 } });
+    const secondRun = await sendBackInStockNotifications(new Date());
+    expect(secondRun.sent).toBeGreaterThanOrEqual(1);
+    const secondKey = callsForEmail().at(-1)?.[0]?.idempotencyKey;
+    expect(secondKey).toBeDefined();
+    expect(secondKey).not.toBe(firstKey);
   }, 30_000);
 
   it("MADE_TO_ORDER no genera suscripciones aunque su stock legado sea 0", async () => {

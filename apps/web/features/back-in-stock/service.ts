@@ -37,10 +37,20 @@ export async function subscribeBackInStock(
   }
 
   const normalizedEmail = email.trim().toLowerCase();
+  const prev = await prisma.backInStockSubscription.findUnique({
+    where: { productId_email: { productId, email: normalizedEmail } },
+    select: { notifiedAt: true },
+  });
   await prisma.backInStockSubscription.upsert({
-    where: { productId_email: { productId, email } },
-    create: { productId, email, customerId },
-    update: { notifiedAt: null, customerId }, // re-suscribir resetea el flag de notificado
+    where: { productId_email: { productId, email: normalizedEmail } },
+    create: { productId, email: normalizedEmail, customerId },
+    update: {
+      notifiedAt: null,
+      customerId,
+      // Si ya fue notificado antes y se resuscribe, abre un nuevo ciclo (turno FIFO nuevo y
+      // distinto Idempotency-Key en Resend aunque el nuevo aviso ocurra dentro de 24 h).
+      ...(prev?.notifiedAt ? { createdAt: new Date() } : {}),
+    },
   });
 
   // #9 — registrar la base de legitimación (Ley 1581). Es una notificación TRANSACCIONAL pedida por
@@ -93,6 +103,7 @@ export async function sendBackInStockNotifications(
     select: {
       id: true,
       email: true,
+      createdAt: true,
       product: {
         select: {
           id: true,
@@ -137,7 +148,7 @@ export async function sendBackInStockNotifications(
         subject: tpl.subject,
         html: tpl.html,
         text: tpl.text,
-        idempotencyKey: `back-in-stock-${s.id}`,
+        idempotencyKey: `back-in-stock-${s.id}-${s.createdAt.getTime()}`,
         commercial: true,
         headers: buildCommercialEmailHeaders(s.email, siteUrl),
         tags: [{ name: "type", value: "back_in_stock" }],
