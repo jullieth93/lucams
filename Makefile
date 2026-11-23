@@ -7,6 +7,7 @@
 #   3. Operaciones puntuales de datos/break-glass con carga explícita de .env.local / .env.stg.
 
 SB_LOCAL_SOCK := unix:///run/user/$(shell id -u)/podman/podman.sock
+SB_LOCAL_FILTER := name=_lucams-local
 WEB_PID := tmp/pids/web-dev.pid
 WEB_LOG := tmp/logs/web-dev.log
 
@@ -57,10 +58,10 @@ db-local-start:
 	systemctl --user enable --now podman.socket
 	# Si los contenedores ya existen (apagados con `db-local-stop`), los reanuda
 	# con podman nativo CONSERVANDO los datos. Solo si no existen los crea con CLI.
-	@N=$$(podman ps -aq --filter name=supabase_ | wc -l); \
+	@N=$$(podman ps -aq --filter $(SB_LOCAL_FILTER) | wc -l); \
 	if [ "$$N" -ge 10 ]; then \
 		echo "→ Contenedores existentes: reanudando con podman start (datos conservados)"; \
-		podman start $$(podman ps -aq --filter name=supabase_); \
+		podman start $$(podman ps -aq --filter $(SB_LOCAL_FILTER)); \
 	elif [ "$$N" -gt 0 ]; then \
 		echo "✗ Stack INCOMPLETO ($$N contenedores). El CLI no puede recrearlo sobre volumen existente en podman."; \
 		echo "  Solución: make db-local-reset (rehace el esquema y resiembra datos)."; \
@@ -71,7 +72,7 @@ db-local-start:
 
 db-local-stop:
 	# NO usar `supabase stop`: borra contenedores y choca con volúmenes existentes en podman.
-	podman stop $$(podman ps -q --filter name=supabase_) || true
+	@IDS=$$(podman ps -q --filter $(SB_LOCAL_FILTER)); [ -z "$$IDS" ] || podman stop $$IDS || true
 
 db-local-setup:
 	bash scripts/db-local-setup.sh
@@ -95,8 +96,8 @@ db-local-seed:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-lifecycle.mjs --apply
 
 db-local-reset:
-	podman stop $$(podman ps -q --filter name=supabase_) || true
-	podman rm $$(podman ps -aq --filter name=supabase_) || true
+	@IDS=$$(podman ps -q --filter $(SB_LOCAL_FILTER)); [ -z "$$IDS" ] || podman stop $$IDS || true
+	@IDS=$$(podman ps -aq --filter $(SB_LOCAL_FILTER)); [ -z "$$IDS" ] || podman rm $$IDS || true
 	podman volume rm -f supabase_db_lucams-local supabase_storage_lucams-local || true
 	$(MAKE) db-local-start
 	$(MAKE) db-local-setup
