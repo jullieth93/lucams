@@ -34,7 +34,7 @@ import { unstable_cache } from "next/cache";
 import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { STOREFRONT_PRODUCT_WHERE } from "./storefront-visibility";
-import { hasStockForSale, type FulfillmentMode } from "./fulfillment";
+import { netAvailableStock, type FulfillmentMode } from "./fulfillment";
 
 /* Mismo tag/TTL que lib/catalog.ts: updateTag("catalog") en las mutaciones admin
    (features/products/service.ts, features/categories/service.ts, stock-admin.ts,
@@ -123,8 +123,9 @@ export type StorefrontProductDetail = StorefrontProductCard & {
     attributes: unknown;
     /** D1: fotos propias de la opción. Vacío = el PDP usa las del producto. */
     images: string[];
-    /** Auditoría 2026-07-13: stock de la opción → deshabilitar la opción/CTA si es 0. */
+    /** Auditoría 2026-07-13: stock físico y reserva de seguridad (disponible neto = max(0, stock - safetyStock)). */
     stock: number;
+    safetyStock: number;
   }>;
 };
 
@@ -422,7 +423,7 @@ const STOREFRONT_CARD_SELECT = {
   _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
   variants: {
     where: { deletedAt: null, isActive: true },
-    select: { price: true, stock: true },
+    select: { price: true, stock: true, safetyStock: true },
   },
 } satisfies Prisma.ProductSelect;
 
@@ -442,7 +443,9 @@ function toStorefrontCard({
     ...p,
     variantCount: _count.variants,
     minVariantPrice,
-    inStock: p.fulfillmentMode === "MADE_TO_ORDER" || variants.some((v) => v.stock > 0),
+    inStock:
+      p.fulfillmentMode === "MADE_TO_ORDER" ||
+      variants.some((v) => netAvailableStock(v.stock, v.safetyStock) > 0),
   };
 }
 
@@ -748,6 +751,7 @@ export const getStorefrontProductBySlug = cache(async function getStorefrontProd
           // D1: fotos propias de la opción. Vacío = el PDP usa las del producto.
           images: true,
           stock: true,
+          safetyStock: true,
         },
         orderBy: { createdAt: "asc" },
       },
@@ -756,7 +760,9 @@ export const getStorefrontProductBySlug = cache(async function getStorefrontProd
   if (!p) return null;
   return {
     ...p,
-    inStock: p.fulfillmentMode === "MADE_TO_ORDER" || p.variants.some((v) => v.stock > 0),
+    inStock:
+      p.fulfillmentMode === "MADE_TO_ORDER" ||
+      p.variants.some((v) => netAvailableStock(v.stock, v.safetyStock) > 0),
   };
 });
 
@@ -829,7 +835,7 @@ export async function listRelatedProducts(opts: {
       // #13 — para calcular minVariantPrice + inStock igual que el listado principal.
       variants: {
         where: { deletedAt: null, isActive: true },
-        select: { price: true, stock: true },
+        select: { price: true, stock: true, safetyStock: true },
       },
     },
   });
@@ -888,7 +894,7 @@ export async function listRelatedProducts(opts: {
       _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
       variants: {
         where: { deletedAt: null, isActive: true },
-        select: { price: true, stock: true },
+        select: { price: true, stock: true, safetyStock: true },
       },
     },
   });
@@ -904,7 +910,7 @@ export async function listRelatedProducts(opts: {
  * listado principal): la card mostraba el precio/estado equivocado por no traer las variantes. */
 function relatedCardPricing(
   basePrice: number,
-  variants: Array<{ price: number | null; stock: number }>,
+  variants: Array<{ price: number | null; stock: number; safetyStock: number }>,
   fulfillmentMode: FulfillmentMode,
 ): { minVariantPrice: number; inStock: boolean } {
   const overridePrices = variants
@@ -912,9 +918,8 @@ function relatedCardPricing(
     .filter((price): price is number => price !== null && price > 0);
   return {
     minVariantPrice: overridePrices.length > 0 ? Math.min(basePrice, ...overridePrices) : basePrice,
-    inStock: hasStockForSale(
-      fulfillmentMode,
-      variants.reduce((total, variant) => total + variant.stock, 0),
-    ),
+    inStock:
+      fulfillmentMode === "MADE_TO_ORDER" ||
+      variants.some((variant) => netAvailableStock(variant.stock, variant.safetyStock) > 0),
   };
 }

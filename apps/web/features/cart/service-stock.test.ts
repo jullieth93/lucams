@@ -39,6 +39,7 @@ type CartItemFixture = {
     sku: string;
     price: number | null;
     stock: number;
+    safetyStock?: number;
     isActive: boolean;
     deletedAt: null;
     attributes: unknown;
@@ -69,7 +70,7 @@ const state = vi.hoisted(() => ({
     basePrice: number;
     name: string;
     fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
-    variants: Array<{ id: string; price: number | null; stock: number }>;
+    variants: Array<{ id: string; price: number | null; stock: number; safetyStock?: number }>;
   },
   cart: null as null | {
     id: string;
@@ -125,6 +126,7 @@ vi.mock("@/lib/db", () => ({
             metadata: null,
             design: null,
             variant: makeVariant(variant?.id ?? data.variantId, variant?.stock ?? 0, {
+              safetyStock: variant?.safetyStock,
               fulfillmentMode: state.product?.fulfillmentMode,
             }),
           };
@@ -148,6 +150,7 @@ function makeVariant(
   id: string,
   stock: number,
   opts?: {
+    safetyStock?: number;
     images?: string[];
     attributes?: unknown;
     productImages?: string[];
@@ -161,6 +164,7 @@ function makeVariant(
     sku: "IMN-DEFAULT",
     price: null,
     stock,
+    safetyStock: opts?.safetyStock ?? 0,
     isActive: true,
     deletedAt: null,
     attributes: opts?.attributes ?? {},
@@ -186,13 +190,14 @@ function makeVariant(
 function seedProduct(
   stock: number,
   fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK" = "PHYSICAL_STOCK",
+  safetyStock = 0,
 ) {
   state.product = {
     id: PRODUCT.id,
     basePrice: PRODUCT.basePrice,
     name: PRODUCT.name,
     fulfillmentMode,
-    variants: [{ id: "var_1", price: null, stock }],
+    variants: [{ id: "var_1", price: null, stock, safetyStock }],
   };
 }
 
@@ -201,6 +206,7 @@ function seedCart(
     qty: number;
     variantId?: string;
     stock?: number;
+    safetyStock?: number;
     variantImages?: string[];
     productImages?: string[];
     attributes?: unknown;
@@ -229,6 +235,7 @@ function seedCart(
         it.variantId ?? "var_1",
         it.stock ?? state.product?.variants[0]?.stock ?? 0,
         {
+          safetyStock: it.safetyStock ?? state.product?.variants[0]?.safetyStock ?? 0,
           images: it.variantImages,
           productImages: it.productImages,
           attributes: it.attributes,
@@ -370,6 +377,48 @@ describe("addProductToCart — validación de qty contra stock", () => {
     expect(detail.items[0].qty).toBe(3);
     expect(detail.items[0].stock).toBeNull();
   });
+
+  it("safetyStock se descuenta del disponible vendible: stock=5, safetyStock=2 → máx 3", async () => {
+    seedProduct(5, "PHYSICAL_STOCK", 2);
+    seedCart([]);
+    const detail = await addProductToCart({
+      sessionId: "sess_1",
+      customerId: null,
+      productSlug: "iman-nevera",
+      qty: 5,
+    });
+    expect(detail.items[0].qty).toBe(3);
+    expect(detail.items[0].maxQty).toBe(3);
+    expect(detail.items[0].stock).toBe(3);
+
+    await expect(
+      addProductToCart({
+        sessionId: "sess_1",
+        customerId: null,
+        productSlug: "iman-nevera",
+        qty: 1,
+      }),
+    ).rejects.toMatchObject({
+      code: "STOCK_UNAVAILABLE",
+      detail: "Solo quedan 3 unidades de «Imán Nevera» y ya tienes 3 en tu carrito.",
+    });
+  });
+
+  it("stock=5, safetyStock=5 → agotado público en addProductToCart", async () => {
+    seedProduct(5, "PHYSICAL_STOCK", 5);
+    seedCart([]);
+    await expect(
+      addProductToCart({
+        sessionId: "sess_1",
+        customerId: null,
+        productSlug: "iman-nevera",
+        qty: 1,
+      }),
+    ).rejects.toMatchObject({
+      code: "STOCK_UNAVAILABLE",
+      detail: "«Imán Nevera» está agotado por ahora.",
+    });
+  });
 });
 
 describe("updateCartItemQty — validación de qty contra stock", () => {
@@ -414,6 +463,19 @@ describe("updateCartItemQty — validación de qty contra stock", () => {
     const detail = await updateCartItemQty("sess_1", "ci_1", 2);
     expect(detail.items[0].qty).toBe(2);
     expect(detail.items[0].stock).toBeNull();
+  });
+
+  it("updateCartItemQty respeta safetyStock (stock=5, safetyStock=2 → tope 3; safetyStock=5 → agotado)", async () => {
+    seedCart([{ qty: 1, stock: 5, safetyStock: 2 }]);
+    const clamped = await updateCartItemQty("sess_1", "ci_1", 5);
+    expect(clamped.items[0].qty).toBe(3);
+    expect(clamped.items[0].stock).toBe(3);
+
+    seedCart([{ qty: 1, stock: 5, safetyStock: 5 }]);
+    await expect(updateCartItemQty("sess_1", "ci_1", 1)).rejects.toMatchObject({
+      code: "STOCK_UNAVAILABLE",
+      detail: "«Imán Nevera» está agotado por ahora.",
+    });
   });
 });
 

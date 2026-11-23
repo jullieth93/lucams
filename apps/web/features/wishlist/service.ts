@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import type { StorefrontProductCard } from "@/features/products/public-service";
+import { netAvailableStock } from "@/features/products/fulfillment";
 
 /*
  * Wishlist / favoritos (palanca de ingreso, auditoría 2026-07-13). Cliente logueado guarda
@@ -72,7 +73,7 @@ export async function listWishlist(customerId: string): Promise<StorefrontProduc
           _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
           variants: {
             where: { deletedAt: null, isActive: true },
-            select: { price: true, stock: true },
+            select: { price: true, stock: true, safetyStock: true },
           },
         },
       },
@@ -98,7 +99,9 @@ export async function listWishlist(customerId: string): Promise<StorefrontProduc
       category: p.category,
       variantCount: p._count.variants,
       minVariantPrice,
-      inStock: p.fulfillmentMode === "MADE_TO_ORDER" || p.variants.some((v) => v.stock > 0),
+      inStock:
+        p.fulfillmentMode === "MADE_TO_ORDER" ||
+        p.variants.some((v) => netAvailableStock(v.stock, v.safetyStock) > 0),
     };
   });
 }

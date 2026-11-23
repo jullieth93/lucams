@@ -11,7 +11,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { STOREFRONT_PRODUCT_WHERE } from "@/features/products/storefront-visibility";
-import { hasStockForSale } from "@/features/products/fulfillment";
+import { hasStockForSale, netAvailableStock } from "@/features/products/fulfillment";
 import type { VolumeTierInput } from "@/features/cart/volume-pricing";
 import {
   extractVariantMagnet,
@@ -44,6 +44,7 @@ export async function getPublicB2bConfiguratorCatalog(): Promise<ConfiguratorCat
             sku: true,
             price: true,
             stock: true,
+            safetyStock: true,
             isActive: true,
             deletedAt: true,
             attributes: true,
@@ -68,7 +69,10 @@ export async function getPublicB2bConfiguratorCatalog(): Promise<ConfiguratorCat
   for (const p of productsRaw) {
     const validVariants = p.variants
       .filter(
-        (v) => v.isActive && v.deletedAt === null && hasStockForSale(p.fulfillmentMode, v.stock),
+        (v) =>
+          v.isActive &&
+          v.deletedAt === null &&
+          hasStockForSale(p.fulfillmentMode, v.stock, v.safetyStock),
       )
       .map((v) => ({
         id: v.id,
@@ -148,6 +152,7 @@ export async function getAdminProposalCatalog(): Promise<AdminProposalCatalogPay
             sku: true,
             price: true,
             stock: true,
+            safetyStock: true,
             attributes: true,
           },
         },
@@ -176,7 +181,7 @@ export async function getAdminProposalCatalog(): Promise<AdminProposalCatalogPay
         productName: p.name,
         productionDays: p.productionDays,
         fulfillmentMode: p.fulfillmentMode,
-        stock: v.stock,
+        stock: netAvailableStock(v.stock, v.safetyStock),
         name: v.name,
         sku: v.sku,
         baseUnitPriceCents: v.price ?? p.basePrice,

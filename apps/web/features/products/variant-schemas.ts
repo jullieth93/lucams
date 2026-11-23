@@ -417,10 +417,9 @@ function orderVariantDimensionValues(key: string, values: string[]): string[] {
  * (conImanDefaultVariant, eliminada: este helper la generaliza) y la preselección
  * de N mínimo de los packs de un solo tamaño (polaroid: photoSlots ascendente).
  */
-export function pdpDefaultVariant<T extends { attributes: unknown; stock?: number }>(
-  variants: readonly T[],
-  opts: { trackStock?: boolean } = {},
-): T | null {
+export function pdpDefaultVariant<
+  T extends { attributes: unknown; stock?: number; safetyStock?: number },
+>(variants: readonly T[], opts: { trackStock?: boolean } = {}): T | null {
   if (variants.length === 0) return null;
   // Sort estable "Con imán primero" (mismo criterio del VariantSelector):
   // desempata ranks iguales a favor de la opción con imán.
@@ -457,7 +456,8 @@ export function pdpDefaultVariant<T extends { attributes: unknown; stock?: numbe
     }
     return 0;
   };
-  const hasStock = (v: T) => opts.trackStock === false || (v.stock ?? 1) > 0;
+  const hasStock = (v: T) =>
+    opts.trackStock === false || Math.max(0, (v.stock ?? 1) - Math.max(0, v.safetyStock ?? 0)) > 0;
   const inStock = sorted.filter(hasStock);
   const pool = inStock.length > 0 ? inStock : sorted;
   let best: T | null = null;

@@ -10,6 +10,7 @@ import {
   buildCommercialEmailHeaders,
   encodeUnsubscribeParam,
 } from "@/features/newsletter/unsubscribe";
+import { netAvailableStock } from "@/features/products/fulfillment";
 
 /*
  * "Avísame cuando vuelva" (palanca de ingreso, auditoría 2026-07-13). Suscripción por email a un
@@ -27,12 +28,18 @@ export async function subscribeBackInStock(
     select: {
       id: true,
       fulfillmentMode: true,
-      variants: { where: { deletedAt: null, isActive: true }, select: { stock: true } },
+      variants: {
+        where: { deletedAt: null, isActive: true },
+        select: { stock: true, safetyStock: true },
+      },
     },
   });
   if (!product) return { ok: false, reason: "not_found" };
-  // Solo tiene sentido suscribirse a algo AGOTADO (anti-abuso + evita subs inútiles).
-  if (product.fulfillmentMode === "MADE_TO_ORDER" || product.variants.some((v) => v.stock > 0)) {
+  // Solo tiene sentido suscribirse a algo AGOTADO (disponible neto = 0 en todas las variantes activas).
+  if (
+    product.fulfillmentMode === "MADE_TO_ORDER" ||
+    product.variants.some((v) => netAvailableStock(v.stock, v.safetyStock) > 0)
+  ) {
     return { ok: false, reason: "in_stock" };
   }
 
@@ -86,17 +93,29 @@ export async function subscribeBackInStock(
 export async function sendBackInStockNotifications(
   now: Date = new Date(),
 ): Promise<{ sent: number; considered: number }> {
-  // Suscripciones aún NO notificadas de productos que AHORA tienen stock.
+  // Filtrar primero en SQL los productos PHYSICAL_STOCK con disponible neto (stock - safetyStock) > 0
+  // para que el límite take: 200 no se consuma con productos que siguen agotados por safetyStock.
+  const availableProducts = await prisma.$queryRaw<Array<{ productId: string }>>`
+    SELECT DISTINCT pv."productId"
+    FROM "ProductVariant" pv
+    JOIN "Product" p ON p."id" = pv."productId"
+    WHERE pv."deletedAt" IS NULL
+      AND pv."isActive" = true
+      AND (pv."stock" - GREATEST(pv."safetyStock", 0)) > 0
+      AND p."isActive" = true
+      AND p."publishedOnStorefront" = true
+      AND p."deletedAt" IS NULL
+      AND p."fulfillmentMode" = 'PHYSICAL_STOCK'
+  `;
+  if (availableProducts.length === 0) {
+    return { sent: 0, considered: 0 };
+  }
+
+  // Suscripciones aún NO notificadas de productos que AHORA tienen disponible neto > 0.
   const subs = await prisma.backInStockSubscription.findMany({
     where: {
       notifiedAt: null,
-      product: {
-        isActive: true,
-        publishedOnStorefront: true,
-        deletedAt: null,
-        fulfillmentMode: "PHYSICAL_STOCK",
-        variants: { some: { deletedAt: null, isActive: true, stock: { gt: 0 } } },
-      },
+      productId: { in: availableProducts.map((row) => row.productId) },
     },
     orderBy: { createdAt: "asc" }, // FIFO: primero los que llevan más esperando
     take: 200,
@@ -109,14 +128,17 @@ export async function sendBackInStockNotifications(
           id: true,
           name: true,
           slug: true,
-          variants: { where: { deletedAt: null, isActive: true }, select: { stock: true } },
+          variants: {
+            where: { deletedAt: null, isActive: true },
+            select: { stock: true, safetyStock: true },
+          },
         },
       },
     },
   });
 
-  // #13 — topar los avisos por producto al stock REALMENTE disponible (FIFO). Si Lucy repone 2
-  // unidades y hay 50 suscriptores, avisamos solo a los 2 primeros; el resto queda notifiedAt=null
+  // #13 — topar los avisos por producto al disponible neto REALMENTE vendible (FIFO). Si Lucy repone 2
+  // unidades netas y hay 50 suscriptores, avisamos solo a los 2 primeros; el resto queda notifiedAt=null
   // para una reposición futura → nadie llega a una PDP agotada por un aviso "¡volvió!".
   const byProduct = new Map<string, typeof subs>();
   for (const s of subs) {
@@ -126,7 +148,10 @@ export async function sendBackInStockNotifications(
   }
   const eligible: typeof subs = [];
   for (const list of byProduct.values()) {
-    const available = list[0].product.variants.reduce((a, v) => a + v.stock, 0);
+    const available = list[0].product.variants.reduce(
+      (a, v) => a + netAvailableStock(v.stock, v.safetyStock),
+      0,
+    );
     eligible.push(...list.slice(0, Math.max(0, available)));
   }
 

@@ -31,6 +31,7 @@ import {
   STOREFRONT_CATEGORY_WHERE,
   STOREFRONT_PRODUCT_WHERE,
 } from "@/features/products/storefront-visibility";
+import { netAvailableStock } from "@/features/products/fulfillment";
 
 const CATALOG_TAG = "catalog";
 const CATALOG_TTL = 3600; // 1h
@@ -361,7 +362,9 @@ function summarizeProduct(p: ProductWithIncludes): CatalogProductSummary {
     variantCount: p.variants.filter((v) => v.isActive && !v.deletedAt).length,
     inStock:
       p.fulfillmentMode === "MADE_TO_ORDER" ||
-      p.variants.some((v) => v.isActive && !v.deletedAt && v.stock > 0),
+      p.variants.some(
+        (v) => v.isActive && !v.deletedAt && netAvailableStock(v.stock, v.safetyStock ?? 0) > 0,
+      ),
     minPrice: Math.min(...allPrices),
     maxPrice: Math.max(...allPrices),
     ocasionSlugs: p.ocasionTags.map((t) => t.ocasionTag.slug),
@@ -373,6 +376,7 @@ type ProductWithIncludes = Awaited<ReturnType<typeof prisma.product.findFirst>> 
   variants: Array<{
     price: number | null;
     stock: number;
+    safetyStock?: number;
     isActive: boolean;
     deletedAt: Date | null;
   }>;
@@ -431,7 +435,15 @@ export const listCatalogProducts = unstable_cache(
         skip: filters.offset ?? 0,
         include: {
           category: { include: { parent: true } },
-          variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
+          variants: {
+            select: {
+              price: true,
+              stock: true,
+              safetyStock: true,
+              isActive: true,
+              deletedAt: true,
+            },
+          },
           ocasionTags: { include: { ocasionTag: { select: { slug: true } } } },
         },
       });
@@ -477,6 +489,7 @@ export const getCatalogProductDetail = unstable_cache(
               description: true,
               price: true,
               stock: true, // #5 — para inStock consistente en summarizeProduct
+              safetyStock: true,
               attributes: true,
               isActive: true,
             },
@@ -710,7 +723,9 @@ export async function recommendProducts(input: RecommendInput): Promise<Recommen
       where,
       include: {
         category: { include: { parent: true } },
-        variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
+        variants: {
+          select: { price: true, stock: true, safetyStock: true, isActive: true, deletedAt: true },
+        },
         ocasionTags: {
           include: { ocasionTag: { select: { slug: true, name: true } } },
         },
@@ -829,7 +844,15 @@ export const getCatalogFilters = unstable_cache(
         where,
         include: {
           category: { include: { parent: true } },
-          variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
+          variants: {
+            select: {
+              price: true,
+              stock: true,
+              safetyStock: true,
+              isActive: true,
+              deletedAt: true,
+            },
+          },
           ocasionTags: {
             include: { ocasionTag: { select: { slug: true, name: true } } },
           },
@@ -969,7 +992,9 @@ export async function searchCatalog(query: string, limit = 20): Promise<CatalogS
       where: { id: { in: rows.map((r) => r.id) }, ...STOREFRONT_PRODUCT_WHERE },
       include: {
         category: { include: { parent: true } },
-        variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
+        variants: {
+          select: { price: true, stock: true, safetyStock: true, isActive: true, deletedAt: true },
+        },
         ocasionTags: { include: { ocasionTag: { select: { slug: true } } } },
       },
     });

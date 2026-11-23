@@ -61,14 +61,16 @@ import {
   PDP_DIMENSION_VALUE_ORDER as DIMENSION_VALUE_ORDER,
   type ProductVariantAttributes,
 } from "@/features/products/variant-schemas";
+import { netAvailableStock } from "@/features/products/fulfillment";
 
 type Variant = {
   id: string;
   name: string;
   sku: string;
   price: number | null;
-  /** Fase 1 — stock por variante: deshabilita los valores agotados del selector. */
+  /** Fase 1 — stock físico y reserva de seguridad por variante: deshabilita los valores agotados del selector. */
   stock: number;
+  safetyStock?: number;
   attributes: unknown;
 };
 
@@ -332,7 +334,8 @@ export function VariantSelector({
   }, [rawVariants]);
 
   const selectedVariant = variants.find((v) => v.id === selectedId);
-  const variantInStock = (variant: Variant) => !trackStock || variant.stock > 0;
+  const variantInStock = (variant: Variant) =>
+    !trackStock || netAvailableStock(variant.stock, variant.safetyStock ?? 0) > 0;
 
   function selectVariant(id: string) {
     if (id === selectedId) return; // mismo variant, nada que hacer

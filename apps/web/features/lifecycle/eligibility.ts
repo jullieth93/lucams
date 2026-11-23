@@ -11,7 +11,16 @@ export const PAID_ORDER_STATUSES = [
   "REFUNDED",
 ] as const;
 
-export function getLifecycleContactSelect(now: Date) {
+export function getLifecycleContactSelect(now: Date, inStockPhysicalProductIds?: string[]) {
+  const backInStockProductWhere: Prisma.ProductWhereInput = inStockPhysicalProductIds
+    ? { id: { in: inStockPhysicalProductIds } }
+    : {
+        isActive: true,
+        publishedOnStorefront: true,
+        deletedAt: null,
+        fulfillmentMode: "PHYSICAL_STOCK",
+        variants: { some: { isActive: true, deletedAt: null, stock: { gt: 0 } } },
+      };
   return {
     id: true,
     primaryEmail: true,
@@ -51,13 +60,7 @@ export function getLifecycleContactSelect(now: Date) {
         backInStockSubs: {
           where: {
             notifiedAt: null,
-            product: {
-              isActive: true,
-              publishedOnStorefront: true,
-              deletedAt: null,
-              fulfillmentMode: "PHYSICAL_STOCK",
-              variants: { some: { isActive: true, deletedAt: null, stock: { gt: 0 } } },
-            },
+            product: backInStockProductWhere,
           },
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -160,7 +163,11 @@ export function hasAbandonedCart(contact: EligibleContact): boolean {
   return contact.abandonedCarts.length > 0;
 }
 
-function eligibleWhere(journey: LifecycleJourney, now: Date): Prisma.ContactWhereInput {
+function eligibleWhere(
+  journey: LifecycleJourney,
+  now: Date,
+  inStockPhysicalIds?: string[],
+): Prisma.ContactWhereInput {
   const lookback = new Date(now.getTime() - journey.entryLookbackDays * 86_400_000);
   const inactivityDays =
     journey.trigger === "B2B_FOLLOW_UP"
@@ -246,23 +253,21 @@ function eligibleWhere(journey: LifecycleJourney, now: Date): Prisma.ContactWher
             },
           },
           { customer: { wishlist: { some: { createdAt: { gte: lookback } } } } },
-          {
-            customer: {
-              backInStockSubs: {
-                some: {
-                  notifiedAt: null,
-                  createdAt: { gte: lookback },
-                  product: {
-                    isActive: true,
-                    publishedOnStorefront: true,
-                    deletedAt: null,
-                    fulfillmentMode: "PHYSICAL_STOCK",
-                    variants: { some: { isActive: true, deletedAt: null, stock: { gt: 0 } } },
+          ...(inStockPhysicalIds && inStockPhysicalIds.length > 0
+            ? [
+                {
+                  customer: {
+                    backInStockSubs: {
+                      some: {
+                        notifiedAt: null,
+                        createdAt: { gte: lookback },
+                        productId: { in: inStockPhysicalIds },
+                      },
+                    },
                   },
                 },
-              },
-            },
-          },
+              ]
+            : []),
           {
             opportunities: {
               some: {
@@ -312,12 +317,29 @@ async function singlePaidOrderContactIds(): Promise<string[]> {
   return rows.map((row) => row.contactId);
 }
 
+async function inStockPhysicalProductIds(): Promise<string[]> {
+  const rows = await prisma.$queryRaw<Array<{ productId: string }>>`
+    SELECT DISTINCT pv."productId"
+    FROM "ProductVariant" pv
+    JOIN "Product" p ON p."id" = pv."productId"
+    WHERE pv."deletedAt" IS NULL
+      AND pv."isActive" = true
+      AND (pv."stock" - GREATEST(pv."safetyStock", 0)) > 0
+      AND p."isActive" = true
+      AND p."publishedOnStorefront" = true
+      AND p."deletedAt" IS NULL
+      AND p."fulfillmentMode" = 'PHYSICAL_STOCK'
+  `;
+  return rows.map((row) => row.productId);
+}
+
 export async function findEligibleContacts(
   journey: LifecycleJourney,
   now = new Date(),
   options: { limit?: number; ignoreOptIn?: boolean; contactIds?: string[] } = {},
 ): Promise<{ items: EligibleContact[]; excludedNoOptIn: number; total: number }> {
-  const triggerWhere = eligibleWhere(journey, now);
+  const availablePhysicalIds = await inStockPhysicalProductIds();
+  const triggerWhere = eligibleWhere(journey, now, availablePhysicalIds);
   const behaviorWhere: Prisma.ContactWhereInput =
     journey.trigger === "SECOND_PURCHASE"
       ? { AND: [triggerWhere, { id: { in: await singlePaidOrderContactIds() } }] }
@@ -346,7 +368,7 @@ export async function findEligibleContacts(
   const [rows, candidateCount, optedInCount] = await Promise.all([
     prisma.contact.findMany({
       where,
-      select: getLifecycleContactSelect(now),
+      select: getLifecycleContactSelect(now, availablePhysicalIds),
       orderBy: { createdAt: "asc" },
       take: options.limit ?? 100,
     }),

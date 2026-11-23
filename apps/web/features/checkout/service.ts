@@ -25,6 +25,7 @@ import { resolveWompiPaymentReference } from "@/features/orders/payment-referenc
 import { emailsEqual } from "@/features/orders/order-customer";
 import { processPaidOrder } from "@/features/orders/saga";
 import { assertStockAvailable } from "@/features/orders/stock";
+import { netAvailableStock } from "@/features/products/fulfillment";
 import { notifyStockSaleLost } from "@/features/orders/stock-alerts";
 import {
   InsufficientStockError,
@@ -285,12 +286,17 @@ async function firstShortItemName(
   }
   const variants = await prisma.productVariant.findMany({
     where: { id: { in: [...totals.keys()] } },
-    select: { id: true, stock: true, product: { select: { fulfillmentMode: true } } },
+    select: {
+      id: true,
+      stock: true,
+      safetyStock: true,
+      product: { select: { fulfillmentMode: true } },
+    },
   });
   for (const v of variants) {
     if (v.product.fulfillmentMode === "MADE_TO_ORDER") continue;
     const acc = totals.get(v.id);
-    if (acc && v.stock < acc.qty) return acc.productName;
+    if (acc && netAvailableStock(v.stock, v.safetyStock) < acc.qty) return acc.productName;
   }
   return null;
 }
