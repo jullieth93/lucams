@@ -351,7 +351,9 @@ export async function listContactsForActor(
         COALESCE(SUM(o."total"), 0)::bigint AS gross_spent_cents,
         GREATEST(
           0,
-          COALESCE(SUM(o."total"), 0)::bigint - COALESCE(SUM(rr.retract_cents), 0)::bigint
+          COALESCE(SUM(o."total"), 0)::bigint
+            - COALESCE(SUM(rr.retract_cents), 0)::bigint
+            - COALESCE(SUM(wr.warranty_cents), 0)::bigint
         )::bigint AS net_ltv_cents,
         MAX(o."createdAt") AS last_order_at
       FROM "Order" o
@@ -365,6 +367,19 @@ export async function listContactsForActor(
          AND r."status" = 'REFUNDED'
         GROUP BY oi."orderId"
       ) rr ON rr."orderId" = o."id"
+      LEFT JOIN (
+        SELECT
+          oi."orderId",
+          COALESCE(SUM(w."refundAmount"), 0)::bigint AS warranty_cents
+        FROM "OrderItem" oi
+        INNER JOIN "WarrantyClaim" w
+          ON w."orderItemId" = oi."id"
+         AND w."status" = 'RESOLVED'
+         AND w."resolutionType" = 'REFUND'
+         AND w."refundAmount" > 0
+         AND w."refundedAt" IS NOT NULL
+        GROUP BY oi."orderId"
+      ) wr ON wr."orderId" = o."id"
       WHERE o."deletedAt" IS NULL
         AND o."contactId" IS NOT NULL
         AND o."status"::text IN ('PAID', 'FULFILLING', 'SHIPPED', 'DELIVERED')
@@ -634,6 +649,7 @@ export interface Contact360Data {
     paidOrdersCount: number;
     grossPaidCents: number;
     retractRefundedCents: number;
+    warrantyRefundedCents: number;
     netLtvCents: number;
     aovCents: number;
     openCareCount: number;
@@ -823,6 +839,15 @@ export async function getContact360ForActor(
               retractRequest: {
                 select: { status: true, refundAmount: true },
               },
+              warrantyClaims: {
+                where: {
+                  status: "RESOLVED",
+                  resolutionType: "REFUND",
+                  refundAmount: { gt: 0 },
+                  refundedAt: { not: null },
+                },
+                select: { refundAmount: true },
+              },
               design: {
                 include: { product: { select: { name: true, slug: true } } },
               },
@@ -963,7 +988,14 @@ export async function getContact360ForActor(
     }, 0);
     return acc + orderRetract;
   }, 0);
-  const netLtvCents = Math.max(0, grossPaidCents - retractRefundedCents);
+  const warrantyRefundedCents = paidOrders.reduce((acc, o) => {
+    const orderWarranty = o.items.reduce(
+      (sum, it) => sum + it.warrantyClaims.reduce((wSum, w) => wSum + (w.refundAmount ?? 0), 0),
+      0,
+    );
+    return acc + orderWarranty;
+  }, 0);
+  const netLtvCents = Math.max(0, grossPaidCents - retractRefundedCents - warrantyRefundedCents);
   const aovCents = paidOrders.length > 0 ? Math.round(grossPaidCents / paidOrders.length) : 0;
 
   // Semáforo COD
@@ -1163,6 +1195,7 @@ export async function getContact360ForActor(
       paidOrdersCount: paidOrders.length,
       grossPaidCents,
       retractRefundedCents,
+      warrantyRefundedCents,
       netLtvCents,
       aovCents,
       openCareCount,

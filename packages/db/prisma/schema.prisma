@@ -1385,6 +1385,9 @@ model WarrantyClaim {
   evidenceUrls      String[]       @default([]) // fotos del defecto (opcional)
   resolutionType    String? // "REPAIR" | "REPLACE" | "REFUND" — remedio Ley 1480
   resolutionNote    String? // nota del admin (resolución o rechazo)
+  refundAmount      Int? // centavos COP efectivamente devueltos (obligatorio al resolver REFUND)
+  refundMethod      String? // "WOMPI_VOID" | "BANK_TRANSFER" — método de devolución en REFUND
+  refundedAt        DateTime? // instante en que se confirmó la devolución de dinero
   requestedAt       DateTime       @default(now())
   resolvedAt        DateTime?
   processedBy       String? // AdminUser.id que gestionó
@@ -1397,6 +1400,7 @@ model WarrantyClaim {
   updatedAt DateTime @updatedAt
 
   @@index([status, requestedAt])
+  @@index([status, resolutionType, refundedAt])
   @@index([orderItemId])
   @@index([customerId])
   @@index([contactId])

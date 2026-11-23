@@ -192,6 +192,15 @@ export async function getRetractableItems(
           designId: true,
           variant: { select: { product: { select: { name: true } } } },
           retractRequest: { select: { status: true, refundAmount: true } },
+          warrantyClaims: {
+            where: {
+              status: "RESOLVED",
+              resolutionType: "REFUND",
+              refundAmount: { gt: 0 },
+              refundedAt: { not: null },
+            },
+            select: { refundAmount: true },
+          },
         },
       },
     },
@@ -234,6 +243,15 @@ export async function getRetractableItemsByOrderToken(
           designId: true,
           variant: { select: { product: { select: { name: true } } } },
           retractRequest: { select: { status: true, refundAmount: true } },
+          warrantyClaims: {
+            where: {
+              status: "RESOLVED",
+              resolutionType: "REFUND",
+              refundAmount: { gt: 0 },
+              refundedAt: { not: null },
+            },
+            select: { refundAmount: true },
+          },
         },
       },
     },
@@ -259,6 +277,7 @@ function mapOrderToRetractableItems(
       designId: string | null;
       variant: { product: { name: string } };
       retractRequest: { status: string; refundAmount: number } | null;
+      warrantyClaims?: Array<{ refundAmount: number | null }>;
     }>;
   },
   now: Date,
@@ -266,10 +285,15 @@ function mapOrderToRetractableItems(
   const delivered = order.status === "DELIVERED" && !!order.deliveredAt;
   const withinWindow = order.deliveredAt ? isWithinRetractWindow(order.deliveredAt, now) : false;
   const activeRefundedCents = order.items.reduce((acc, it) => {
-    if (it.retractRequest && it.retractRequest.status !== "REJECTED") {
-      return acc + it.retractRequest.refundAmount;
-    }
-    return acc;
+    const retractCents =
+      it.retractRequest && it.retractRequest.status !== "REJECTED"
+        ? it.retractRequest.refundAmount
+        : 0;
+    const warrantyCents = (it.warrantyClaims ?? []).reduce(
+      (sum, w) => sum + (w.refundAmount ?? 0),
+      0,
+    );
+    return acc + retractCents + warrantyCents;
   }, 0);
 
   return order.items.map((it) => {
@@ -348,6 +372,15 @@ export async function createRetractRequest(
             select: {
               id: true,
               retractRequest: { select: { status: true, refundAmount: true } },
+              warrantyClaims: {
+                where: {
+                  status: "RESOLVED",
+                  resolutionType: "REFUND",
+                  refundAmount: { gt: 0 },
+                  refundedAt: { not: null },
+                },
+                select: { refundAmount: true },
+              },
             },
           },
         },
@@ -373,14 +406,17 @@ export async function createRetractRequest(
   const lineTotal = item.unitPrice * item.qty;
   const ord = item.order;
   const alreadyRefundedCents = ord.items.reduce((acc, sibling) => {
-    if (
+    const siblingRetract =
       sibling.id !== item.id &&
       sibling.retractRequest &&
       sibling.retractRequest.status !== "REJECTED"
-    ) {
-      return acc + sibling.retractRequest.refundAmount;
-    }
-    return acc;
+        ? sibling.retractRequest.refundAmount
+        : 0;
+    const siblingWarranty = (sibling.warrantyClaims ?? []).reduce(
+      (sum, w) => sum + (w.refundAmount ?? 0),
+      0,
+    );
+    return acc + siblingRetract + siblingWarranty;
   }, 0);
   const { cashRefundCents: refundAmount } = computeRetractRefundBreakdown({
     lineTotal,
@@ -460,6 +496,15 @@ export async function createGuestRetractRequest(
             select: {
               id: true,
               retractRequest: { select: { status: true, refundAmount: true } },
+              warrantyClaims: {
+                where: {
+                  status: "RESOLVED",
+                  resolutionType: "REFUND",
+                  refundAmount: { gt: 0 },
+                  refundedAt: { not: null },
+                },
+                select: { refundAmount: true },
+              },
             },
           },
         },
@@ -486,14 +531,17 @@ export async function createGuestRetractRequest(
   const lineTotal = item.unitPrice * item.qty;
   const ord = item.order;
   const alreadyRefundedCents = ord.items.reduce((acc, sibling) => {
-    if (
+    const siblingRetract =
       sibling.id !== item.id &&
       sibling.retractRequest &&
       sibling.retractRequest.status !== "REJECTED"
-    ) {
-      return acc + sibling.retractRequest.refundAmount;
-    }
-    return acc;
+        ? sibling.retractRequest.refundAmount
+        : 0;
+    const siblingWarranty = (sibling.warrantyClaims ?? []).reduce(
+      (sum, w) => sum + (w.refundAmount ?? 0),
+      0,
+    );
+    return acc + siblingRetract + siblingWarranty;
   }, 0);
   const { cashRefundCents: refundAmount } = computeRetractRefundBreakdown({
     lineTotal,
@@ -574,6 +622,15 @@ export async function createRetractRequestAsAdmin(
             select: {
               id: true,
               retractRequest: { select: { status: true, refundAmount: true } },
+              warrantyClaims: {
+                where: {
+                  status: "RESOLVED",
+                  resolutionType: "REFUND",
+                  refundAmount: { gt: 0 },
+                  refundedAt: { not: null },
+                },
+                select: { refundAmount: true },
+              },
             },
           },
         },
@@ -588,14 +645,17 @@ export async function createRetractRequestAsAdmin(
   const lineTotal = item.unitPrice * item.qty;
   const ord = item.order;
   const alreadyRefundedCents = ord.items.reduce((acc, sibling) => {
-    if (
+    const siblingRetract =
       sibling.id !== item.id &&
       sibling.retractRequest &&
       sibling.retractRequest.status !== "REJECTED"
-    ) {
-      return acc + sibling.retractRequest.refundAmount;
-    }
-    return acc;
+        ? sibling.retractRequest.refundAmount
+        : 0;
+    const siblingWarranty = (sibling.warrantyClaims ?? []).reduce(
+      (sum, w) => sum + (w.refundAmount ?? 0),
+      0,
+    );
+    return acc + siblingRetract + siblingWarranty;
   }, 0);
   const { cashRefundCents: refundAmount } = computeRetractRefundBreakdown({
     lineTotal,
