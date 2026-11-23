@@ -21,10 +21,10 @@
 --
 -- Secretos requeridos en el Vault de STG (vault.create_secret, nunca en el SQL):
 --   monitor_prd_base_url   = https://lucamsshop.com
---   monitor_resend_api_key = <RESEND_API_KEY de PRD>
+--   monitor_resend_api_key = <API key Resend dedicada sending-only para alertas>
 --   monitor_email_from     = <EMAIL_FROM verificado en Resend>
 --   monitor_alert_email    = <ALERT_EMAIL del CMS>
---   monitor_cron_secret    = <CRON_SECRET de PRD>  (para el POST del reporte)
+--   monitor_cron_secret    = <MONITOR_HEARTBEAT_SECRET de PRD>  (alcance exclusivo /api/cron/monitor-heartbeat; NUNCA el CRON_SECRET global)
 -- ═════════════════════════════════════════════════════════════════════════════
 
 CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS uptime_monitor_state (
 -- Función principal. `test_paths` permite certificar con un endpoint forzado a
 -- fallar (NULL = los 5 reales; con test_paths, una sola falla basta para el
 -- email — en producción se exigen 2 corridas seguidas).
-CREATE OR REPLACE FUNCTION monitor_uptime_prd(test_paths text[] DEFAULT NULL)
+CREATE OR REPLACE FUNCTION public.monitor_uptime_prd(test_paths text[] DEFAULT NULL)
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -210,3 +210,6 @@ BEGIN
   PERFORM cron.schedule('uptime-monitor-prd', '*/10 * * * *', $cmd$SELECT monitor_uptime_prd()$cmd$);
   RAISE NOTICE 'pg_cron: job uptime-monitor-prd agendado (cada 10 min, sondea PRD desde STG)';
 END $$;
+
+-- Endurecimiento PostgREST: función SECURITY DEFINER jamás invocable por roles API.
+REVOKE EXECUTE ON FUNCTION public.monitor_uptime_prd(text[]) FROM PUBLIC, anon, authenticated;
