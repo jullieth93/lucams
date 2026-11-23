@@ -163,9 +163,9 @@ make local-up         # Retoma el desarrollo LOCAL normal después de cerrarlo
 tail -f tmp/logs/web-dev.log
 
 # Inspeccionar logs de contenedores específicos de Supabase en Podman
-podman ps --filter name=supabase_ --format "{{.Names}}\t{{.Status}}"
-podman logs --tail 100 -f supabase_db_supabase-local
-podman logs --tail 100 -f supabase_auth_supabase-local
+podman ps --filter name=_lucams-local --format "{{.Names}}\t{{.Status}}"
+podman logs --tail 100 -f supabase_db_lucams-local
+podman logs --tail 100 -f supabase_auth_lucams-local
 ```
 
 > **Nota sobre puertos:** `PORT=4000` en `.env.local` es leído cuando se exporta al shell (`make web-start`); si ejecutas `pnpm --filter web dev` directamente sin exportar `PORT`, Next.js arranca en `:3000`.

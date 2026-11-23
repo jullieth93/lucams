@@ -25,6 +25,11 @@ overrides:
   # deepmerge-ts ≥8: GHSA-ggr8-5vv4-36mx (stack exhaustion al mergear grafos recursivos),
   # cadena prisma→@prisma/config; solo usa deepmerge(), API estable en v8. Gate 2026-08-28.
   deepmerge-ts: 8.0.2
+  # effect ≥3.22.1 (2026-11-20, Dependabot #46, high): GHSA-7589-6fvf-x4pw /
+  # CVE-2026-121707 — ReDoS en regex compilada de Schema.TemplateLiteral (≤3.22.0).
+  # Cadena prisma@6.19.3→@prisma/config@6.19.3 (fijaba 3.21.0 exacto → Dependabot
+  # fallaba con security_update_not_possible). Se usa rango ^3.22.5 para admitir parches 3.x.
+  effect: ^3.22.5
   "@babel/core": 7.29.6
   # sharp ≥0.35.5 (2026-10-06, gate CI audit high): GHSA-wq5f-xc86-pv6w /
   # CVE-2026-96889 — vulnerabilidad en la dependencia librsvg del binario
