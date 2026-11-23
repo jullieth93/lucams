@@ -27,6 +27,8 @@ import {
   pdpDefaultVariant,
   parseAttributesFromForm,
   resolvePromoDisplay,
+  selectableVariants,
+  VariantUpdateSchema,
 } from "./variant-schemas";
 
 describe("mergePreservingUnmanagedAttributes", () => {
@@ -103,6 +105,41 @@ describe("mergePreservingUnmanagedAttributes", () => {
       aspectRatio: "400:580",
     });
     expect(mergedPol).toEqual(polaroid);
+  });
+
+  it("preserva _shipping, noFold y facesPerUnit sin borrarlos al pasar por merge + VariantUpdateSchema", () => {
+    const existing = {
+      sizeCm: "4×12",
+      magnet: true,
+      noFold: true,
+      facesPerUnit: 2,
+      _shipping: { weightGrams: 120, widthCm: 10, heightCm: 14, depthCm: 2 },
+    };
+    const merged = mergePreservingUnmanagedAttributes(existing, {
+      sizeCm: "4×12",
+      magnet: false,
+    });
+    const parsed = VariantUpdateSchema.safeParse({
+      id: "cm00000000000000000000001",
+      price: 1500000,
+      attributes: merged,
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.attributes).toEqual({
+        sizeCm: "4×12",
+        magnet: false,
+        noFold: true,
+        facesPerUnit: 2,
+        _shipping: { weightGrams: 120, widthCm: 10, heightCm: 14, depthCm: 2 },
+      });
+    }
+    // Y selectableVariants NO confunde una variante "Única" que solo tenga `_shipping` con dimensión elegible:
+    const uniqueWithShipping = [
+      { id: "v_default", attributes: { _shipping: { weightGrams: 250 } } },
+    ];
+    expect(parseVariantAttributes(uniqueWithShipping[0]!.attributes)).toEqual({});
+    expect(selectableVariants(uniqueWithShipping)).toEqual(uniqueWithShipping);
   });
 });
 

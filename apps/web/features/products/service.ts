@@ -871,7 +871,7 @@ export async function createVariant(input: VariantCreateInput, createdBy: string
       stock: input.stock,
       safetyStock: input.safetyStock,
       isActive: input.isActive,
-      attributes: input.attributes,
+      attributes: input.attributes as Prisma.InputJsonValue,
       ...(createdBy ? { createdBy } : {}),
     },
   });
@@ -927,7 +927,7 @@ export async function updateVariant(input: VariantUpdateInput, updatedBy: string
     where: { id },
     data: {
       ...rest,
-      ...(attributes !== undefined && { attributes }),
+      ...(attributes !== undefined && { attributes: attributes as Prisma.InputJsonValue }),
       ...(updatedBy ? { updatedBy } : {}),
     },
   });

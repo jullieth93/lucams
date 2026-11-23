@@ -95,7 +95,18 @@ export const ProductVariantAttributesSchema = z.object({
    * `variant === "name"`; esto documenta el modelo y evita que se strippee al parsear.
    */
   pricePerTile: z.boolean().optional(),
+  /** Construcción a sangre sin doblez (separadores planos, `seed-catalog-canonical`). */
+  noFold: z.boolean().optional(),
+  /** Caras por unidad a nivel variante (1 o 2 caras, override de `personalizationSchema`). */
+  facesPerUnit: z.union([z.literal(1), z.literal(2)]).optional(),
 });
+
+/**
+ * Schema de persistencia en BD (`VariantCreateSchema` / `VariantUpdateSchema`): valida
+ * todas las dimensiones conocidas y preserva claves operativas fuera del selector del
+ * storefront (p.ej. `_shipping` para override de peso/dimensiones por variante).
+ */
+export const PersistedVariantAttributesSchema = ProductVariantAttributesSchema.passthrough();
 
 export type ProductVariantAttributes = z.infer<typeof ProductVariantAttributesSchema>;
 
@@ -143,6 +154,8 @@ const COVER_SIGNATURE_IGNORED_KEYS: ReadonlySet<string> = new Set([
   "photoSlots",
   "pricePerTile",
   "magnet",
+  "noFold",
+  "facesPerUnit",
 ]);
 
 /**
@@ -569,15 +582,35 @@ export function resolvePromoDisplay<
  * catálogo WhatsApp 2026-07-22; ya pasaba con size/variantShape, y con magnet
  * hasta que entró al form el 2026-09-08).
  */
+const DANGEROUS_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 export function mergePreservingUnmanagedAttributes(
   existingRaw: unknown,
   formAttrs: ProductVariantAttributes,
-): ProductVariantAttributes {
-  const existing = parseVariantAttributes(existingRaw);
+): Record<string, unknown> {
   const preserved: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(existing)) {
-    if (value === undefined || FORM_MANAGED_ATTRIBUTE_KEYS.has(key)) continue;
-    preserved[key] = value;
+  if (existingRaw && typeof existingRaw === "object" && !Array.isArray(existingRaw)) {
+    const shape = ProductVariantAttributesSchema.shape as Record<string, z.ZodTypeAny>;
+    for (const [key, value] of Object.entries(existingRaw as Record<string, unknown>)) {
+      if (
+        value === undefined ||
+        DANGEROUS_OBJECT_KEYS.has(key) ||
+        FORM_MANAGED_ATTRIBUTE_KEYS.has(key)
+      ) {
+        continue;
+      }
+      if (Object.hasOwn(shape, key)) {
+        // Validar clave a clave: un campo legado malformado en otra clave NO debe borrar
+        // dimensiones válidas no gestionadas por el form (frameStyle, theme, noFold, facesPerUnit…).
+        const fieldParsed = shape[key]!.safeParse(value);
+        if (fieldParsed.success && fieldParsed.data !== undefined) {
+          preserved[key] = fieldParsed.data;
+        }
+      } else {
+        // Clave operativa fuera del contrato del storefront (ej. `_shipping`): preservar intacta.
+        preserved[key] = value;
+      }
+    }
   }
   return { ...preserved, ...formAttrs };
 }
@@ -773,7 +806,7 @@ export const VariantCreateSchema = z.object({
   stock: z.number().int().min(0).max(100_000).default(0),
   safetyStock: z.number().int().min(0).max(100_000).default(0),
   isActive: z.boolean().default(true),
-  attributes: ProductVariantAttributesSchema.default({}),
+  attributes: PersistedVariantAttributesSchema.default({}),
 });
 
 export type VariantCreateInput = z.infer<typeof VariantCreateSchema>;
@@ -803,7 +836,7 @@ export const VariantUpdateSchema = z.object({
   stock: z.number().int().min(0).max(100_000).optional(),
   safetyStock: z.number().int().min(0).max(100_000).optional(),
   isActive: z.boolean().optional(),
-  attributes: ProductVariantAttributesSchema.optional(),
+  attributes: PersistedVariantAttributesSchema.optional(),
 });
 
 export type VariantUpdateInput = z.infer<typeof VariantUpdateSchema>;
