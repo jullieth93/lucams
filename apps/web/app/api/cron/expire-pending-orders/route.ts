@@ -20,6 +20,9 @@ import { notifyCronFailure } from "@/features/notifications/service";
 import { cronSecretOk } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
+// Presupuesto amplio para consultar referencias Wompi y sanar pagos APPROVED
+// vía processPaidOrder dentro de la corrida horaria (ver ADR-049 / #8).
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   const provided = req.headers.get("x-cron-secret"); // #14 solo header (?secret= queda en logs)

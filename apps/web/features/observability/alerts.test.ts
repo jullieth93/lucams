@@ -116,8 +116,9 @@ vi.mock("./service", async (importOriginal) => ({
   getStorageQuota,
 }));
 
-import { evaluateAlerts } from "./alerts";
+import { evaluateAlerts, PAID_WITHOUT_SHIPMENT_STALE_MINUTES } from "./alerts";
 import { PENDING_PAYMENT_EXPIRY_HOURS } from "@/features/orders/constants";
+import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 
 function errorGroups(rows: Array<{ routePath: string | null; n: number }>) {
   groupBy.mockResolvedValue(rows.map((r) => ({ routePath: r.routePath, _count: { _all: r.n } })));
@@ -268,6 +269,72 @@ describe("evaluateAlerts — pending_payment_wompi_stale (N-12b: ventana de auto
     const firing = await evaluateAlerts();
 
     expect(firing.some((a) => a.key === "pending_payment_wompi_stale")).toBe(false);
+  });
+});
+
+describe("evaluateAlerts — paid_without_shipment_stale (Fase 4 · #8: PAID externa sin guía >30 min)", () => {
+  function stalePaidNoGuideCount(n: number) {
+    orderCount.mockImplementation((args?: { where?: { status?: string } }) =>
+      Promise.resolve(args?.where?.status === "PAID" ? n : 0),
+    );
+  }
+
+  it("consulta órdenes PAID sin trackingNumber, excluyendo carriers internos (lucams/b2b-manual) y >30 min desde paso a PAID", async () => {
+    const now = new Date("2026-11-23T15:00:00Z");
+    const expectedCutoff = new Date(
+      now.getTime() - PAID_WITHOUT_SHIPMENT_STALE_MINUTES * 60 * 1000,
+    );
+
+    await evaluateAlerts(now);
+
+    expect(orderCount).toHaveBeenCalledWith({
+      where: {
+        status: "PAID",
+        deletedAt: null,
+        trackingNumber: null,
+        OR: [
+          { shippingCarrier: null },
+          { shippingCarrier: { notIn: [LUCAMS_CARRIER, "b2b-manual"] } },
+        ],
+        AND: [
+          {
+            OR: [
+              {
+                statusEvents: {
+                  some: { toStatus: "PAID", createdAt: { lt: expectedCutoff } },
+                },
+              },
+              {
+                statusEvents: { none: { toStatus: "PAID" } },
+                createdAt: { lt: expectedCutoff },
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("≥1 orden PAID sin guía >30 min → dispara ALTA con acción hacia /admin/pedidos?status=PAID", async () => {
+    stalePaidNoGuideCount(3);
+
+    const firing = await evaluateAlerts();
+    const alert = firing.find((a) => a.key === "paid_without_shipment_stale");
+
+    expect(alert).toBeDefined();
+    expect(alert!.severity).toBe("alta");
+    expect(alert!.title).toContain("3 pedido(s)");
+    expect(alert!.title).toContain("30 min");
+    expect(alert!.action).toContain("/admin/pedidos?status=PAID");
+    expect(alert!.action).toContain("Aveonline");
+  });
+
+  it("sin órdenes PAID estancadas sin guía → NO dispara", async () => {
+    stalePaidNoGuideCount(0);
+
+    const firing = await evaluateAlerts();
+
+    expect(firing.some((a) => a.key === "paid_without_shipment_stale")).toBe(false);
   });
 });
 

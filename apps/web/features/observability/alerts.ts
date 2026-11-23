@@ -33,9 +33,12 @@ import { getSettingValue } from "@/lib/cms";
 import { logger } from "@/lib/logger";
 import { SECURITY_EVENT } from "@/lib/security-events";
 import { PENDING_PAYMENT_EXPIRY_HOURS } from "@/features/orders/constants";
+import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { notify, type NotificationSeverity } from "@/features/notifications/service";
 
 const DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 min
+export const PAID_WITHOUT_SHIPMENT_STALE_MINUTES = 30;
+const PAID_WITHOUT_SHIPMENT_STALE_MS = PAID_WITHOUT_SHIPMENT_STALE_MINUTES * 60 * 1000;
 
 // Auditoría 2026-10-20 — umbrales de capacidad de Supabase: detectar la tendencia ANTES
 // de la barra roja del proveedor. Las referencias del plan Pro de lucams-prod (100 GB
@@ -69,6 +72,7 @@ const SEVERITY_TO_NOTIFICATION: Record<FiringAlert["severity"], NotificationSeve
 /** Módulo del admin donde se atiende cada alerta (deep link desde el centro). */
 function actionUrlFor(key: string): string {
   if (key === "reconciliation") return "/admin/pedidos?atencion=1";
+  if (key === "paid_without_shipment_stale") return "/admin/pedidos?status=PAID";
   if (key === "security_admin_login_fails" || key === "security_webhook_invalid") {
     return "/admin/auditoria?vista=seguridad";
   }
@@ -90,66 +94,108 @@ export type FiringAlert = {
 export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAlert[]> {
   const firing: FiringAlert[] = [];
 
-  const [errGroups, recon, stuck, stalePendingWompi, adminLoginFailsAgg, webhookInvalidAgg] =
-    await Promise.all([
-      // N-33 — errors_spike agrupa por RUTA (routePath): el doc (OBSERVABILITY.md)
-      // define el pico como "5+ errores 500 en 5 min en una misma ruta", no un
-      // conteo global (ruido repartido en N rutas sanas no es un incidente).
-      // ErrorLog solo registra errores de servidor (captureServerError), así que
-      // "500" es preciso. Filas sin routePath no son atribuibles a una ruta →
-      // no disparan esta regla. groupBy sin `having` (mismo patrón que
-      // daily-summary.ts) y el umbral se aplica acá: ventana chica y acotada.
-      prisma.errorLog.groupBy({
-        by: ["routePath"],
-        where: { createdAt: { gte: new Date(now.getTime() - 5 * 60 * 1000) } },
-        _count: { _all: true },
-      }),
-      prisma.order.count({ where: { needsReconciliation: true, deletedAt: null } }),
-      prisma.webhookEvent.count({
-        where: { processedAt: null, createdAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } },
-      }),
-      // #9 + N-12b (2026-09-11) — orden Wompi que supera PENDING_PAYMENT_EXPIRY_HOURS
-      // en PENDING_PAYMENT. Antes alertaba a las 2h: un checkout abandonado es ESPERADO
-      // (la mayoría no paga) y la alerta ardía en falso. Hoy el cron expire-pending-orders
-      // auto-cancela al vencer la ventana → una orden que la SUPERA sin cancelarse significa
-      // que la auto-cancelación NO corrió (fallo real del sistema) o que el pago se capturó
-      // sin confirmación. Mismo umbral que el cron (features/orders/constants).
-      prisma.order.count({
-        where: {
-          status: "PENDING_PAYMENT",
-          paymentMethod: "WOMPI",
-          deletedAt: null,
-          OR: [
-            {
-              paymentExpiresAt: null,
-              createdAt: {
-                lt: new Date(now.getTime() - PENDING_PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000),
-              },
+  const paidWithoutShipmentCutoff = new Date(now.getTime() - PAID_WITHOUT_SHIPMENT_STALE_MS);
+
+  const [
+    errGroups,
+    recon,
+    stuck,
+    stalePendingWompi,
+    stalePaidWithoutShipment,
+    adminLoginFailsAgg,
+    webhookInvalidAgg,
+  ] = await Promise.all([
+    // N-33 — errors_spike agrupa por RUTA (routePath): el doc (OBSERVABILITY.md)
+    // define el pico como "5+ errores 500 en 5 min en una misma ruta", no un
+    // conteo global (ruido repartido en N rutas sanas no es un incidente).
+    // ErrorLog solo registra errores de servidor (captureServerError), así que
+    // "500" es preciso. Filas sin routePath no son atribuibles a una ruta →
+    // no disparan esta regla. groupBy sin `having` (mismo patrón que
+    // daily-summary.ts) y el umbral se aplica acá: ventana chica y acotada.
+    prisma.errorLog.groupBy({
+      by: ["routePath"],
+      where: { createdAt: { gte: new Date(now.getTime() - 5 * 60 * 1000) } },
+      _count: { _all: true },
+    }),
+    prisma.order.count({ where: { needsReconciliation: true, deletedAt: null } }),
+    prisma.webhookEvent.count({
+      where: { processedAt: null, createdAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } },
+    }),
+    // #9 + N-12b (2026-09-11) — orden Wompi que supera PENDING_PAYMENT_EXPIRY_HOURS
+    // en PENDING_PAYMENT. Antes alertaba a las 2h: un checkout abandonado es ESPERADO
+    // (la mayoría no paga) y la alerta ardía en falso. Hoy el cron expire-pending-orders
+    // auto-cancela al vencer la ventana → una orden que la SUPERA sin cancelarse significa
+    // que la auto-cancelación NO corrió (fallo real del sistema) o que el pago se capturó
+    // sin confirmación. Mismo umbral que el cron (features/orders/constants).
+    prisma.order.count({
+      where: {
+        status: "PENDING_PAYMENT",
+        paymentMethod: "WOMPI",
+        deletedAt: null,
+        OR: [
+          {
+            paymentExpiresAt: null,
+            createdAt: {
+              lt: new Date(now.getTime() - PENDING_PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000),
             },
-            { paymentExpiresAt: { lt: now } },
-          ],
-        },
-      }),
-      // F-07 (2026-09-19) — reglas de seguridad sobre SecurityEvent (la persistencia
-      // durable que antes no existía: estos rechazos solo vivían en logs efímeros).
-      // LUC-SEC-008 (2026-10-31): los eventos se agregan por ventana con
-      // `count` (anti-amplificación) — las reglas SUMAN count, no cuentan
-      // filas. Filas históricas (count=1 por defecto) suman igual que antes.
-      prisma.securityEvent.aggregate({
-        _sum: { count: true },
-        where: {
-          event: SECURITY_EVENT.ADMIN_LOGIN_FAIL,
-          createdAt: { gte: new Date(now.getTime() - ADMIN_LOGIN_FAIL_WINDOW_MS) },
-        },
-      }),
-      prisma.securityEvent.aggregate({
-        _sum: { count: true },
-        where: {
-          event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
-          createdAt: { gte: new Date(now.getTime() - WEBHOOK_INVALID_WINDOW_MS) },
-        },
-      }),
-    ]);
+          },
+          { paymentExpiresAt: { lt: now } },
+        ],
+      },
+    }),
+    // Fase 4 (#8) — órdenes PAID con transportadora externa y sin guía generada
+    // con antigüedad > 30 min desde su paso a PAID (con fallback a createdAt si no
+    // existe evento histórico). Detecta caídas sostenidas de Aveonline o fallos
+    // no recuperados del despacho asíncrono / respaldo periódico.
+    prisma.order.count({
+      where: {
+        status: "PAID",
+        deletedAt: null,
+        trackingNumber: null,
+        OR: [
+          { shippingCarrier: null },
+          { shippingCarrier: { notIn: [LUCAMS_CARRIER, "b2b-manual"] } },
+        ],
+        AND: [
+          {
+            OR: [
+              {
+                statusEvents: {
+                  some: {
+                    toStatus: "PAID",
+                    createdAt: { lt: paidWithoutShipmentCutoff },
+                  },
+                },
+              },
+              {
+                statusEvents: { none: { toStatus: "PAID" } },
+                createdAt: { lt: paidWithoutShipmentCutoff },
+              },
+            ],
+          },
+        ],
+      },
+    }),
+    // F-07 (2026-09-19) — reglas de seguridad sobre SecurityEvent (la persistencia
+    // durable que antes no existía: estos rechazos solo vivían en logs efímeros).
+    // LUC-SEC-008 (2026-10-31): los eventos se agregan por ventana con
+    // `count` (anti-amplificación) — las reglas SUMAN count, no cuentan
+    // filas. Filas históricas (count=1 por defecto) suman igual que antes.
+    prisma.securityEvent.aggregate({
+      _sum: { count: true },
+      where: {
+        event: SECURITY_EVENT.ADMIN_LOGIN_FAIL,
+        createdAt: { gte: new Date(now.getTime() - ADMIN_LOGIN_FAIL_WINDOW_MS) },
+      },
+    }),
+    prisma.securityEvent.aggregate({
+      _sum: { count: true },
+      where: {
+        event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
+        createdAt: { gte: new Date(now.getTime() - WEBHOOK_INVALID_WINDOW_MS) },
+      },
+    }),
+  ]);
 
   // LUC-SEC-008 — aggregate(_sum.count) → número (filas históricas count=1 suman igual).
   const adminLoginFails = Number(adminLoginFailsAgg._sum.count ?? 0);
@@ -201,6 +247,17 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
         "La auto-cancelación de pendientes debió cancelarlas al vencer la ventana y no lo hizo — el cron expire-pending-orders no está corriendo (o falla). Hasta que corra, esas órdenes pueden esconder pagos capturados sin confirmar.",
       action:
         "Revisa el cron expire-pending-orders en /admin/observability (trabajos automáticos) y su último error. Después verifica cada orden en /admin/pedidos contra el panel Wompi por la referencia (número de orden): si el cobro está APPROVED, confírmala; si no, cancélala manual.",
+    });
+  }
+  if (stalePaidWithoutShipment > 0) {
+    firing.push({
+      key: "paid_without_shipment_stale",
+      severity: "alta",
+      title: `${stalePaidWithoutShipment} pedido(s) pagado(s) sin guía Aveonline hace más de ${PAID_WITHOUT_SHIPMENT_STALE_MINUTES} min`,
+      detail:
+        "Hay órdenes pagadas con transportadora externa que superaron 30 minutos sin número de guía tras el despacho asíncrono y el respaldo periódico.",
+      action:
+        "Abre /admin/pedidos?status=PAID, revisa el diagnóstico de Aveonline en cada pedido y /api/health/aveonline; si la guía no existe en el panel de Aveonline, usa «Reintentar guía».",
     });
   }
 

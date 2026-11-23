@@ -73,7 +73,7 @@ import { formatCOPExact } from "@/lib/format";
 import { listTransactionsByReference, getWompiConfig } from "@/lib/wompi";
 import { isWompiTransactionOlderThanOrder } from "./payment-reference";
 import { transitionOrder, OrderTransitionError } from "./service";
-import { processPaidOrder } from "./saga";
+import { processPaidOrder, scheduleExternalShipmentAfterResponse } from "./saga";
 import { PENDING_PAYMENT_EXPIRY_HOURS } from "./constants";
 
 /** Lote acotado por corrida: el cron es horario, un backlog se drena en corridas sucesivas. */
@@ -207,7 +207,11 @@ export async function expireStalePendingOrders(
               const result = await processPaidOrder({
                 orderId: order.id,
                 wompiTransactionId: paid.id,
+                deferExternalShipment: true,
               });
+              if (result.shipmentDeferred) {
+                scheduleExternalShipmentAfterResponse(order.id);
+              }
               healed += 1;
               if (approved.length > 1) {
                 await prisma.order.updateMany({

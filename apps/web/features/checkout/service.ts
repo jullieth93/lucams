@@ -554,7 +554,13 @@ export async function quoteShipping(input: {
  */
 export async function finalizeCheckout(input: {
   redirectUrl: string;
-}): Promise<{ orderId: string; orderNumber: string; checkoutUrl: string }> {
+  deferExternalShipment?: boolean;
+}): Promise<{
+  orderId: string;
+  orderNumber: string;
+  checkoutUrl: string;
+  shipmentDeferred?: boolean;
+}> {
   const ctx = await loadCheckoutContext();
   const { state } = ctx;
 
@@ -877,12 +883,16 @@ export async function finalizeCheckout(input: {
       });
     }
 
-    const saga = await processPaidOrder({ orderId: order.id });
+    const saga = await processPaidOrder({
+      orderId: order.id,
+      deferExternalShipment: input.deferExternalShipment,
+    });
     logger.info({
       event: "checkout.finalize.cod_confirmed",
       orderId: order.id,
       orderNumber: order.number,
       sagaStatus: saga.status,
+      shipmentDeferred: Boolean(saga.shipmentDeferred),
       trackingNumber: saga.trackingNumber ?? null,
     });
 
@@ -934,6 +944,7 @@ export async function finalizeCheckout(input: {
     return {
       orderId: order.id,
       orderNumber: order.number,
+      shipmentDeferred: Boolean(saga.shipmentDeferred),
       // Vista pública por token (sin IDOR). Defensivo: si faltara el token (no debería,
       // createOrderFromCart siempre lo genera), mandamos a la cuenta.
       checkoutUrl: order.publicAccessToken
