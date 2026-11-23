@@ -18,6 +18,7 @@ import { randomBytes } from "node:crypto";
 import type { AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { fitsMoneyInt4 } from "@/lib/money";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
 import { hashBearerToken, verifyTokenHashTimingSafe } from "@/lib/token-hash";
@@ -277,6 +278,18 @@ export async function saveOpportunityProposalDraft(
     discountCents,
     shippingCents,
   });
+
+  if (
+    resolvedItems.some((r) => !fitsMoneyInt4(r.unitPriceCents)) ||
+    !fitsMoneyInt4(discountCents) ||
+    !fitsMoneyInt4(shippingCents) ||
+    !fitsMoneyInt4(margin.subtotalCents) ||
+    !fitsMoneyInt4(margin.totalCents)
+  ) {
+    throw new OpportunityValidationError(
+      "El monto total de la propuesta supera el límite técnico por orden ($21.474.836 COP). Divide el pedido en entregas parciales.",
+    );
+  }
 
   if (margin.hasBelowCostLine) {
     if (actor.role !== "SUPERADMIN" || !input.allowBelowCostOverride) {
