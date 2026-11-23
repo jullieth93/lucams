@@ -249,6 +249,7 @@ La validación tipada vive en `apps/web/lib/env.ts` y la plantilla canónica en 
 | `PRISMA_LOG`                                                             | Solo `error` (`warn` en dev)                 | `packages/db/src/index.ts`                        | En `"query"` habilita trazado SQL de diagnóstico local.                                                                                                                                                             |
 | `EMAIL_SEND_DISABLED`                                                    | Ausente (`"1"` en Vitest)                    | `apps/web/lib/resend.ts`                          | Kill-switch anti-spam: cuando vale exactamente `"1"`, omite toda llamada saliente a Resend devolviendo `skipped` limpio.                                                                                            |
 | `CRON_JOBS_DISABLED`                                                     | `""`                                         | `features/observability/cron-heartbeat.ts`        | Lista separada por comas de jobs desagendados deliberadamente (en STG: `alerts,daily-summary,review-request,cart-recovery,back-in-stock`) para que `/api/health/crons` los marque `disabled: true, overdue: false`. |
+| `MONITOR_HEARTBEAT_SECRET`                                               | Opcional (fallback a `CRON_SECRET`)          | `apps/web/lib/cron-auth.ts`                       | Secreto dedicado exclusivo para `POST /api/cron/monitor-heartbeat` (`monitor_cron_secret` en Vault STG), aislando el latido sin exponer `CRON_SECRET` global de PRD.                                                |
 | `LIFECYCLE_DRY_RUN`                                                      | Ausente (`"1"` en E2E Lifecycle)             | `features/lifecycle/settings.ts`                  | En `"1"`/`"true"` registra `DRY_RUN` sin Resend ni tareas. `VERCEL_ENV=preview` lo fuerza siempre, sin override para envíos reales en STG.                                                                          |
 | `NEXT_PUBLIC_MAINTENANCE_MODE`                                           | Ausente                                      | `apps/web/proxy.ts`                               | Cuando vale exactamente `"1"` (comparación estricta) redirige el storefront a `/maintenance`. **Exige Redeploy en Vercel** (ver § 9.3).                                                                             |
 | `PURGE_IDLE_DESIGN_AFTER_DAYS`                                           | `30` (`14` en STG Vercel)                    | `features/personalization/retention-service.ts`   | Días de inactividad para purgar diseños `DRAFT` de clientes autenticados.                                                                                                                                           |
@@ -370,10 +371,10 @@ SELECT vault.create_secret('<VERCEL_BYPASS_TOKEN>',  'cron_vercel_bypass');
 
 -- 3. Exclusivo en STG para el monitor externo 24/7 hacia PRD (`scripts/monitor-uptime-stg.sql`):
 SELECT vault.create_secret('https://lucamsshop.com',                    'monitor_prd_base_url');
-SELECT vault.create_secret('<RESEND_API_KEY>',                          'monitor_resend_api_key');
+SELECT vault.create_secret('<RESEND_API_KEY_SEND_ONLY>',                'monitor_resend_api_key');
 SELECT vault.create_secret('Lucams Shop <hola@mail.lucamsshop.com>',    'monitor_email_from');
 SELECT vault.create_secret('hola@lucamsshop.com',                       'monitor_alert_email');
-SELECT vault.create_secret('<CRON_SECRET_PRD>',                         'monitor_cron_secret');
+SELECT vault.create_secret('<MONITOR_HEARTBEAT_SECRET_PRD>',            'monitor_cron_secret');
 ```
 
 Para rotar cualquiera de estos valores en el futuro usa `SELECT vault.update_secret('<id-del-secreto>', '<nuevo-valor>');`.

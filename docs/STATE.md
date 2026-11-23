@@ -5,8 +5,8 @@
 ## Fotografía ejecutiva
 
 - **Tienda:** `lucamsshop.com` opera exclusivamente en modo **`full`** (`ADR-204`) con Wompi, contraentrega, Aveonline y Envío Lucams Bogotá. Las compras individuales cierran en el checkout y los proyectos corporativos/eventos usan el configurador multicategoría `/empresas-y-eventos` → propuesta formal `/propuesta/[token]` → `Order` real (`ADR-210`); no existe cotización individual por WhatsApp.
-- **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui) y `packages/db` (**77 modelos Prisma**, **32 enums**, **101 migraciones Prisma** + **61 SQL Supabase**). RLS cubre el dominio y `enforce_rls_on_new_table` fija `search_path` vacío e identificadores `%I.%I`.
-- **Integraciones (`ADR-206`):** `/admin/integraciones` usa registro tipado, resolución viva y componentes separados para los 7 proveedores; distingue configuración, conexión, activación y salud sin toggles ficticios ni duplicar rutas operativas.
+- **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui) y `packages/db` (**77 modelos**, **32 enums**, **101 migraciones Prisma** + **61 SQL Supabase**). RLS cubre el dominio con `enforce_rls_on_new_table`.
+- **Integraciones (`ADR-206`):** `/admin/integraciones` usa registro tipado y resolución viva para los 7 proveedores (configuración, conexión, activación y salud).
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) exigen PR y 5 checks: `Typecheck + Lint + Build`, `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`.
 - **Legal:** paquete **Versión 3** sincronizado en `packages/db/legal-content`, fallbacks, mapa y CMS de STG/PRD.
 
@@ -23,7 +23,7 @@
 - Migraciones, categorías (84 por ambiente), ocasiones, redirects y **168/168 campos CMS** están homologados. El catálogo activo de referencia contiene los 8 productos originales de PRD + `bola-navidena-personalizada` (9); el resto permanece pausado fuera de PRD.
 - PRD conserva el catálogo vigente e históricos archivados (13 productos); STG/LOCAL conservan además el catálogo pausado (54). Plantillas y tramos de `mini-libros-magneticos` existen solo en STG/LOCAL; PRD mantiene nueve galerías archivadas de separadores como auditoría.
 - `nombre-personalizado` está archivado en PRD; `set-fotoimanes-circulares` y `set-fotoimanes-corazon`, en los tres ambientes. Cuadrados conserva 2 variantes base `-NOMAG` inactivas (`5×5` y `7×7 cm`, `ADR-209`). El stock real nunca se sincroniza.
-- `uptime-monitor-prd` y sus tablas viven solo en STG. Los cinco crons de correo existen en STG/PRD; STG fuerza `CRON_JOBS_DISABLED`, recuperación manual y Lifecycle `DRY_RUN`. `AVEONLINE_WEBHOOK_SECRET` solo está en PRD; `VERCEL_BYPASS_TOKEN`, solo en STG.
+- `uptime-monitor-prd` y sus tablas viven solo en STG (`MONITOR_HEARTBEAT_SECRET` dedicado aísla su latido de `CRON_SECRET` PRD). Los 5 crons de correo viven en STG/PRD; STG fuerza `CRON_JOBS_DISABLED`, recuperación manual y Lifecycle `DRY_RUN`. `AVEONLINE_WEBHOOK_SECRET` solo en PRD; `VERCEL_BYPASS_TOKEN` solo en STG.
 - `pg_net` difiere por versión gestionada de Supabase sin impacto funcional. El cupón de prueba `LOCURA` existe solo en STG.
 
 ## Capacidades operativas
@@ -40,7 +40,7 @@
 - Tiras photobooth compuestas, previews de packs en grilla y réplica entre unidades. Portada con popup tras consentimiento, logo estacional, nieve con movimiento reducido y CTA B2B (`/empresas-y-eventos` desde 25 uds.).
 - **Bola Navideña (`ADR-199`/`201`/`209`):** activa en los 3 ambientes; inserto dúplex de 8 cm, cara B obligatoria, hasta 15 diseños/tanda y 100 copias. Sin/con imán a $10.000/$11.000 COP; promos 3 × $27.000 y 5 × $40.000.
 - **Mini Libros (`ADR-200`):** carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán; inactivos fuera de referencia. Plantilla «Reino de cristal» y visor 3D completo.
-- Auto-save serial con `clientRev` y `STALE_REVISION`; recuperación de borradores; previews privados por `/api/design-preview/*`; `RenderJob` 300 DPI a sangre y ZIP de taller.
+- Auto-save serial (`clientRev` / `STALE_REVISION`), recuperación de borradores, previews privados `/api/design-preview/*`, `RenderJob` 300 DPI con claim/fencing atómico y caché acotada de assets, y ZIP de taller.
 
 ### Carrito, checkout, pagos y logística ([`domains/checkout-payments-shipping.md`](domains/checkout-payments-shipping.md))
 
@@ -51,7 +51,7 @@
 ### CRM 360, B2B, posventa y operación ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md), [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md))
 
 - Grafo `Contact` con aislamiento de staff, detección `selfDealing` y fusión humana asistida; `/admin/hoy`, tareas, RFM/LTV y cierre B2B de punta a punta (`ADR-210`: configurador `/empresas-y-eventos` desde 25 pzas., propuestas versionadas con margen BOM y muestra digital en `/propuesta/[token]`, conversión a `Order` por Wompi o Pago Directo Bre-B/transferencia verificado con MFA + retenciones, y carga de arte 300 DPI en taller).
-- Puntos Lucams con tope ≤25 %, retrocrédito y reversión (excluidos en propuestas B2B); referidos por `/r/[codigo]`. Posventa invitado con token + correo, retractos y garantías con reembolso final `SUPERADMIN` + MFA; soporte PQR con SLA e IA 0-PII.
+- Puntos Lucams (tope ≤25 %, retrocrédito y reversión; excluidos en B2B); referidos `/r/[codigo]`. Posventa invitado (token + correo), retractos (5 días hábiles CO con festivos) y garantías (`SUPERADMIN` + MFA); soporte PQR con SLA e IA 0-PII.
 - Vigilancia fiscal diaria (`ADR-196`) sobre umbrales DIAN de 3.500 UVT (incluyendo Wompi y `DIRECT_TRANSFER`), proyección anual y alertas 70/90/100 %.
 - Panel con 8 roles × 38 capacidades, deny-by-default, MFA `aal2`, step-up en acciones sensibles, inactividad de 30 min, PII redactada en servidor, auditoría y confirmaciones destructivas.
 - Centro de ayuda v2 (`ADR-197`): launcher reactivo por ruta/subruta (`?`), 48 guías, 8 Playbooks E2E, rutinas por rol y vista `SUPERADMIN`; Lifecycle y Marketing respetan Ley 1581, rebote/queja y `DRY_RUN` en STG (`ADR-198`).

@@ -157,14 +157,9 @@ Implementado en [`apps/web/features/retract/service.ts`](../apps/web/features/re
 
 ```ts
 // apps/web/features/retract/service.ts (extracto real)
-const COT_OFFSET_MS = 5 * 60 * 60 * 1000; // America/Bogota (UTC-5 fijo)
-
 export function retractWindowEnd(deliveredAt: Date): Date {
-  const endCot = new Date(
-    addBusinessDays(deliveredAt, RETRACT_WINDOW_BUSINESS_DAYS).getTime() - COT_OFFSET_MS,
-  );
-  endCot.setUTCHours(23, 59, 59, 999); // cierre a las 23:59:59.999 COT del 5.º día hábil
-  return new Date(endCot.getTime() + COT_OFFSET_MS);
+  // Avanza 5 días hábiles colombianos (excluye sáb/dom y festivos CO) y cierra a las 23:59:59.999 COT.
+  return addColombianBusinessDaysEndOfDay(deliveredAt, RETRACT_WINDOW_BUSINESS_DAYS);
 }
 
 /** División entera half-up con BigInt (cero floats y cero overflow en multiplicación). */
@@ -322,10 +317,10 @@ Publicar reseñas simuladas o presentar opiniones libres como compras reales vul
 
 ### 3.6 Motor de días hábiles colombianos (`colombian-sla.ts`), las 10 cláusulas de T&C y protocolo ante la SIC
 
-El módulo determinista [`apps/web/lib/colombian-sla.ts`](../apps/web/lib/colombian-sla.ts) calcula los vencimientos legales en huso `America/Bogota` (`UTC-5`, cierre `23:59:59.999` COT) descontando sábados, domingos y los **18 festivos oficiales de Colombia (Ley 51 de 1983 — Ley Emiliani)**:
+El módulo determinista [`apps/web/lib/colombian-sla.ts`](../apps/web/lib/colombian-sla.ts) calcula los vencimientos legales (retracto, garantías, soporte PQR y producción B2B) en huso `America/Bogota` (`UTC-5`, cierre `23:59:59.999` COT) descontando sábados, domingos y los **19 festivos oficiales de Colombia (Ley 51 de 1983 — Ley Emiliani + Ley 2578 de 2026)**:
 
 - **6 festivos de fecha fija:** 1 de enero, 1 de mayo, 20 de julio, 7 de agosto, 8 de diciembre y 25 de diciembre.
-- **7 festivos trasladados al lunes siguiente (Ley Emiliani):** Epifanía (6 ene), San José (19 mar), San Pedro y San Pablo (29 jun), Asunción (15 ago), Día de la Raza (12 oct), Todos los Santos (1 nov) e Independencia de Cartagena (11 nov).
+- **8 festivos trasladados al lunes siguiente (Ley Emiliani):** Epifanía (6 ene), San José (19 mar), San Pedro y San Pablo (29 jun), Virgen de Chiquinquirá (9 jul, desde 2026 — Ley 2578 de 2026), Asunción (15 ago), Día de la Raza (12 oct), Todos los Santos (1 nov) e Independencia de Cartagena (11 nov).
 - **5 festivos móviles respecto al domingo de Pascua** (calculado con el algoritmo gregoriano exacto de Meeus/Jones/Butcher): Jueves Santo (`-3` días), Viernes Santo (`-2`), Ascensión del Señor (`+43`), Corpus Christi (`+64`) y Sagrado Corazón de Jesús (`+71`).
 
 Cada `SupportTicket`, `WarrantyClaim` y `RetractRequest` expone su estado de semáforo SLA (`MET`, `ON_TIME`, `DUE_SOON` cuando restan ≤ 2 días hábiles o ≤ 3 calendario, `OVERDUE` y `UNSET`) en `/admin/soporte`, `/admin/garantias`, `/admin/retractos` y en la bandeja operativa diaria **`/admin/hoy`**.
