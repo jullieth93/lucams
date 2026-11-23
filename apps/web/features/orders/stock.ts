@@ -77,13 +77,17 @@ type StockItem = {
  *  - assertStockAvailable validaría por-item (2×qty3 con stock 4 pasan ambos) en vez de por el
  *    total real (6 > 4).
  */
-function aggregateByVariant(items: ReadonlyArray<StockItem>): StockItem[] {
+export function aggregateByVariant(items: ReadonlyArray<StockItem>): StockItem[] {
   const totals = new Map<string, number>();
   for (const it of items) {
     if (it.qty <= 0) continue;
     totals.set(it.variantId, (totals.get(it.variantId) ?? 0) + it.qty);
   }
-  return [...totals].map(([variantId, qty]) => ({ variantId, qty }));
+  // Orden determinístico por variantId: evita bloqueos de fila en orden inverso (deadlock 40P01)
+  // cuando dos transacciones multi-ítem concurrentes tocan el mismo par de variantes.
+  return [...totals]
+    .map(([variantId, qty]) => ({ variantId, qty }))
+    .sort((a, b) => (a.variantId < b.variantId ? -1 : a.variantId > b.variantId ? 1 : 0));
 }
 
 async function physicalStockItems(
