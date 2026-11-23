@@ -5,7 +5,7 @@
 ## Fotografía ejecutiva
 
 - **Tienda:** `lucamsshop.com` opera exclusivamente en modo **`full`** (`ADR-204`) con Wompi, contraentrega, Aveonline y Envío Lucams Bogotá. Las compras individuales cierran en el checkout y los proyectos corporativos/eventos usan el configurador multicategoría `/empresas-y-eventos` → propuesta formal `/propuesta/[token]` → `Order` real (`ADR-210`); no existe cotización individual por WhatsApp.
-- **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui) y `packages/db` (**77 modelos**, **32 enums**, **102 migraciones Prisma** + **61 SQL Supabase**). RLS cubre el dominio con `enforce_rls_on_new_table`.
+- **Base técnica:** monorepo `pnpm` (`apps/web` Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui; `packages/db`: **77 modelos**, **32 enums**, **103 migraciones Prisma** + **61 SQL Supabase** en `_lucams_sql_migrations`, PG 17 local/CI/PRD). RLS global con `enforce_rls_on_new_table`.
 - **Integraciones (`ADR-206`):** `/admin/integraciones` usa registro tipado y resolución viva para los 7 proveedores (configuración, conexión, activación y salud).
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) exigen PR y 5 checks: `Typecheck + Lint + Build`, `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`.
 - **Legal:** paquete **Versión 3** sincronizado en `packages/db/legal-content`, fallbacks, mapa y CMS de STG/PRD.
@@ -46,7 +46,7 @@
 
 - Carrito auto-sanado (`ADR-171`), checkout de tres pasos (`ADR-155`), direcciones DANE + CP MinTIC (171 ciudades) y modo regalo sin precios en guía/correos.
 - Fletes HMAC por peso, ledger Wompi por intento, webhook con ventana de 25 h, COD con blocklist y conciliación, CSV contable DIAN con PII redactada y decremento atómico de stock post-pago.
-- Aveonline con PDF, `ShipmentEvent` y separación `NOVEDAD` vs `DEVOLUCIÓN`; etiquetas auditadas, segregación Taller/Despachos, confidencialidad COP, costeo BOM y cupones personales.
+- Aveonline desacoplado vía `after()` + `tracking-sync` (`claimExternalShipmentSlot`), alerta `PAID` sin guía `> 30 min`, PDF, `ShipmentEvent` (`NOVEDAD`/`DEVOLUCIÓN`), etiquetas auditadas, segregación Taller/Despachos, costeo BOM y cupones.
 
 ### CRM 360, B2B, posventa y operación ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md), [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md))
 
@@ -55,7 +55,7 @@
 - Vigilancia fiscal diaria (`ADR-196`) sobre umbrales DIAN de 3.500 UVT (incluyendo Wompi y `DIRECT_TRANSFER`), proyección anual y alertas 70/90/100 %.
 - Panel con 8 roles × 38 capacidades, deny-by-default, MFA `aal2`, step-up en acciones sensibles, inactividad de 30 min, PII redactada en servidor, auditoría y confirmaciones destructivas.
 - Centro de ayuda v2 (`ADR-197`): launcher reactivo por ruta/subruta (`?`), 48 guías, 8 Playbooks E2E, rutinas por rol y vista `SUPERADMIN`; Lifecycle y Marketing respetan Ley 1581, rebote/queja y `DRY_RUN` en STG (`ADR-198`).
-- 33 plantillas React Email + 2 Auth OTP; fechas `America/Bogota`; GA4 y UTM bajo consentimiento; backups diarios y DR mensual.
+- 33 emails React + 2 Auth OTP; `America/Bogota`; `/api/vitals` en lotes (`WebVital_createdAt_idx`), GA4/UTM bajo consentimiento; backup streaming `0600` y DR mensual (5 buckets ≤ 36 h + `auth.users`/`auth.mfa_factors`).
 
 ## Pendientes abiertos reales
 
@@ -69,8 +69,8 @@
 
 ### Higiene técnica diferida (no bloqueante)
 
-1. Observar consumo mensual de GitHub Actions antes de cambiar CI; alternativas en [`integrations/github-and-ops.md`](integrations/github-and-ops.md) § 7.
-2. Regenerar códigos MFA antiguos para retirar el fallback legacy SHA-256.
-3. Leaked Password Protection nativo está activo en PRD; HIBP k-anonymity permanece como segunda capa.
-4. Evaluar unificación de previews (`ADR-118`), conexión de `texture-resolution.ts`, filtros de categoría en `/api/catalog/filters` y vectores SVG de marca.
-5. Extender el DR drill a `auth.users` y ajustes del proyecto Supabase, además de DB + Storage.
+1. Observar minutos mensuales de GitHub Actions antes de cambiar CI ([`integrations/github-and-ops.md`](integrations/github-and-ops.md) § 7).
+2. Regenerar códigos MFA antiguos para retirar el fallback SHA-256.
+3. Leaked Password Protection nativo activo en PRD; HIBP k-anonymity como segunda capa.
+4. Evaluar unificación de previews (`ADR-118`), `texture-resolution.ts`, filtros de categoría en `/api/catalog/filters` y SVG de marca.
+5. Respaldar configuración gestionada de Supabase y Vault fuera de `pg_dump` (el DR ya valida `auth.users` y `auth.mfa_factors`).
