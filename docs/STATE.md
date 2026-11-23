@@ -5,7 +5,7 @@
 ## Fotografía ejecutiva
 
 - **Tienda:** `lucamsshop.com` opera exclusivamente en modo **`full`** (`ADR-204`) con Wompi, contraentrega, Aveonline y Envío Lucams Bogotá. Las compras individuales cierran en el checkout y los proyectos corporativos/eventos usan el configurador multicategoría `/empresas-y-eventos` → propuesta formal `/propuesta/[token]` → `Order` real (`ADR-210`); no existe cotización individual por WhatsApp.
-- **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui) y `packages/db` (**77 modelos**, **32 enums**, **101 migraciones Prisma** + **61 SQL Supabase**). RLS cubre el dominio con `enforce_rls_on_new_table`.
+- **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui) y `packages/db` (**77 modelos**, **32 enums**, **102 migraciones Prisma** + **61 SQL Supabase**). RLS cubre el dominio con `enforce_rls_on_new_table`.
 - **Integraciones (`ADR-206`):** `/admin/integraciones` usa registro tipado y resolución viva para los 7 proveedores (configuración, conexión, activación y salud).
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) exigen PR y 5 checks: `Typecheck + Lint + Build`, `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`.
 - **Legal:** paquete **Versión 3** sincronizado en `packages/db/legal-content`, fallbacks, mapa y CMS de STG/PRD.
@@ -51,7 +51,7 @@
 ### CRM 360, B2B, posventa y operación ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md), [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md))
 
 - Grafo `Contact` con aislamiento de staff, detección `selfDealing` y fusión humana asistida; `/admin/hoy`, tareas, RFM/LTV y cierre B2B de punta a punta (`ADR-210`: configurador `/empresas-y-eventos` desde 25 pzas., propuestas versionadas con margen BOM y muestra digital en `/propuesta/[token]`, conversión a `Order` por Wompi o Pago Directo Bre-B/transferencia verificado con MFA + retenciones, y carga de arte 300 DPI en taller).
-- Puntos Lucams (tope ≤25 %, retrocrédito y reversión; excluidos en B2B); referidos `/r/[codigo]`. Posventa invitado (token + correo), retractos (5 días hábiles CO con festivos) y garantías (`SUPERADMIN` + MFA); soporte PQR con SLA e IA 0-PII.
+- Puntos Lucams (tope ≤25 %, retrocrédito y reversión; excluidos en B2B); referidos `/r/[codigo]`. Posventa invitado (token + correo), retractos (5 días hábiles CO con festivos) y garantías (`SUPERADMIN` + MFA; reembolsos `REFUND` con monto/método deducidos en Finanzas/CSV/LTV); soporte PQR con SLA e IA 0-PII.
 - Vigilancia fiscal diaria (`ADR-196`) sobre umbrales DIAN de 3.500 UVT (incluyendo Wompi y `DIRECT_TRANSFER`), proyección anual y alertas 70/90/100 %.
 - Panel con 8 roles × 38 capacidades, deny-by-default, MFA `aal2`, step-up en acciones sensibles, inactividad de 30 min, PII redactada en servidor, auditoría y confirmaciones destructivas.
 - Centro de ayuda v2 (`ADR-197`): launcher reactivo por ruta/subruta (`?`), 48 guías, 8 Playbooks E2E, rutinas por rol y vista `SUPERADMIN`; Lifecycle y Marketing respetan Ley 1581, rebote/queja y `DRY_RUN` en STG (`ADR-198`).
@@ -63,7 +63,7 @@
 
 1. **Facturación electrónica DIAN:** faltan NIT/RUT de facturador, acompañamiento contador/abogado y proveedor tecnológico; `BILLING_DOCUMENT_ENABLED = false`. La vigilancia de umbrales ya opera.
 2. **SEO post-indexación:** revisar Search Console y confirmar aprobación del feed en Merchant Center.
-3. **Núcleo omnicanal de stock (`ADR-208`):** activo (`MADE_TO_ORDER` vs `PHYSICAL_STOCK`, `publishedOnStorefront`, `safetyStock` y kardex por canal); tras desplegar en STG/PRD resta normalizar a `0` el stock legado de `MADE_TO_ORDER` y retirar `MADE_TO_ORDER_STOCK` del seed.
+3. **Núcleo omnicanal de stock (`ADR-208`):** activo (`MADE_TO_ORDER` vs `PHYSICAL_STOCK`, `publishedOnStorefront`, `safetyStock` con paridad 1:1 en tienda/checkout/canales y kardex); tras desplegar en STG/PRD resta normalizar a `0` el stock legado de `MADE_TO_ORDER` y retirar `MADE_TO_ORDER_STOCK` del seed.
 4. **Mercado Libre (`ADR-205`):** arquitectura en pausa en [`integrations/mercadolibre.md`](integrations/mercadolibre.md) (solo `PHYSICAL_STOCK`, `ChannelPack`/`ChannelOrder`, precios `FORMULA`/`MANUAL`, `ME2` + Flex Bogotá). Pendiente habilitación de App en DevCenter `MCO`.
 5. **Meta (`ADR-207`):** arquitectura en pausa en [`integrations/meta.md`](integrations/meta.md) (`Meta Catalog` `PHYSICAL_STOCK`, `System User` `v25.0`, Pixel + CAPI deduplicados con `MetaOrderAttribution` y ajuste previo Ley 1581). Pendiente Fase M0.
 
