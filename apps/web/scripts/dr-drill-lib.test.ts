@@ -14,6 +14,8 @@ import {
   summarizeRestoreErrors,
   dumpCopyRowCounts,
   backupFreshnessError,
+  inspectAuthDumpIntegrity,
+  hasAuthRestoreDrift,
   DEFAULT_MAX_BACKUP_AGE_HOURS,
 } from "./dr-drill-lib.mjs";
 
@@ -249,5 +251,153 @@ describe("backupFreshnessError (N-19b) — el drill FALLA si el dump más nuevo 
 
   it("el default exportado es 36h (mismo tope que la regla backup_stale de la app)", () => {
     expect(DEFAULT_MAX_BACKUP_AGE_HOURS).toBe(36);
+  });
+});
+
+describe("inspectAuthDumpIntegrity — presencia e integridad de auth.users y auth.mfa_factors (Fase 4 · #17)", () => {
+  const USER_1 = "11111111-1111-4111-8111-111111111111";
+  const USER_2 = "22222222-2222-4222-8222-222222222222";
+  const MFA_1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const MFA_2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  function buildAuthSql(opts?: {
+    usersRows?: string[];
+    mfaRows?: string[];
+    adminRows?: string[];
+    omitUsers?: boolean;
+    omitMfa?: boolean;
+  }) {
+    const parts: string[] = [];
+    if (!opts?.omitUsers) {
+      parts.push(
+        "COPY auth.users (id, email, encrypted_password) FROM stdin;",
+        ...(opts?.usersRows ?? [
+          `${USER_1}\tadmin@secret-pii.test\t$2a$10$hash`,
+          `${USER_2}\tcliente@secret-pii.test\t$2a$10$hash2`,
+        ]),
+        "\\.",
+      );
+    }
+    if (!opts?.omitMfa) {
+      parts.push(
+        "COPY auth.mfa_factors (id, user_id, factor_type, status, secret) FROM stdin;",
+        ...(opts?.mfaRows ?? [
+          `${MFA_1}\t${USER_1}\ttotp\tverified\tTOPSECRETBASE32`,
+          `${MFA_2}\t${USER_2}\ttotp\tunverified\tTOPSECRETBASE32B`,
+        ]),
+        "\\.",
+      );
+    }
+    parts.push(
+      'COPY public."AdminUser" ("id", "supabaseUserId", "email", "isActive", "deletedAt") FROM stdin;',
+      ...(opts?.adminRows ?? [`adm_1\t${USER_1}\tadmin@secret-pii.test\tt\t\\N`]),
+      "\\.",
+    );
+    return parts.join("\n");
+  }
+
+  it("valida dump íntegro y retorna únicamente conteos agregados (sin PII ni secretos)", () => {
+    const res = inspectAuthDumpIntegrity(buildAuthSql());
+    expect(res).toEqual({
+      ok: true,
+      usersPresent: true,
+      mfaFactorsPresent: true,
+      usersCount: 2,
+      mfaFactorsCount: 2,
+      verifiedMfaFactorsCount: 1,
+      orphanMfaFactors: 0,
+      activeAdminsChecked: 1,
+      missingActiveAdminAuthLinks: 0,
+      errors: [],
+    });
+    const serialized = JSON.stringify(res);
+    expect(serialized).not.toContain("secret-pii");
+    expect(serialized).not.toContain("TOPSECRETBASE32");
+    expect(serialized).not.toContain(USER_1);
+  });
+
+  it("falla si falta el bloque COPY de auth.users o auth.mfa_factors", () => {
+    const noUsers = inspectAuthDumpIntegrity(buildAuthSql({ omitUsers: true }));
+    expect(noUsers.ok).toBe(false);
+    expect(noUsers.errors.join(" ")).toContain("auth.users");
+
+    const noMfa = inspectAuthDumpIntegrity(buildAuthSql({ omitMfa: true }));
+    expect(noMfa.ok).toBe(false);
+    expect(noMfa.errors.join(" ")).toContain("auth.mfa_factors");
+  });
+
+  it("detecta factores MFA huérfanos sin exponer UUIDs ni secretos", () => {
+    const orphanUser = "99999999-9999-4999-8999-999999999999";
+    const res = inspectAuthDumpIntegrity(
+      buildAuthSql({
+        mfaRows: [`${MFA_1}\t${orphanUser}\ttotp\tverified\tSECRET_TOTP`],
+      }),
+    );
+    expect(res.ok).toBe(false);
+    expect(res.orphanMfaFactors).toBe(1);
+    const errText = res.errors.join(" ");
+    expect(errText).toContain("auth.mfa_factors");
+    expect(errText).not.toContain(orphanUser);
+    expect(errText).not.toContain("SECRET_TOTP");
+  });
+
+  it("detecta AdminUser activo cuyo supabaseUserId no existe en auth.users (e ignora inactivos/borrados)", () => {
+    const missingAuth = "88888888-8888-4888-8888-888888888888";
+    const broken = inspectAuthDumpIntegrity(
+      buildAuthSql({
+        adminRows: [`adm_broken\t${missingAuth}\tbroken@secret.test\tt\t\\N`],
+      }),
+    );
+    expect(broken.ok).toBe(false);
+    expect(broken.missingActiveAdminAuthLinks).toBe(1);
+    expect(broken.errors.join(" ")).not.toContain("broken@secret.test");
+    expect(broken.errors.join(" ")).not.toContain(missingAuth);
+
+    const archivedOk = inspectAuthDumpIntegrity(
+      buildAuthSql({
+        adminRows: [
+          `adm_1\t${USER_1}\tadmin@secret-pii.test\tt\t\\N`,
+          `adm_old\t${missingAuth}\told@secret.test\tf\t2026-01-01 00:00:00`,
+        ],
+      }),
+    );
+    expect(archivedOk.ok).toBe(true);
+    expect(archivedOk.activeAdminsChecked).toBe(1);
+  });
+
+  it("falla si auth.users tiene filas truncadas o menos usuarios que minAuthUsers", () => {
+    const truncated = inspectAuthDumpIntegrity(
+      buildAuthSql({ usersRows: [`${USER_1}\tsolo-dos-columnas`] }),
+    );
+    expect(truncated.ok).toBe(false);
+    expect(truncated.errors.join(" ")).toContain("corruptas");
+
+    const empty = inspectAuthDumpIntegrity(buildAuthSql({ usersRows: [], mfaRows: [] }));
+    expect(empty.ok).toBe(false);
+    expect(empty.errors.join(" ")).toContain("mínimo 1");
+  });
+
+  it("detecta un bloque COPY truncado sin terminador \\. (M-3)", () => {
+    const truncatedDump = [
+      "COPY auth.users (id, email, encrypted_password) FROM stdin;",
+      `${USER_1}\tadmin@secret-pii.test\t$2a$10$hash`,
+      // sin línea `\.` al final
+    ].join("\n");
+    const res = inspectAuthDumpIntegrity(truncatedDump);
+    expect(res.ok).toBe(false);
+    expect(res.errors.join(" ")).toContain("truncado");
+  });
+
+  it('hasAuthRestoreDrift ignora relation "users" already exists y solo activa true en auth-column-drift / auth-data-fk (H-4)', () => {
+    const cleanRelationOnly = summarizeRestoreErrors(
+      'psql:/tmp/x/dump.sql:1: ERROR:  relation "users" already exists\n',
+    );
+    expect(hasAuthRestoreDrift(cleanRelationOnly)).toBe(false);
+
+    const realColumnDrift = summarizeRestoreErrors(
+      'psql:/tmp/x/dump.sql:1: ERROR:  relation "users" already exists\n' +
+        'psql:/tmp/x/dump.sql:2: ERROR:  column "is_sso_user" of relation "auth.users" does not exist\n',
+    );
+    expect(hasAuthRestoreDrift(realColumnDrift)).toBe(true);
   });
 });

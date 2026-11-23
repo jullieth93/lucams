@@ -101,6 +101,69 @@ export function buildManifest({ startedAt, finishedAt, prefix, keep, buckets }) 
   };
 }
 
+/**
+ * Validates that the latest storage manifest covers ALL expected buckets
+ * (default: the 5 Lucams Storage buckets) with unique, structurally valid
+ * entries and R2 archive keys. Returns null when valid, or an error message
+ * (fail-closed) when any bucket is missing, duplicated, or malformed.
+ */
+export function storageManifestCoverageError({
+  manifestKey,
+  manifestBuckets,
+  expectedBuckets = DEFAULT_STORAGE_BUCKETS,
+}) {
+  if (!Array.isArray(manifestBuckets)) {
+    return `Manifest ${manifestKey} has invalid or missing "buckets" array (fail-closed).`;
+  }
+  const byBucket = new Map();
+  const seenKeys = new Set();
+  const duplicates = [];
+  const invalid = [];
+
+  for (const entry of manifestBuckets) {
+    if (!entry || typeof entry.bucket !== "string" || !entry.bucket.trim()) {
+      invalid.push("<unnamed>");
+      continue;
+    }
+    if (byBucket.has(entry.bucket)) {
+      duplicates.push(entry.bucket);
+      continue;
+    }
+    const keyValid =
+      typeof entry.key === "string" &&
+      STORAGE_BACKUP_KEY_RE.test(entry.key) &&
+      entry.key.includes(`/${entry.bucket}/`) &&
+      !seenKeys.has(entry.key);
+    const countsValid =
+      Number.isSafeInteger(entry.objects) &&
+      entry.objects >= 0 &&
+      Number.isSafeInteger(entry.bytes) &&
+      entry.bytes >= 0 &&
+      Number.isSafeInteger(entry.encryptedBytes) &&
+      entry.encryptedBytes > 0;
+    if (!keyValid || !countsValid) {
+      invalid.push(entry.bucket);
+      continue;
+    }
+    seenKeys.add(entry.key);
+    byBucket.set(entry.bucket, entry);
+  }
+
+  const missing = expectedBuckets.filter((b) => !byBucket.has(b));
+  if (missing.length === 0 && duplicates.length === 0 && invalid.length === 0) {
+    return null;
+  }
+
+  const parts = [];
+  if (missing.length > 0) parts.push(`missing buckets: [${missing.join(", ")}]`);
+  if (duplicates.length > 0) parts.push(`duplicate buckets: [${duplicates.join(", ")}]`);
+  if (invalid.length > 0) parts.push(`invalid entries: [${invalid.join(", ")}]`);
+  return (
+    `Storage manifest ${manifestKey} failed ${expectedBuckets.length}-bucket coverage check ` +
+    `(${parts.join("; ")}). Expected all buckets: [${expectedBuckets.join(", ")}].`
+  );
+}
+
 // ─── Errores transitorios del gateway/Storage API ──────────────────────────
 // Patrón de errores que ameritan reintento con backoff (lo usa withRetry en
 // backup-storage-to-r2.mjs): 5xx del gateway de Supabase, caídas de red, y
