@@ -50,6 +50,7 @@ import { requireCapability } from "@/lib/admin-rbac-guard";
 import { getSettingValue } from "@/lib/cms";
 import { prisma } from "@/lib/db";
 import { getCanonicalSiteUrl } from "@/lib/public-url";
+import { netAvailableStock } from "@/features/products/fulfillment";
 
 export const metadata: Metadata = {
   title: "Canal: Tienda online",
@@ -75,9 +76,7 @@ export default async function AdminCanalTiendaPage() {
     productsActive,
     productsTotal,
     madeToOrderVariants,
-    healthyVariants,
-    lowStockVariants,
-    outOfStockVariants,
+    physicalVariants,
     ordersTotal,
   ] = await Promise.all([
     getSettingValue("COD_ENABLED", "false"),
@@ -97,9 +96,8 @@ export default async function AdminCanalTiendaPage() {
         },
       },
     }),
-    prisma.productVariant.count({
+    prisma.productVariant.findMany({
       where: {
-        stock: { gt: 5 },
         isActive: true,
         deletedAt: null,
         product: {
@@ -109,35 +107,19 @@ export default async function AdminCanalTiendaPage() {
           fulfillmentMode: "PHYSICAL_STOCK",
         },
       },
-    }),
-    prisma.productVariant.count({
-      where: {
-        stock: { gt: 0, lte: 5 },
-        isActive: true,
-        deletedAt: null,
-        product: {
-          isActive: true,
-          publishedOnStorefront: true,
-          deletedAt: null,
-          fulfillmentMode: "PHYSICAL_STOCK",
-        },
-      },
-    }),
-    prisma.productVariant.count({
-      where: {
-        stock: { lte: 0 },
-        isActive: true,
-        deletedAt: null,
-        product: {
-          isActive: true,
-          publishedOnStorefront: true,
-          deletedAt: null,
-          fulfillmentMode: "PHYSICAL_STOCK",
-        },
-      },
+      select: { stock: true, safetyStock: true },
     }),
     prisma.order.count({ where: { deletedAt: null } }),
   ]);
+  let healthyVariants = 0;
+  let lowStockVariants = 0;
+  let outOfStockVariants = 0;
+  for (const v of physicalVariants) {
+    const net = netAvailableStock(v.stock, v.safetyStock);
+    if (net > 5) healthyVariants += 1;
+    else if (net > 0) lowStockVariants += 1;
+    else outOfStockVariants += 1;
+  }
   const codEnabled = codEnabledRaw === "true";
   const productsInactive = Math.max(0, productsTotal - productsActive);
   const criticalOrOutVariants = lowStockVariants + outOfStockVariants;

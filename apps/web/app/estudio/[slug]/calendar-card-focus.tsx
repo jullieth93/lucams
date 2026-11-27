@@ -54,7 +54,7 @@ import { ChevronLeft, ChevronRight, Home, X } from "lucide-react";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { useIsTouch } from "./use-is-touch";
-import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import { useWindowTextures } from "./use-window-textures";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";

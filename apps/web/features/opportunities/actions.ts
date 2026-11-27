@@ -13,6 +13,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { fitsMoneyInt4 } from "@/lib/money";
 import {
   parseUtmCookie,
   sanitizeLandingPath,
@@ -225,11 +226,16 @@ export async function updateOpportunityAction(
   }
 
   const expectedPesos = expectedPesosRaw === "" ? 0 : Number.parseInt(expectedPesosRaw, 10);
-  if (Number.isNaN(expectedPesos) || expectedPesos < 0 || expectedPesos > 2_000_000_000) {
+  if (Number.isNaN(expectedPesos) || expectedPesos < 0) {
     return { error: "Ingresa un presupuesto estimado válido en pesos COP." };
   }
-  // Conversión exacta a centavos COP enteros (sin punto flotante).
+  // Conversión exacta a centavos COP enteros (sin punto flotante) acotada a INT4.
   const expectedAmountCop = expectedPesos * 100;
+  if (!fitsMoneyInt4(expectedAmountCop)) {
+    return {
+      error: "El presupuesto estimado supera el límite técnico permitido ($21.474.836 COP).",
+    };
+  }
   const ownerAdminId = ownerRaw === "" || ownerRaw === "UNASSIGNED" ? null : ownerRaw;
 
   try {

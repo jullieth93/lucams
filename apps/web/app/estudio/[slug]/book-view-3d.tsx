@@ -75,7 +75,7 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
-import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import { OrbitControls, RoundedBox, ContactShadows } from "@react-three/drei";
 import { FlipHorizontal2 } from "lucide-react";
 import { FitCameraPolar } from "./fit-camera-polar";

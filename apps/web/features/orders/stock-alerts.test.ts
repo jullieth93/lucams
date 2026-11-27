@@ -40,11 +40,35 @@ vi.mock("@/lib/logger", () => ({ logger }));
 vi.mock("@/features/notifications/service", () => ({ notify }));
 
 import { notifyStockSaleLost, STOCK_SALE_LOST_DEDUP_MS } from "./stock-alerts";
+import { aggregateByVariant } from "./stock";
 
 const NOW = new Date("2026-10-26T15:00:00Z");
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe("aggregateByVariant — orden determinístico anti-deadlock (#4)", () => {
+  it("ordena variantId ascendente sin importar el orden de entrada y suma duplicados", () => {
+    const orderAB = aggregateByVariant([
+      { variantId: "var_a", qty: 2 },
+      { variantId: "var_c", qty: 1 },
+      { variantId: "var_b", qty: 4 },
+      { variantId: "var_a", qty: 3 },
+    ]);
+    const orderBA = aggregateByVariant([
+      { variantId: "var_c", qty: 1 },
+      { variantId: "var_b", qty: 4 },
+      { variantId: "var_a", qty: 5 },
+    ]);
+
+    expect(orderAB).toEqual([
+      { variantId: "var_a", qty: 5 },
+      { variantId: "var_b", qty: 4 },
+      { variantId: "var_c", qty: 1 },
+    ]);
+    expect(orderBA).toEqual(orderAB);
+  });
 });
 
 describe("notifyStockSaleLost — dispara la alerta", () => {

@@ -42,10 +42,11 @@ import {
   resolvePhotoPackVariant,
 } from "@/features/products/photo-pack-resolve";
 import { isPurchasableVariant } from "@/features/products/storefront-visibility";
+import { netAvailableStock } from "@/features/products/fulfillment";
 import { logger } from "@/lib/logger";
 import { designIdentity, sameLineContent } from "./design-identity";
 import { describePieces, pieceKindFor, unitCountNounForLine, type UnitNoun } from "./line-preview";
-import { isBookmarkGalleryTag, resolveGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
+import { isBookmarkGalleryTag, resolveGalleryTag } from "@/features/personalization/product-kind";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { readProductExperience } from "@/features/personalization/product-experience";
 import {
@@ -554,12 +555,13 @@ function toDetail(cart: RawCart): CartDetail {
         variantAttrs: i.variant.attributes,
       });
       const selfServiceMax = maxCopiesForDesignUnits(dispUnits ?? 1, piecesPerUnit);
+      const availableStock = netAvailableStock(i.variant.stock, i.variant.safetyStock ?? 0);
       const maxQty =
         i.variant.product.fulfillmentMode === "MADE_TO_ORDER"
           ? selfServiceMax
           : Math.min(
               selfServiceMax,
-              Math.max(1, Math.floor(i.variant.stock / Math.max(1, dispUnits ?? 1))),
+              Math.max(1, Math.floor(availableStock / Math.max(1, dispUnits ?? 1))),
             );
       return {
         itemId: i.id,
@@ -578,7 +580,7 @@ function toDetail(cart: RawCart): CartDetail {
         maxQty,
         unitPrice: i.unitPrice,
         lineTotal: i.qty * i.unitPrice,
-        stock: i.variant.product.fulfillmentMode === "MADE_TO_ORDER" ? null : i.variant.stock,
+        stock: i.variant.product.fulfillmentMode === "MADE_TO_ORDER" ? null : availableStock,
         inventoryUnits: inventoryUnitsForOrderItem({
           qty: i.qty,
           customDesign: i.design?.canvasData ?? i.customDesign,
@@ -717,7 +719,7 @@ export async function addProductToCart(opts: {
         where: opts.variantId
           ? { id: opts.variantId, deletedAt: null, isActive: true }
           : { deletedAt: null, isActive: true, sku: { endsWith: "-DEFAULT" } },
-        select: { id: true, price: true, stock: true },
+        select: { id: true, price: true, stock: true, safetyStock: true },
         take: 1,
       },
     },
@@ -729,7 +731,8 @@ export async function addProductToCart(opts: {
   // El checkout ya lo validaba con STOCK_UNAVAILABLE; aquí evitamos que entre
   // al carrito en primer lugar (mismo código de error para un manejo coherente).
   const trackStock = product.fulfillmentMode === "PHYSICAL_STOCK";
-  if (trackStock && variant.stock <= 0) {
+  const availableStock = netAvailableStock(variant.stock, variant.safetyStock ?? 0);
+  if (trackStock && availableStock <= 0) {
     throw new CartError("STOCK_UNAVAILABLE", `«${product.name}» está agotado por ahora.`);
   }
 
@@ -745,13 +748,13 @@ export async function addProductToCart(opts: {
   // suma qty. CartItem no tiene unique compuesto, así que lo manejamos
   // a mano.
   const existing = cart.items.find((i) => i.variantId === variant.id && !i.designId);
-  const cap = trackStock ? Math.min(MAX_QTY_PER_ITEM, variant.stock) : MAX_QTY_PER_ITEM;
+  const cap = trackStock ? Math.min(MAX_QTY_PER_ITEM, availableStock) : MAX_QTY_PER_ITEM;
   const inCart = existing?.qty ?? 0;
   if (inCart >= cap) {
     throw new CartError(
       "STOCK_UNAVAILABLE",
       trackStock
-        ? stockLimitMessage(product.name, variant.stock, inCart)
+        ? stockLimitMessage(product.name, availableStock, inCart)
         : `«${product.name}» permite máximo ${MAX_QTY_PER_ITEM} unidades por línea.`,
     );
   }
@@ -862,7 +865,14 @@ export async function addPersonalizedToCart(opts: {
           personalizationSchema: true,
           variants: {
             where: { deletedAt: null, isActive: true },
-            select: { id: true, price: true, sku: true, attributes: true, stock: true },
+            select: {
+              id: true,
+              price: true,
+              sku: true,
+              attributes: true,
+              stock: true,
+              safetyStock: true,
+            },
             orderBy: { createdAt: "asc" },
           },
         },
@@ -885,7 +895,9 @@ export async function addPersonalizedToCart(opts: {
     throw new CartError("PRODUCT_NOT_FOUND");
   }
 
-  let variant: { id: string; price: number | null; attributes: unknown; stock: number } | undefined;
+  let variant:
+    | { id: string; price: number | null; attributes: unknown; stock: number; safetyStock?: number }
+    | undefined;
   const packInfo = readPhotoPackDesignInfo(design.canvasData);
   const resolvedByPack = packInfo
     ? (resolvePhotoPackVariant(design.product.variants, packInfo) ?? undefined)
@@ -918,12 +930,13 @@ export async function addPersonalizedToCart(opts: {
   const designUnits =
     designUnitPriceMultiplier(design.canvasData, facesPerUnit, variantAttrsForUnits.photoSlots) *
     letterSetUnitCount(design.metadata);
+  const availableStock = netAvailableStock(variant.stock, variant.safetyStock ?? 0);
   // Fase 1 (stock por variante): misma regla que addProductToCart — la variante
-  // agotada no entra al carrito (el checkout sigue como backstop de concurrencia).
-  if (design.product.fulfillmentMode === "PHYSICAL_STOCK" && variant.stock < designUnits) {
+  // agotada (stock - safetyStock insuficiente) no entra al carrito.
+  if (design.product.fulfillmentMode === "PHYSICAL_STOCK" && availableStock < designUnits) {
     throw new CartError(
       "STOCK_UNAVAILABLE",
-      stockLimitMessage(design.product.name, variant.stock, 0),
+      stockLimitMessage(design.product.name, availableStock, 0),
     );
   }
 
@@ -974,7 +987,7 @@ export async function addPersonalizedToCart(opts: {
   const selfServiceCap = maxCopiesForDesignUnits(designUnits, piecesPerUnit);
   const trackStock = design.product.fulfillmentMode === "PHYSICAL_STOCK";
   const stockCap = trackStock
-    ? Math.min(selfServiceCap, Math.floor(variant.stock / designUnits))
+    ? Math.min(selfServiceCap, Math.floor(availableStock / designUnits))
     : selfServiceCap;
   const volumeTiers = await loadActiveVolumeTiers(design.product.id);
   const cart = await ensureCart(opts.sessionId, opts.customerId);
@@ -1034,7 +1047,7 @@ export async function addPersonalizedToCart(opts: {
         throw new CartError(
           "STOCK_UNAVAILABLE",
           trackStock
-            ? stockLimitMessage(design.product.name, variant.stock, inCart)
+            ? stockLimitMessage(design.product.name, availableStock, inCart)
             : `«${design.product.name}» permite máximo ${MAX_SELF_SERVICE_PHYSICAL_UNITS} unidades por tanda en compra directa.`,
         );
       }
@@ -1104,7 +1117,8 @@ export async function updateCartItemQty(
     }
   } else {
     const trackStock = item.variant.product.fulfillmentMode === "PHYSICAL_STOCK";
-    if (trackStock && item.variant.stock <= 0) {
+    const availableStock = netAvailableStock(item.variant.stock, item.variant.safetyStock ?? 0);
+    if (trackStock && availableStock <= 0) {
       throw new CartError(
         "STOCK_UNAVAILABLE",
         `«${item.variant.product.name}» está agotado por ahora.`,
@@ -1124,12 +1138,12 @@ export async function updateCartItemQty(
     });
     const selfServiceCap = maxCopiesForDesignUnits(designUnits, piecesPerUnit);
     const maxQtyByStock = trackStock
-      ? Math.min(selfServiceCap, Math.floor(item.variant.stock / designUnits))
+      ? Math.min(selfServiceCap, Math.floor(availableStock / designUnits))
       : selfServiceCap;
     if (trackStock && maxQtyByStock < 1) {
       throw new CartError(
         "STOCK_UNAVAILABLE",
-        stockLimitMessage(item.variant.product.name, item.variant.stock, 0),
+        stockLimitMessage(item.variant.product.name, availableStock, 0),
       );
     }
     const newQty = Math.min(qty, maxQtyByStock);

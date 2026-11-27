@@ -49,11 +49,8 @@ psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f .github/ci/localstack/prereq-extensions
 echo "→ 2/4 prisma migrate deploy"
 pnpm --filter @lucams/db exec prisma migrate deploy
 
-echo "→ 3/4 supabase/migrations (RLS, storage, cron)"
-for f in $(ls supabase/migrations/*.sql | sort); do
-  echo "  · $f"
-  psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f "$f"
-done
+echo "→ 3/4 supabase/migrations (RLS, storage, cron — idempotente vía _lucams_sql_migrations)"
+bash scripts/apply-supabase-migrations.sh "$DIRECT_URL"
 
 echo "→ 4/4 des-agendar crons de email en STG (estado deseado: desagendados)"
 # Idempotente: solo des-agenda los jobs que existan (cron.unschedule por nombre

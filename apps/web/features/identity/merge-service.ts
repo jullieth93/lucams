@@ -252,6 +252,15 @@ async function computeContactMetricsMap(contactIds: string[]): Promise<
             retractRequest: {
               select: { status: true, refundAmount: true },
             },
+            warrantyClaims: {
+              where: {
+                status: "RESOLVED",
+                resolutionType: "REFUND",
+                refundAmount: { gt: 0 },
+                refundedAt: { not: null },
+              },
+              select: { refundAmount: true },
+            },
           },
         },
       },
@@ -297,7 +306,11 @@ async function computeContactMetricsMap(contactIds: string[]): Promise<
         }
         return sum;
       }, 0);
-      entry.netLtvCents += Math.max(0, order.total - refundedRetractCents);
+      const refundedWarrantyCents = order.items.reduce(
+        (sum, it) => sum + it.warrantyClaims.reduce((wSum, w) => wSum + (w.refundAmount ?? 0), 0),
+        0,
+      );
+      entry.netLtvCents += Math.max(0, order.total - refundedRetractCents - refundedWarrantyCents);
     }
   }
 

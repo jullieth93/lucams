@@ -38,7 +38,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { Hint } from "@/components/ui/tooltip";
-import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import {

@@ -16,6 +16,7 @@
  */
 
 import "server-only";
+import { after } from "next/server";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { formatCOPExact } from "@/lib/format";
@@ -57,15 +58,27 @@ import { notify } from "@/features/notifications/service";
 export type ProcessPaidOrderInput = {
   orderId: string;
   wompiTransactionId?: string;
+  /**
+   * Desacopla la generación de guía externa Aveonline del hot path síncrono de
+   * pago/webhook (Fase 4 · #8): commitea PAID/stock/emails y retorna con
+   * `shipmentDeferred: true` para que el caller agende `after()` + respaldo periódico.
+   */
+  deferExternalShipment?: boolean;
 };
 
 export type ProcessPaidOrderResult = {
   status: "ok" | "already_processed" | "shipment_failed" | "transition_failed";
   trackingNumber?: string;
   reason?: string;
+  shipmentDeferred?: boolean;
 };
 
-const STALE_CLAIM_MS = 10 * 60 * 1000;
+export const STALE_CLAIM_MS = 10 * 60 * 1000;
+const PENDING_SHIPMENT_RECOVERY_MIN_AGE_MS = 60 * 1000;
+// Acotado (3 órdenes / 15 s) para compartir maxDuration = 60 con tracking-sync sin
+// arriesgar corte a mitad de createShipment (20 s timeout) ni saltar el heartbeat.
+const PENDING_SHIPMENT_RECOVERY_BATCH = 3;
+const PENDING_SHIPMENT_RECOVERY_BUDGET_MS = 15_000;
 const LOGISTICS_RECONCILIATION_REASON_RE = /^(Envío |Guía anulada|Webhook Aveonline:)/i;
 
 function errorMessageOf(err: unknown): string {
@@ -606,6 +619,7 @@ async function handleCreateShipmentError(
   order: PaidSagaOrder,
   ship: ShippingAddressInput,
   err: unknown,
+  claimToken: Date,
 ): Promise<ProcessPaidOrderResult> {
   logger.error({
     event: "order.saga.paid.shipment_failed",
@@ -642,9 +656,11 @@ async function handleCreateShipmentError(
     };
   }
 
+  // Fencing: solo libera el slot si sigue perteneciendo a este claimToken (evita
+  // que un worker lento/tardío libere el lease recién adquirido por otro proceso).
   await prisma.order
     .updateMany({
-      where: { id: order.id, trackingNumber: null },
+      where: { id: order.id, trackingNumber: null, shipmentClaimedAt: claimToken },
       data: { shipmentClaimedAt: null },
     })
     .catch(() => null);
@@ -743,22 +759,29 @@ async function persistShipmentAndTransition(
   };
 }
 
-async function claimExternalShipmentSlot(
-  order: PaidSagaOrder,
-): Promise<ProcessPaidOrderResult | null> {
-  const staleCutoff = new Date(Date.now() - STALE_CLAIM_MS);
+export type ClaimExternalShipmentResult =
+  { claimed: true; claimToken: Date } | { claimed: false; result: ProcessPaidOrderResult };
+
+export async function claimExternalShipmentSlot(
+  order: Pick<PaidSagaOrder, "id" | "number">,
+  now: Date = new Date(),
+): Promise<ClaimExternalShipmentResult> {
+  const staleCutoff = new Date(now.getTime() - STALE_CLAIM_MS);
+  const claimToken = now;
   const claim = await prisma.order.updateMany({
     where: {
       id: order.id,
+      deletedAt: null,
+      status: { in: ["PAID", "FULFILLING"] },
       trackingNumber: null,
       OR: [
         { shipmentClaimedAt: null },
         { AND: [{ shipmentClaimedAt: { lt: staleCutoff } }, { needsReconciliation: false }] },
       ],
     },
-    data: { shipmentClaimedAt: new Date() },
+    data: { shipmentClaimedAt: claimToken },
   });
-  if (claim.count === 1) return null;
+  if (claim.count === 1) return { claimed: true, claimToken };
 
   const fresh = await prisma.order.findUnique({
     where: { id: order.id },
@@ -771,8 +794,11 @@ async function claimExternalShipmentSlot(
     winnerTracking: fresh?.trackingNumber ?? null,
   });
   return {
-    status: "already_processed",
-    trackingNumber: fresh?.trackingNumber ?? undefined,
+    claimed: false,
+    result: {
+      status: "already_processed",
+      trackingNumber: fresh?.trackingNumber ?? undefined,
+    },
   };
 }
 
@@ -788,8 +814,8 @@ async function dispatchExternalCarrierShipment(
     getSettingValue("PICKUP_CONTACT_NAME", ""),
   ]);
 
-  const skippedResult = await claimExternalShipmentSlot(order);
-  if (skippedResult) return skippedResult;
+  const slot = await claimExternalShipmentSlot(order);
+  if (!slot.claimed) return slot.result;
 
   const ship = order.shippingAddress as unknown as ShippingAddressInput;
   const recipient = resolveShipmentRecipient(order, ship);
@@ -826,8 +852,203 @@ async function dispatchExternalCarrierShipment(
     });
     return persistShipmentAndTransition(order, shipmentResult);
   } catch (err) {
-    return handleCreateShipmentError(order, ship, err);
+    return handleCreateShipmentError(order, ship, err, slot.claimToken);
   }
+}
+
+/**
+ * Despacha la guía externa Aveonline para una orden ya confirmada como PAID.
+ * Idempotente sobre `claimExternalShipmentSlot` (fencing + lease de 10 min):
+ * usado tanto por el callback `after()` post-respuesta como por el respaldo
+ * periódico `recoverPendingExternalShipments`.
+ */
+export async function dispatchExternalShipmentForOrder(
+  orderId: string,
+): Promise<ProcessPaidOrderResult> {
+  const order = await loadOrderForPaidSaga(orderId);
+  if (!order) {
+    logger.error({ event: "order.saga.external_shipment.not_found", orderId });
+    return { status: "transition_failed", reason: "Order no encontrada" };
+  }
+
+  if (order.trackingNumber) {
+    if (order.status === "PAID") {
+      await transitionOrder(order.id, "FULFILLING").catch(() => null);
+    }
+    return { status: "already_processed", trackingNumber: order.trackingNumber };
+  }
+
+  if (order.status !== "PAID" && order.status !== "FULFILLING") {
+    return {
+      status: "transition_failed",
+      reason: `Order en estado ${order.status}, no elegible para guía`,
+    };
+  }
+
+  if (order.shippingCarrier === LUCAMS_CARRIER || order.shippingCarrier === "b2b-manual") {
+    return handleInternalCarrierShipment(order);
+  }
+
+  const { items, missingDims } = buildExternalShipmentItems(order);
+  if (missingDims.length > 0) {
+    logger.error({
+      event: "order.saga.paid.missing_dims",
+      orderId: order.id,
+      orderNumber: order.number,
+      missingVariants: missingDims,
+    });
+    await markNeedsReconciliation(
+      order.id,
+      `Variantes sin peso/dimensiones: ${missingDims.join(", ")}. El pago se confirmó pero no se puede ` +
+        `generar la guía — configurar las dims en /admin/productos y reintentar la guía desde el pedido.`,
+    );
+    return {
+      status: "shipment_failed",
+      reason: `Variantes sin peso/dimensiones: ${missingDims.join(", ")}. Configurar en /admin/productos.`,
+    };
+  }
+
+  return dispatchExternalCarrierShipment(order, items);
+}
+
+/**
+ * Agenda la generación de guía Aveonline fuera del hot path síncrono mediante
+ * `after()` de Next.js 16 (waitUntil en Vercel). Si se invoca fuera de un scope
+ * de request o el runtime interrumpe el callback, el job periódico
+ * `recoverPendingExternalShipments` garantiza la emisión idempotente.
+ */
+export function scheduleExternalShipmentAfterResponse(orderId: string): void {
+  try {
+    after(async () => {
+      try {
+        const res = await dispatchExternalShipmentForOrder(orderId);
+        logger.info({
+          event: "order.saga.after_shipment.done",
+          orderId,
+          status: res.status,
+          trackingNumber: res.trackingNumber ?? null,
+          reason: res.reason ?? null,
+        });
+      } catch (err) {
+        logger.error({
+          event: "order.saga.after_shipment.failed",
+          orderId,
+          err: errorMessageOf(err),
+        });
+      }
+    });
+  } catch (err) {
+    logger.warn({
+      event: "order.saga.after_shipment.schedule_skipped",
+      orderId,
+      err: errorMessageOf(err),
+    });
+  }
+}
+
+export type RecoverPendingShipmentsResult = {
+  scanned: number;
+  created: number;
+  skipped: number;
+  failed: number;
+  skippedReason?: string;
+};
+
+/**
+ * Respaldo periódico idempotente (invocado desde `/api/cron/tracking-sync`):
+ * detecta órdenes PAID con transportadora externa sin guía y sin bandera de
+ * reconciliación (nunca reintenta ciegamente un timeout de 20s) cuyo `after()`
+ * falló o fue interrumpido, y las despacha sobre `claimExternalShipmentSlot`.
+ */
+export async function recoverPendingExternalShipments(opts?: {
+  now?: Date;
+  minAgeMs?: number;
+  limit?: number;
+  budgetMs?: number;
+}): Promise<RecoverPendingShipmentsResult> {
+  if (!process.env.AVEONLINE_USUARIO || !process.env.AVEONLINE_CLAVE) {
+    return { scanned: 0, created: 0, skipped: 0, failed: 0, skippedReason: "not_configured" };
+  }
+
+  const now = opts?.now ?? new Date();
+  const minAgeMs = opts?.minAgeMs ?? PENDING_SHIPMENT_RECOVERY_MIN_AGE_MS;
+  const limit = opts?.limit ?? PENDING_SHIPMENT_RECOVERY_BATCH;
+  const budgetMs = opts?.budgetMs ?? PENDING_SHIPMENT_RECOVERY_BUDGET_MS;
+  const staleCutoff = new Date(now.getTime() - STALE_CLAIM_MS);
+  const minAgeCutoff = new Date(now.getTime() - minAgeMs);
+
+  const candidates = await prisma.order.findMany({
+    where: {
+      status: "PAID",
+      deletedAt: null,
+      trackingNumber: null,
+      needsReconciliation: false,
+      OR: [
+        { shippingCarrier: null },
+        { shippingCarrier: { notIn: [LUCAMS_CARRIER, "b2b-manual"] } },
+      ],
+      AND: [
+        {
+          OR: [{ shipmentClaimedAt: null }, { shipmentClaimedAt: { lt: staleCutoff } }],
+        },
+        ...(minAgeMs > 0
+          ? [
+              {
+                OR: [
+                  {
+                    statusEvents: {
+                      some: { toStatus: "PAID" as const, createdAt: { lt: minAgeCutoff } },
+                    },
+                  },
+                  {
+                    statusEvents: { none: { toStatus: "PAID" as const } },
+                    createdAt: { lt: minAgeCutoff },
+                  },
+                ],
+              },
+            ]
+          : []),
+      ],
+    },
+    select: { id: true, number: true },
+    // Ordenar por updatedAt ascendente rota al final de la cola las órdenes
+    // que recién fallaron (shipmentLastError actualiza updatedAt), evitando
+    // inanición head-of-line sobre órdenes recuperables más recientes.
+    orderBy: { updatedAt: "asc" },
+    take: limit,
+  });
+
+  let created = 0;
+  let skipped = 0;
+  let failed = 0;
+  const startedAt = Date.now();
+
+  for (const candidate of candidates) {
+    if (Date.now() - startedAt >= budgetMs) break;
+    try {
+      const res = await dispatchExternalShipmentForOrder(candidate.id);
+      if (res.status === "ok") created += 1;
+      else if (res.status === "already_processed") skipped += 1;
+      else failed += 1;
+    } catch (err) {
+      failed += 1;
+      logger.error({
+        event: "shipping.pending_recovery.order_failed",
+        orderId: candidate.id,
+        orderNumber: candidate.number,
+        err: errorMessageOf(err),
+      });
+    }
+  }
+
+  logger.info({
+    event: "shipping.pending_recovery.done",
+    scanned: candidates.length,
+    created,
+    skipped,
+    failed,
+  });
+  return { scanned: candidates.length, created, skipped, failed };
 }
 
 /**
@@ -878,6 +1099,16 @@ export async function processPaidOrder(
       status: "shipment_failed",
       reason: `Variantes sin peso/dimensiones: ${missingDims.join(", ")}. Configurar en /admin/productos.`,
     };
+  }
+
+  if (input.deferExternalShipment) {
+    logger.info({
+      event: "order.saga.paid.shipment_deferred",
+      orderId: order.id,
+      orderNumber: order.number,
+      carrier: order.shippingCarrier ?? "envia",
+    });
+    return { status: "ok", shipmentDeferred: true };
   }
 
   return dispatchExternalCarrierShipment(order, items);

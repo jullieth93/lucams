@@ -11,6 +11,10 @@
 # workflow de `supabase status -o env`); no son secretos reales.
 project_id = "lucams-ci"
 
+# Alineado con Supabase Cloud PRD/STG y CI (Fase 4 · #18).
+[db]
+major_version = 17
+
 # E2E admin-mfa del nightly: el enrolamiento/verificación TOTP viene APAGADO
 # por default en el GoTrue del stack local ("MFA enroll is disabled for TOTP",
 # run 30648462167) — se habilita acá para que la spec ejerza el flujo real.

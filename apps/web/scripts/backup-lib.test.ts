@@ -4,6 +4,10 @@
  * aquí implica o pérdida de backups o crecimiento sin límite del bucket.
  */
 
+import { existsSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+import { Readable } from "node:stream";
 import { describe, it, expect } from "vitest";
 import {
   buildBackupKey,
@@ -12,6 +16,7 @@ import {
   normalizeR2AccountId,
   explainR2ConnectError,
 } from "./backup-lib.mjs";
+import { streamGzipEncryptToFile, withTempBackupDir } from "./backup-db-to-r2.mjs";
 
 describe("buildBackupKey", () => {
   it("arma la llave UTC ordenable con prefijo por defecto 'db' y sufijo .gpg (cifrado)", () => {
@@ -143,4 +148,68 @@ describe("explainR2ConnectError", () => {
     const raw = new Error("Access Denied");
     expect(explainR2ConnectError(raw, "a".repeat(32))).toBe(raw);
   });
+});
+
+describe("backup-db-to-r2 — streaming a disco temporal y limpieza en finally (Fase 4 · #17)", () => {
+  it("withTempBackupDir crea dir temporal privado y lo elimina tanto en éxito como ante error", async () => {
+    let okDir = "";
+    const res = await withTempBackupDir("test-db-backup-ok-", async (dir: string) => {
+      okDir = dir;
+      expect(existsSync(dir)).toBe(true);
+      return "done";
+    });
+    expect(res).toBe("done");
+    expect(existsSync(okDir)).toBe(false);
+
+    let errDir = "";
+    await expect(
+      withTempBackupDir("test-db-backup-err-", async (dir: string) => {
+        errDir = dir;
+        expect(existsSync(dir)).toBe(true);
+        throw new Error("fallo simulado en subida R2");
+      }),
+    ).rejects.toThrow("fallo simulado en subida R2");
+    expect(existsSync(errDir)).toBe(false);
+  });
+
+  const hasGpg = spawnSync("gpg", ["--version"], { stdio: "ignore" }).status === 0;
+
+  it.skipIf(!hasGpg)(
+    "streamGzipEncryptToFile cifra en streaming a disco con modo 0600 y el dir se limpia al salir",
+    async () => {
+      let capturedDir = "";
+      await withTempBackupDir("test-db-stream-", async (dir: string) => {
+        capturedDir = dir;
+        const outPath = join(dir, "dump.sql.gz.gpg");
+        const source = Readable.from(["-- SQL dump\n", "SELECT 1;\n".repeat(100)]);
+        await streamGzipEncryptToFile(source, "test-passphrase-phase4", outPath);
+
+        const st = statSync(outPath);
+        expect(st.size).toBeGreaterThan(0);
+        // Permisos estrictos 0600 (solo propietario lee/escribe el archivo cifrado).
+        expect(st.mode & 0o777).toBe(0o600);
+      });
+      expect(existsSync(capturedDir)).toBe(false);
+    },
+  );
+
+  it.skipIf(!hasGpg)(
+    "streamGzipEncryptToFile limpia el directorio temporal y termina gpg si el stream de origen falla (H-2)",
+    async () => {
+      let capturedDir = "";
+      await expect(
+        withTempBackupDir("test-db-stream-err-", async (dir: string) => {
+          capturedDir = dir;
+          const outPath = join(dir, "dump.sql.gz.gpg");
+          const failingSource = new Readable({
+            read() {
+              this.destroy(new Error("pg_dump stream roto"));
+            },
+          });
+          await streamGzipEncryptToFile(failingSource, "test-passphrase-phase4", outPath);
+        }),
+      ).rejects.toThrow();
+      expect(existsSync(capturedDir)).toBe(false);
+    },
+  );
 });

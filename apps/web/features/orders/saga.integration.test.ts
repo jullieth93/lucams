@@ -37,6 +37,22 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 // ───────────────────────── Mocks (antes de importar el SUT) ─────────────────────────
 
+// next/server → captura callbacks pasados a after() para verificar el desacoplamiento Fase 4 (#8).
+const afterCallbacks: Array<() => unknown | Promise<unknown>> = [];
+let afterShouldThrow = false;
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return {
+    ...actual,
+    after: (cb: () => unknown | Promise<unknown>) => {
+      if (afterShouldThrow) {
+        throw new Error("after() was called outside a request scope");
+      }
+      afterCallbacks.push(cb);
+    },
+  };
+});
+
 // next/cache → passthrough (getSettingValue de pickup usa unstable_cache).
 vi.mock("next/cache", () => ({
   unstable_cache:
@@ -161,7 +177,16 @@ vi.mock("./emails", async () => {
 
 import { prisma } from "@/lib/db";
 import { revalidateTag } from "next/cache";
-import { processPaidOrder, processFailedPaymentOrder, processTrackingUpdate } from "./saga";
+import {
+  processPaidOrder,
+  processFailedPaymentOrder,
+  processTrackingUpdate,
+  claimExternalShipmentSlot,
+  dispatchExternalShipmentForOrder,
+  scheduleExternalShipmentAfterResponse,
+  recoverPendingExternalShipments,
+  STALE_CLAIM_MS,
+} from "./saga";
 import { refundOrder } from "./service";
 import { RefundMoneyNotConfirmedError } from "./errors";
 import { INVENTORY_REASON } from "./stock";
@@ -1503,6 +1528,226 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       await prisma.notification.deleteMany({
         where: { dedupKey: `tracking-no-match:${tracking}:IN_TRANSIT` },
       });
+    }, 30000);
+  });
+
+  // ═══════════ Fase 4 (#8): Desacoplamiento after() + claim concurrente + recuperación ═══════════
+
+  describe("Fase 4 (#8) — desacoplamiento Aveonline con after(), claim concurrente y job periódico", () => {
+    const savedAveEnv: Record<string, string | undefined> = {};
+
+    beforeAll(() => {
+      savedAveEnv.AVEONLINE_USUARIO = process.env.AVEONLINE_USUARIO;
+      savedAveEnv.AVEONLINE_CLAVE = process.env.AVEONLINE_CLAVE;
+    });
+
+    afterEach(() => {
+      afterCallbacks.length = 0;
+      afterShouldThrow = false;
+      if (savedAveEnv.AVEONLINE_USUARIO === undefined) delete process.env.AVEONLINE_USUARIO;
+      else process.env.AVEONLINE_USUARIO = savedAveEnv.AVEONLINE_USUARIO;
+      if (savedAveEnv.AVEONLINE_CLAVE === undefined) delete process.env.AVEONLINE_CLAVE;
+      else process.env.AVEONLINE_CLAVE = savedAveEnv.AVEONLINE_CLAVE;
+    });
+
+    it("deferExternalShipment:true confirma PAID + stock + email sin bloquear en Aveonline, y after() emite la guía", async () => {
+      const variantId = await makeVariant(5, "DEFER");
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 40000 }], {
+        numberTag: "DEFER",
+      });
+      shipmentResult = {
+        trackingNumber: `${RUN}-DEFER-TRK`,
+        trackingUrl: "https://track.test/defer",
+        labelUrl: "https://label.test/defer.pdf",
+        carrier: "envia",
+        estimatedDeliveryAt: null,
+      };
+
+      const paid = await processPaidOrder({
+        orderId,
+        wompiTransactionId: `${RUN}-tx-defer`,
+        deferExternalShipment: true,
+      });
+
+      expect(paid).toEqual({ status: "ok", shipmentDeferred: true });
+      expect(shipmentCalls).toHaveLength(0);
+      expect(emailCalls.filter((c) => c.fn === "sendOrderConfirmationOnce")).toHaveLength(1);
+      const afterPaid = await getOrder(orderId);
+      expect(afterPaid?.status).toBe("PAID");
+      expect(afterPaid?.trackingNumber).toBeNull();
+
+      scheduleExternalShipmentAfterResponse(orderId);
+      expect(afterCallbacks).toHaveLength(1);
+      await afterCallbacks[0]!();
+
+      expect(shipmentCalls).toHaveLength(1);
+      const afterGuide = await getOrder(orderId);
+      expect(afterGuide?.status).toBe("FULFILLING");
+      expect(afterGuide?.trackingNumber).toBe(`${RUN}-DEFER-TRK`);
+    }, 30000);
+
+    it("no-doble-emisión concurrente en claimExternalShipmentSlot / dispatchExternalShipmentForOrder", async () => {
+      const variantId = await makeVariant(5, "CONC");
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 40000 }], {
+        numberTag: "CONC",
+      });
+      await processPaidOrder({
+        orderId,
+        wompiTransactionId: `${RUN}-tx-conc`,
+        deferExternalShipment: true,
+      });
+      shipmentResult = {
+        trackingNumber: `${RUN}-CONC-TRK`,
+        trackingUrl: "https://track.test/conc",
+        labelUrl: "https://label.test/conc.pdf",
+        carrier: "envia",
+        estimatedDeliveryAt: null,
+      };
+
+      // 3 workers compiten exactamente al mismo tiempo por generar la guía de la misma orden PAID.
+      const results = await Promise.all([
+        dispatchExternalShipmentForOrder(orderId),
+        dispatchExternalShipmentForOrder(orderId),
+        dispatchExternalShipmentForOrder(orderId),
+      ]);
+
+      expect(shipmentCalls).toHaveLength(1);
+      expect(results.filter((r) => r.status === "ok")).toHaveLength(1);
+      expect(results.filter((r) => r.status === "already_processed")).toHaveLength(2);
+      const finalOrder = await getOrder(orderId);
+      expect(finalOrder?.status).toBe("FULFILLING");
+      expect(finalOrder?.trackingNumber).toBe(`${RUN}-CONC-TRK`);
+    }, 30000);
+
+    it("fencing: claimExternalShipmentSlot solo cede ante lease vencido (>10 min) y nunca si needsReconciliation=true", async () => {
+      const variantId = await makeVariant(5, "FENCE");
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 40000 }], {
+        numberTag: "FENCE",
+      });
+      await processPaidOrder({
+        orderId,
+        wompiTransactionId: `${RUN}-tx-fence`,
+        deferExternalShipment: true,
+      });
+      const order = await prisma.order.findUniqueOrThrow({
+        where: { id: orderId },
+        select: { number: true },
+      });
+      const t0 = new Date("2026-11-23T12:00:00Z");
+
+      const first = await claimExternalShipmentSlot({ id: orderId, number: order.number }, t0);
+      expect(first.claimed).toBe(true);
+
+      // Dentro de la ventana de 10 min → segundo caller es rechazado.
+      const withinLease = await claimExternalShipmentSlot(
+        { id: orderId, number: order.number },
+        new Date(t0.getTime() + STALE_CLAIM_MS - 1000),
+      );
+      expect(withinLease.claimed).toBe(false);
+
+      // Si needsReconciliation=true (ej. timeout 20s), ni siquiera tras vencer el lease se re-reclama.
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { needsReconciliation: true, reconciliationReason: "Timeout 20s" },
+      });
+      const reconBlocked = await claimExternalShipmentSlot(
+        { id: orderId, number: order.number },
+        new Date(t0.getTime() + STALE_CLAIM_MS + 60_000),
+      );
+      expect(reconBlocked.claimed).toBe(false);
+
+      // Al limpiar needsReconciliation, el lease vencido sí se puede recuperar.
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { needsReconciliation: false, reconciliationReason: null },
+      });
+      const reclaimed = await claimExternalShipmentSlot(
+        { id: orderId, number: order.number },
+        new Date(t0.getTime() + STALE_CLAIM_MS + 60_000),
+      );
+      expect(reclaimed.claimed).toBe(true);
+    }, 30000);
+
+    it("recoverPendingExternalShipments recupera órdenes cuando after() falla o se interrumpe con lease vencido", async () => {
+      process.env.AVEONLINE_USUARIO = "test-user";
+      process.env.AVEONLINE_CLAVE = "test-pass";
+
+      const v1 = await makeVariant(5, "REC-ERR");
+      const v2 = await makeVariant(5, "REC-CRASH");
+      const v3 = await makeVariant(5, "REC-TIMEOUT");
+
+      const oFailedAfter = await makePendingOrder([{ variantId: v1, qty: 1, unitPrice: 40000 }], {
+        numberTag: "REC-ERR",
+      });
+      const oCrashedAfter = await makePendingOrder([{ variantId: v2, qty: 1, unitPrice: 40000 }], {
+        numberTag: "REC-CRASH",
+      });
+      const oTimeoutRecon = await makePendingOrder([{ variantId: v3, qty: 1, unitPrice: 40000 }], {
+        numberTag: "REC-TIMEOUT",
+      });
+
+      // Las 3 pasan a PAID con despacho diferido.
+      await processPaidOrder({
+        orderId: oFailedAfter,
+        wompiTransactionId: `${RUN}-tx-r1`,
+        deferExternalShipment: true,
+      });
+      await processPaidOrder({
+        orderId: oCrashedAfter,
+        wompiTransactionId: `${RUN}-tx-r2`,
+        deferExternalShipment: true,
+      });
+      await processPaidOrder({
+        orderId: oTimeoutRecon,
+        wompiTransactionId: `${RUN}-tx-r3`,
+        deferExternalShipment: true,
+      });
+
+      // 1) oFailedAfter: after() corrió pero Aveonline lanzó error explícito → liberó shipmentClaimedAt=null.
+      shipmentShouldThrow = new Error("Aveonline 503 temporal");
+      const firstAttempt = await dispatchExternalShipmentForOrder(oFailedAfter);
+      expect(firstAttempt.status).toBe("shipment_failed");
+      expect((await getOrder(oFailedAfter))?.shipmentClaimedAt).toBeNull();
+      shipmentShouldThrow = null;
+
+      // 2) oCrashedAfter: simula lambda muerta a mitad de after() (lease >10 min vencido, needsReconciliation=false).
+      await prisma.order.update({
+        where: { id: oCrashedAfter },
+        data: { shipmentClaimedAt: new Date(Date.now() - STALE_CLAIM_MS - 60_000) },
+      });
+
+      // 3) oTimeoutRecon: timeout de 20s marcó needsReconciliation=true → el job periódico JAMÁS debe reintentarla.
+      await prisma.order.update({
+        where: { id: oTimeoutRecon },
+        data: {
+          shipmentClaimedAt: new Date(Date.now() - STALE_CLAIM_MS - 60_000),
+          needsReconciliation: true,
+          reconciliationReason: "Timeout (>20s) generando la guía Aveonline",
+        },
+      });
+
+      shipmentCalls.length = 0;
+      shipmentResult = {
+        trackingNumber: `${RUN}-RECOVERED-TRK`,
+        trackingUrl: "https://track.test/rec",
+        labelUrl: "https://label.test/rec.pdf",
+        carrier: "envia",
+        estimatedDeliveryAt: null,
+      };
+
+      const recovery = await recoverPendingExternalShipments({
+        minAgeMs: 0,
+        limit: 20,
+      });
+
+      expect(recovery.created).toBeGreaterThanOrEqual(2);
+      expect((await getOrder(oFailedAfter))?.status).toBe("FULFILLING");
+      expect((await getOrder(oFailedAfter))?.trackingNumber).toBe(`${RUN}-RECOVERED-TRK`);
+      expect((await getOrder(oCrashedAfter))?.status).toBe("FULFILLING");
+      expect((await getOrder(oCrashedAfter))?.trackingNumber).toBe(`${RUN}-RECOVERED-TRK`);
+      // La orden con timeout/reconciliación NO fue tocada (cero riesgo de doble guía).
+      expect((await getOrder(oTimeoutRecon))?.status).toBe("PAID");
+      expect((await getOrder(oTimeoutRecon))?.trackingNumber).toBeNull();
     }, 30000);
   });
 });

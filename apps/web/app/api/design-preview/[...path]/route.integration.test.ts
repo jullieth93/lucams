@@ -24,15 +24,29 @@ import { hashBearerToken } from "@/lib/token-hash";
 // ── I/O de Storage mockeado: bytes conocidos por path ──
 const mock = vi.hoisted(() => {
   const objects = new Map<string, Buffer>();
+  const downloadSpy = vi.fn();
+  const arrayBufferSpy = vi.fn();
+  const streamSpy = vi.fn();
   const from = (bucket: string) => ({
     download: async (path: string) => {
+      downloadSpy(bucket, path);
       const buf = objects.get(`${bucket}/${path}`);
-      return buf
-        ? { data: new Blob([new Uint8Array(buf)]), error: null }
-        : { data: null, error: { message: "Object not found" } };
+      if (!buf) return { data: null, error: { message: "Object not found" } };
+      const blob = new Blob([new Uint8Array(buf)]);
+      const origArrayBuffer = blob.arrayBuffer.bind(blob);
+      const origStream = blob.stream.bind(blob);
+      blob.arrayBuffer = (...args: Parameters<Blob["arrayBuffer"]>) => {
+        arrayBufferSpy(bucket, path);
+        return origArrayBuffer(...args);
+      };
+      blob.stream = (...args: Parameters<Blob["stream"]>) => {
+        streamSpy(bucket, path);
+        return origStream(...args);
+      };
+      return { data: blob, error: null };
     },
   });
-  return { objects, from };
+  return { objects, from, downloadSpy, arrayBufferSpy, streamSpy };
 });
 
 // ── Auth mockeada: cada test decide quién llama ──
@@ -99,9 +113,10 @@ let designId = "";
 let ownerCustomerId = "";
 const cleanup: Array<Promise<unknown>> = [];
 
-function req(path: string, opts: { session?: string; query?: string } = {}) {
+function req(path: string, opts: { session?: string; query?: string; ifNoneMatch?: string } = {}) {
   const headers = new Headers();
   if (opts.session) headers.set("cookie", `cart_session=${opts.session}`);
+  if (opts.ifNoneMatch) headers.set("if-none-match", opts.ifNoneMatch);
   return new Request(`http://localhost/api/design-preview/${path}${opts.query ?? ""}`, { headers });
 }
 
@@ -231,12 +246,47 @@ describe.skipIf(!hasDb)("GET /api/design-preview — autorización (LUC-SEC-001)
     );
   });
 
-  it("dueño por cookie cart_session → 200 con los bytes y cache privado", async () => {
+  it("dueño por cookie cart_session → 200 en streaming (sin arrayBuffer) con ETag y cache privado", async () => {
+    mock.arrayBufferSpy.mockClear();
+    mock.streamSpy.mockClear();
     const res = await call(`${designId}/preview.png`, { session: OWNER_SESSION });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
     expect(res.headers.get("cache-control")).toContain("private");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("vary")).toBe("Cookie");
+    expect(res.headers.get("etag")).toMatch(/^W\/"[a-f0-9]{24}"$/);
+    expect(res.headers.get("content-length")).toBe(String(CLEAN_BYTES.byteLength));
+    expect(mock.streamSpy).toHaveBeenCalledTimes(1);
+    expect(mock.arrayBufferSpy).not.toHaveBeenCalled();
     expect(Buffer.from(await res.arrayBuffer()).equals(CLEAN_BYTES)).toBe(true);
+  });
+
+  it("If-None-Match coincidente (exacto, sin W/ y lista) → 304 Not Modified sin tocar Storage", async () => {
+    const first = await call(`${designId}/preview.png`, { session: OWNER_SESSION });
+    const etag = first.headers.get("etag")!;
+    expect(etag).toMatch(/^W\/"[a-f0-9]{24}"$/);
+
+    mock.downloadSpy.mockClear();
+    const strongForm = etag.slice(2); // '"<hex>"'
+    const res = await call(`${designId}/preview.png`, {
+      session: OWNER_SESSION,
+      ifNoneMatch: `"other-etag", ${strongForm}`,
+    });
+    expect(res.status).toBe(304);
+    expect(res.headers.get("etag")).toBe(etag);
+    expect(res.headers.get("cache-control")).toContain("private");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(mock.downloadSpy).not.toHaveBeenCalled();
+  });
+
+  it("If-None-Match con acceso no autorizado sigue devolviendo 404 sin ETag (sin oráculo)", async () => {
+    const res = await call(`${designId}/preview.png`, {
+      session: OTHER_SESSION,
+      ifNoneMatch: "*",
+    });
+    expect(res.status).toBe(404);
+    expect(res.headers.get("etag")).toBeNull();
   });
 
   it("dueño por customer autenticado → 200", async () => {

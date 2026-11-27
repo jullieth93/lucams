@@ -17,6 +17,7 @@ import {
   STORAGE_MANIFEST_KEY_RE,
   STORAGE_TRANSIENT_RE,
   buildManifest,
+  storageManifestCoverageError,
   buildTarHeader,
   parseTarHeader,
   tarPaddingSize,
@@ -261,5 +262,66 @@ describe("minimal ustar encode/decode", () => {
     expect(entries).toBe(3);
     expect(bytes).toBe(1512);
     expect(seen).toEqual(files.map((f) => f.name));
+  });
+});
+
+describe("storageManifestCoverageError — cobertura de los 5 buckets (Fase 4 · #17)", () => {
+  const manifestKey = "db-storage/lucams-2026-11-23T071300Z.manifest.json";
+  const fullEntries = DEFAULT_STORAGE_BUCKETS.map((bucket, idx) => ({
+    bucket,
+    objects: idx === 0 ? 5 : 0,
+    bytes: idx === 0 ? 4096 : 0,
+    key: `db-storage/${bucket}/lucams-2026-11-23T071300Z.tar.gz.gpg`,
+    encryptedBytes: 512,
+  }));
+
+  it("acepta un manifiesto con los 5 buckets válidos", () => {
+    expect(
+      storageManifestCoverageError({
+        manifestKey,
+        manifestBuckets: fullEntries,
+      }),
+    ).toBeNull();
+  });
+
+  it("falla si falta alguno de los 5 buckets", () => {
+    const partial = fullEntries.filter((e) => e.bucket !== "production-assets");
+    const err = storageManifestCoverageError({
+      manifestKey,
+      manifestBuckets: partial,
+    });
+    expect(err).toContain("production-assets");
+    expect(err).toContain("5-bucket coverage");
+  });
+
+  it("falla si hay buckets duplicados o entradas malformadas (encryptedBytes <= 0 o llave inválida)", () => {
+    const dupErr = storageManifestCoverageError({
+      manifestKey,
+      manifestBuckets: [...fullEntries, fullEntries[0]!],
+    });
+    expect(dupErr).toContain("duplicate buckets");
+
+    const badKey = fullEntries.map((e) =>
+      e.bucket === "cms-media" ? { ...e, key: "db-storage/cms-media/not-valid.zip" } : e,
+    );
+    expect(storageManifestCoverageError({ manifestKey, manifestBuckets: badKey })).toContain(
+      "invalid entries",
+    );
+
+    const zeroEnc = fullEntries.map((e) =>
+      e.bucket === "design-previews" ? { ...e, encryptedBytes: 0 } : e,
+    );
+    expect(storageManifestCoverageError({ manifestKey, manifestBuckets: zeroEnc })).toContain(
+      "invalid entries",
+    );
+
+    const crossBucket = fullEntries.map((e) =>
+      e.bucket === "production-assets"
+        ? { ...e, key: "db-storage/cms-media/lucams-2026-11-23T071300Z.tar.gz.gpg" }
+        : e,
+    );
+    expect(storageManifestCoverageError({ manifestKey, manifestBuckets: crossBucket })).toContain(
+      "invalid entries",
+    );
   });
 });

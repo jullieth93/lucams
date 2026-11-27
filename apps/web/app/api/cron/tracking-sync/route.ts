@@ -14,6 +14,7 @@
 
 import type { NextRequest } from "next/server";
 import { syncActiveShipmentTracking } from "@/features/shipping/tracking-sync";
+import { recoverPendingExternalShipments } from "@/features/orders/saga";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
 import { recordCronHeartbeat } from "@/features/observability/cron-heartbeat";
@@ -31,9 +32,16 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const result = await syncActiveShipmentTracking();
+    // Fase 4 (#8): respaldo periódico idempotente para órdenes PAID sin guía
+    // cuyo callback `after()` falló o fue interrumpido antes de emitir en Aveonline.
+    // Presupuesto compartido (≤45 s útiles dentro de maxDuration = 60) para garantizar
+    // que syncActiveShipmentTracking y recordCronHeartbeat completen siempre.
+    const startedAt = Date.now();
+    const pendingShipments = await recoverPendingExternalShipments({ budgetMs: 15_000 });
+    const trackingBudgetMs = Math.max(5_000, 45_000 - (Date.now() - startedAt));
+    const result = await syncActiveShipmentTracking({ budgetMs: trackingBudgetMs });
     await recordCronHeartbeat("tracking-sync"); // #15 dead-man switch (solo en éxito)
-    return Response.json({ ok: true, ...result });
+    return Response.json({ ok: true, ...result, pendingShipments });
   } catch (err) {
     logger.error({
       event: "cron.tracking_sync.fail",

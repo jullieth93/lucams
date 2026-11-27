@@ -30,7 +30,7 @@ import {
   compressImageForUpload,
   shrinkToFitUploadBudget,
   UPLOAD_PAYLOAD_BUDGET_BYTES,
-} from "@/app/estudio/[slug]/client-image-compress";
+} from "@/lib/client-image-compress";
 
 export type CmsMediaLite = {
   id: string;

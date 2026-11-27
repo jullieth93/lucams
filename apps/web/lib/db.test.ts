@@ -31,9 +31,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_CONNECTION_LIMIT,
   DEFAULT_POOL_TIMEOUT_S,
+  isInsideInteractiveTx,
   isRetryableConnectionError,
   parseConnectionLimit,
   parsePoolTimeout,
+  runInInteractiveTxScope,
   runWithDbRetry,
   withConnectionLimit,
 } from "@lucams/db";
@@ -187,5 +189,23 @@ describe("runWithDbRetry", () => {
       "boom",
     );
     expect(sleeps).toEqual([300, 600]);
+  });
+
+  it("NO duerme ni reintenta dentro de una transacción interactiva ($transaction)", async () => {
+    const sleeps: number[] = [];
+    const fn = vi.fn(async () => {
+      expect(isInsideInteractiveTx()).toBe(true);
+      throw errWithCode("P1017");
+    });
+
+    await expect(
+      runInInteractiveTxScope(() =>
+        runWithDbRetry(fn, { sleep: async (ms) => void sleeps.push(ms) }),
+      ),
+    ).rejects.toThrow("boom");
+
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(sleeps).toEqual([]);
+    expect(isInsideInteractiveTx()).toBe(false);
   });
 });

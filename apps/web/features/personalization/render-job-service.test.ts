@@ -75,6 +75,8 @@ const { state, MockNeedsKonva } = vi.hoisted(() => {
         hasImage: boolean;
       }[],
       productVariants: [] as { id: string; price: number; stock: number; attributes: unknown }[],
+      /** Cuántas veces se llamó download() por storageUrl en Storage. */
+      downloadCalls: [] as string[],
     },
   };
 });
@@ -102,8 +104,9 @@ function applyJobData(job: NonNullable<typeof state.job>, data: JobPatch) {
   job.updatedAt = new Date();
 }
 
-vi.mock("@/lib/db", () => ({
-  prisma: {
+vi.mock("@/lib/db", () => {
+  const prismaMock = {
+    $transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(prismaMock),
     renderJob: {
       findFirst: async ({ where }: { where: Record<string, unknown> }) => {
         const j = state.job;
@@ -121,7 +124,15 @@ vi.mock("@/lib/db", () => ({
           });
           if (!ok) return null;
         }
-        return { id: j.id, status: j.status };
+        return {
+          id: j.id,
+          designId: j.designId,
+          status: j.status,
+          attempts: j.attempts,
+          doneUnits: j.doneUnits,
+          totalUnits: j.totalUnits,
+          updatedAt: j.updatedAt,
+        };
       },
       findUnique: async ({ where }: { where: { designId?: string; id?: string } }) => {
         const j = state.job;
@@ -134,12 +145,27 @@ vi.mock("@/lib/db", () => ({
         where,
         data,
       }: {
-        where: { id?: string; status?: string };
+        where: {
+          id?: string;
+          status?: string;
+          updatedAt?: Date | { lt?: Date };
+          startedAt?: Date | null;
+        };
         data: JobPatch;
       }) => {
         const j = state.job;
         if (!j || j.id !== where.id) return { count: 0 };
         if (where.status && j.status !== where.status) return { count: 0 };
+        if (where.updatedAt instanceof Date) {
+          if (j.updatedAt.getTime() !== where.updatedAt.getTime()) return { count: 0 };
+        } else if (where.updatedAt?.lt) {
+          if (!(j.updatedAt < where.updatedAt.lt)) return { count: 0 };
+        }
+        if (where.startedAt !== undefined) {
+          const expectedTs = where.startedAt ? where.startedAt.getTime() : null;
+          const actualTs = j.startedAt ? j.startedAt.getTime() : null;
+          if (expectedTs !== actualTs) return { count: 0 };
+        }
         applyJobData(j, data);
         return { count: 1 };
       },
@@ -195,8 +221,9 @@ vi.mock("@/lib/db", () => ({
     letterTileSet: {
       findFirst: async () => state.letterTileSet,
     },
-  },
-}));
+  };
+  return { prisma: prismaMock };
+});
 
 vi.mock("@/lib/supabase/service", () => ({
   supabaseService: {
@@ -206,10 +233,13 @@ vi.mock("@/lib/supabase/service", () => ({
           state.uploads.push({ bucket, path, bytes: Buffer.from(body) });
           return { data: { path }, error: null };
         },
-        download: async () => ({
-          data: { arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer },
-          error: null,
-        }),
+        download: async (path: string) => {
+          state.downloadCalls.push(path);
+          return {
+            data: { arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer },
+            error: null,
+          };
+        },
       }),
     },
   },
@@ -217,10 +247,16 @@ vi.mock("@/lib/supabase/service", () => ({
 
 vi.mock("./production-render", () => ({
   RenderNeedsKonvaError: MockNeedsKonva,
-  renderProductionSlots: async (opts: { slots: { slotIndex: number }[] }) => {
+  renderProductionSlots: async (opts: {
+    slots: { slotIndex: number; assetId?: string | null }[];
+    loadAsset?: (assetId: string) => Promise<Buffer | null>;
+  }) => {
     if (state.renderMode === "konva") throw new MockNeedsKonva("forzado por el test");
     if (state.renderMode === "generic") throw new Error("storage cayó (forzado por el test)");
-    for (const s of opts.slots) state.renderedSlotIndexes.push(s.slotIndex);
+    for (const s of opts.slots) {
+      if (s.assetId && opts.loadAsset) await opts.loadAsset(s.assetId);
+      state.renderedSlotIndexes.push(s.slotIndex);
+    }
     return opts.slots.map((s) => Buffer.from(`rendered-${s.slotIndex}`));
   },
 }));
@@ -344,6 +380,7 @@ beforeEach(() => {
   state.tileRenderMode = "ok";
   state.renderedTiles = [];
   state.productVariants = [];
+  state.downloadCalls = [];
 });
 
 describe("staticClientFallbackReason", () => {
@@ -561,6 +598,74 @@ describe("processRenderJobs — máquina de estados", () => {
     seedJob({ status: "FAILED" });
     const res = await processRenderJobs({ onlyDesignId: "design_1" });
     expect(res.claimed).toBe(0);
+  });
+
+  it("claim atómico en lease PROCESSING vencido: dos workers concurrentes → solo uno gana el claim", async () => {
+    seedDesign(2);
+    const staleDate = new Date(Date.now() - 10 * 60 * 1000);
+    seedJob({
+      status: "PROCESSING",
+      totalUnits: 2,
+      doneUnits: 0,
+      attempts: 0,
+      updatedAt: staleDate,
+    });
+
+    const [r1, r2] = await Promise.all([processRenderJobs({}), processRenderJobs({})]);
+    expect(r1.claimed + r2.claimed).toBe(1);
+    expect(r1.reclaimed + r2.reclaimed).toBe(1);
+    expect(r1.done + r2.done).toBe(1);
+    expect(state.job).toMatchObject({ status: "DONE", attempts: 1, doneUnits: 2 });
+  });
+
+  it("onlyDesignId NO secuestra un job activamente en PROCESSING (lease fresco)", async () => {
+    seedDesign(2);
+    seedJob({
+      status: "PROCESSING",
+      totalUnits: 2,
+      doneUnits: 1,
+      attempts: 0,
+      updatedAt: new Date(), // fresco (< 5 min)
+    });
+
+    const res = await processRenderJobs({ onlyDesignId: "design_1" });
+    expect(res).toMatchObject({ claimed: 0, done: 0, failed: 0 });
+    expect(state.job).toMatchObject({ status: "PROCESSING", attempts: 0, doneUnits: 1 });
+  });
+
+  it("corta bucle infinito de crash/OOM: lease PROCESSING vencido con attempts agotados cierra FAILED terminal", async () => {
+    seedDesign(3);
+    const staleDate = new Date(Date.now() - 10 * 60 * 1000);
+    // Ya corrieron 3 pasadas (inicial attempts=0 + 2 reclamos -> attempts=2) y la 3ª murió por OOM.
+    seedJob({
+      status: "PROCESSING",
+      totalUnits: 3,
+      doneUnits: 1,
+      attempts: RENDER_JOB_MAX_ATTEMPTS - 1,
+      updatedAt: staleDate,
+    });
+
+    const res = await processRenderJobs({});
+    expect(res).toMatchObject({ claimed: 0, failed: 1 });
+    expect(state.job).toMatchObject({
+      status: "FAILED",
+      attempts: RENDER_JOB_MAX_ATTEMPTS,
+    });
+    expect(state.capturedErrors).toHaveLength(1);
+    expect(state.renderedSlotIndexes).toHaveLength(0);
+  });
+
+  it("caché acotada en loadAsset: múltiples slots con el mismo assetId descargan una sola vez de Storage", async () => {
+    seedDesign(3);
+    // Los 3 slots reutilizan exactamente asset_0.
+    (state.design!.canvasData.slots as { assetId: string }[]).forEach((s) => {
+      s.assetId = "asset_0";
+    });
+    seedJob({ totalUnits: 3 });
+
+    const res = await processRenderJobs({ onlyDesignId: "design_1" });
+    expect(res).toMatchObject({ claimed: 1, done: 1 });
+    expect(state.downloadCalls).toEqual(["owner/design_1/0.png"]);
   });
 });
 

@@ -39,7 +39,11 @@ import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit
 // real son unos pocos KB; 64 KB es holgura generosa). El límite de plataforma
 // queda como segunda capa.
 const WOMPI_MAX_BODY_BYTES = 64 * 1024;
-import { processPaidOrder, processFailedPaymentOrder } from "@/features/orders/saga";
+import {
+  processPaidOrder,
+  processFailedPaymentOrder,
+  scheduleExternalShipmentAfterResponse,
+} from "@/features/orders/saga";
 import {
   findOrderIdByWompiReference,
   isWompiTransactionOlderThanOrder,
@@ -331,11 +335,16 @@ export async function POST(req: Request) {
       const result = await processPaidOrder({
         orderId: order.id,
         wompiTransactionId: transaction.id,
+        deferExternalShipment: true,
       });
+      if (result.shipmentDeferred) {
+        scheduleExternalShipmentAfterResponse(order.id);
+      }
       logger.info({
         event: "webhook.wompi.processed_approved",
         orderNumber: order.number,
         sagaStatus: result.status,
+        shipmentDeferred: Boolean(result.shipmentDeferred),
         trackingNumber: result.trackingNumber ?? null,
         reason: result.reason ?? null,
       });

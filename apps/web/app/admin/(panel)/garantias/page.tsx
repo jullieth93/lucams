@@ -712,20 +712,39 @@ export default async function AdminGarantiasPage({ searchParams }: { searchParam
                   )}
 
                   {c.status === "RESOLVED" && c.resolutionType === "REFUND" && (
-                    <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[11px] text-amber-800">
-                      <strong>Devolución del dinero manual:</strong> el reembolso por garantía se
-                      emite en Wompi o transferencia bancaria. Verifica que quede constancia en{" "}
-                      {canOpenOrders ? (
-                        <Link
-                          href={`/admin/pedidos/${encodeURIComponent(c.orderNumber)}`}
-                          className="font-semibold underline"
-                        >
-                          el pedido {c.orderNumber}
-                        </Link>
+                    <p
+                      className={`mt-2 rounded-lg border px-3 py-2 text-[11px] ${
+                        c.refundAmount && c.refundedAt
+                          ? "border-emerald-200 bg-emerald-50/80 text-emerald-900"
+                          : "border-amber-200 bg-amber-50/80 text-amber-800"
+                      }`}
+                    >
+                      {c.refundAmount && c.refundedAt ? (
+                        <>
+                          <strong>Reembolso registrado:</strong> {formatCOP(c.refundAmount)} por{" "}
+                          {c.refundMethod === "BANK_TRANSFER"
+                            ? "transferencia bancaria"
+                            : "reversa Wompi"}{" "}
+                          el {formatDateTimeCO(c.refundedAt)} (descontado automáticamente en
+                          Finanzas y LTV).
+                        </>
                       ) : (
-                        <span>el pedido {c.orderNumber}</span>
+                        <>
+                          <strong>Devolución histórica sin monto registrado:</strong> verifica que
+                          quede constancia en{" "}
+                          {canOpenOrders ? (
+                            <Link
+                              href={`/admin/pedidos/${encodeURIComponent(c.orderNumber)}`}
+                              className="font-semibold underline"
+                            >
+                              el pedido {c.orderNumber}
+                            </Link>
+                          ) : (
+                            <span>el pedido {c.orderNumber}</span>
+                          )}
+                          .
+                        </>
                       )}
-                      .
                     </p>
                   )}
 
@@ -741,6 +760,8 @@ export default async function AdminGarantiasPage({ searchParams }: { searchParam
                       status={c.status}
                       resolutionType={c.resolutionType}
                       canRefund={canRefund}
+                      maxRefundCents={c.maxRefundCents}
+                      suggestedRefundCents={c.suggestedRefundCents}
                       assignedToAdminId={c.assignedToAdmin?.id ?? null}
                       currentAdminId={session.admin.id}
                       assignableAdmins={assignableAdmins}

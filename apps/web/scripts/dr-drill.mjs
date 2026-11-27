@@ -48,6 +48,8 @@ import {
   summarizeRestoreErrors,
   dumpCopyRowCounts,
   backupFreshnessError,
+  inspectAuthDumpIntegrity,
+  hasAuthRestoreDrift,
   DEFAULT_MAX_BACKUP_AGE_HOURS,
 } from "./dr-drill-lib.mjs";
 
@@ -203,10 +205,14 @@ async function main() {
   const { join: joinPath } = await import("node:path");
   const { tmpdir } = await import("node:os");
   const tmpDir = mkdtempSync(joinPath(tmpdir(), "dr-drill-"));
-  const tmp = joinPath(tmpDir, "dump.sql");
-  writeFileSync(tmp, sql, { mode: 0o600 });
-  const restoreRun = await run("psql", [drillUrl, "-v", "ON_ERROR_STOP=0", "-q", "-f", tmp]);
-  rmSync(tmpDir, { recursive: true, force: true });
+  let restoreRun;
+  try {
+    const tmp = joinPath(tmpDir, "dump.sql");
+    writeFileSync(tmp, sql, { mode: 0o600 });
+    restoreRun = await run("psql", [drillUrl, "-v", "ON_ERROR_STOP=0", "-q", "-f", tmp]);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
   // Con ON_ERROR_STOP=0 los errores de statements no mueven el exit code de
   // psql: un código ≠ 0 aquí es FATAL (conexión perdida, archivo ilegible,
   // OOM del cliente) — el restore ni siquiera terminó de correr.
@@ -251,7 +257,8 @@ async function main() {
   //    mágicos por tabla. El piso DRILL_MIN_PRODUCTS queda solo como detector
   //    de dumps vacíos/devastados (el catálogo real son 11 productos desde la
   //    depuración pre-producción del 2026-08-10 — ver cabecera).
-  const dumpRows = dumpCopyRowCounts(sql.toString("utf8"));
+  const sqlText = sql.toString("utf8");
+  const dumpRows = dumpCopyRowCounts(sqlText);
   const tables = [
     "Product",
     "ProductVariant",
@@ -289,6 +296,77 @@ async function main() {
       tables.map((t) => `${t}=${counts[t]}/${dumpRows.get(t)}`).join(" · "),
   );
 
+  // 5. Fase 4 (#17) — presencia e integridad de auth.users y auth.mfa_factors
+  //    (solo conteos agregados, cero PII ni secretos en logs).
+  const minAuthUsers = Number.parseInt(process.env.DRILL_MIN_AUTH_USERS || "1", 10);
+  const authIntegrity = inspectAuthDumpIntegrity(sqlText, {
+    minAuthUsers: Number.isFinite(minAuthUsers) && minAuthUsers >= 0 ? minAuthUsers : 1,
+  });
+  if (!authIntegrity.ok) {
+    throw new Error(
+      `Integridad de Auth fallida en el dump (${latest}):\n  - ${authIntegrity.errors.join("\n  - ")}`,
+    );
+  }
+  for (const authTable of ["auth.users", "auth.mfa_factors"]) {
+    const reg = await run("psql", [
+      drillUrl,
+      "-A",
+      "-t",
+      "-c",
+      `SELECT to_regclass('${authTable}');`,
+    ]);
+    if (reg.code !== 0 || reg.stdout.trim() !== authTable) {
+      throw new Error(
+        `Tabla de sistema "${authTable}" ausente tras el restore (to_regclass="${reg.stdout.trim()}").`,
+      );
+    }
+  }
+  const hasAuthSchemaDrift = hasAuthRestoreDrift(summary);
+  if (!hasAuthSchemaDrift) {
+    const restoredUsersRes = await run("psql", [
+      drillUrl,
+      "-A",
+      "-t",
+      "-c",
+      "SELECT count(*) FROM auth.users;",
+    ]);
+    const restoredMfaRes = await run("psql", [
+      drillUrl,
+      "-A",
+      "-t",
+      "-c",
+      "SELECT count(*) FROM auth.mfa_factors;",
+    ]);
+    const restoredUsers = Number.parseInt(restoredUsersRes.stdout.trim(), 10);
+    const restoredMfa = Number.parseInt(restoredMfaRes.stdout.trim(), 10);
+    if (restoredUsersRes.code !== 0 || Number.isNaN(restoredUsers)) {
+      throw new Error(
+        `No se pudo contar auth.users tras el restore (${restoredUsersRes.stderr.trim()}).`,
+      );
+    }
+    if (restoredMfaRes.code !== 0 || Number.isNaN(restoredMfa)) {
+      throw new Error(
+        `No se pudo contar auth.mfa_factors tras el restore (${restoredMfaRes.stderr.trim()}).`,
+      );
+    }
+    if (restoredUsers !== authIntegrity.usersCount) {
+      throw new Error(
+        `Restore INCOMPLETO en auth.users: restauró ${restoredUsers} filas y el dump trae ${authIntegrity.usersCount}.`,
+      );
+    }
+    if (restoredMfa !== authIntegrity.mfaFactorsCount) {
+      throw new Error(
+        `Restore INCOMPLETO en auth.mfa_factors: restauró ${restoredMfa} filas y el dump trae ${authIntegrity.mfaFactorsCount}.`,
+      );
+    }
+  }
+  console.log(
+    `→ integridad Auth (0 PII): auth.users=${authIntegrity.usersCount} · ` +
+      `auth.mfa_factors=${authIntegrity.mfaFactorsCount} (verified=${authIntegrity.verifiedMfaFactorsCount}, ` +
+      `orphans=${authIntegrity.orphanMfaFactors}) · activeAdminsChecked=${authIntegrity.activeAdminsChecked}` +
+      (hasAuthSchemaDrift ? " [conteos BD omitidos por drift GoTrue de la imagen del contenedor]" : " [conteos BD verificados]"),
+  );
+
   if (counts.Product < minProducts) {
     throw new Error(
       `Sanidad fallida: Product=${counts.Product} < piso ${minProducts}. ` +
@@ -297,7 +375,7 @@ async function main() {
   }
   console.log(
     `✓ DR drill OK: ${latest} restaura COMPLETO (conteos = filas COPY del dump, ` +
-      `0 errores inesperados) y el catálogo vuelve (Product ≥ ${minProducts}).`,
+      `auth.users + auth.mfa_factors íntegros, 0 errores inesperados) y el catálogo vuelve (Product ≥ ${minProducts}).`,
   );
 }
 

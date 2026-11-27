@@ -17,7 +17,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Pause, Play, ShoppingBag, Star } from "lucide-react";
 import { useAutoplayWhenVisible } from "@/components/home/use-autoplay-when-visible";
-import { usePrefersReducedMotion } from "@/app/estudio/[slug]/use-prefers-reduced-motion";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import type { StorefrontReview } from "@/features/reviews/public-service";
 
 export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
