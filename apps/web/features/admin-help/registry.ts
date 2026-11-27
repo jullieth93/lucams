@@ -17,6 +17,7 @@ import { MARKETING_GUIDES } from "./content/marketing";
 import { ONBOARDING_GUIDES } from "./content/onboarding";
 import { OPERATION_GUIDES } from "./content/operations";
 import { ADMIN_PLAYBOOKS } from "./content/playbooks";
+import { ADMIN_RELEASE_NOTES, RELEASE_NOTES_PROGRESS_GUIDE_ID } from "./content/release-notes";
 import { SALES_GUIDES } from "./content/sales";
 import { SUPPORT_GUIDES } from "./content/support";
 import { HELP_ROUTE_ALIASES, cleanAdminPathname, resolveSubrouteFromList } from "./route-matcher";
@@ -32,12 +33,15 @@ import type {
   AdminDailyRoutine,
   AdminGlossaryEntry,
   AdminHelpIndexItem,
+  AdminHelpProgress,
   AdminHelpRouteEntry,
   AdminModuleGuide,
   AdminOnboardingGuide,
   AdminPlaybook,
   AdminPlaybookIndexItem,
   AdminQuickRule,
+  AdminReleaseNote,
+  AdminReleaseSummary,
   AdminRoleMatrixRow,
   AdminSubrouteFocus,
 } from "./types";
@@ -56,7 +60,9 @@ export const ADMIN_MODULE_GUIDES: AdminModuleGuide[] = [
 
 export {
   ADMIN_PLAYBOOKS,
+  ADMIN_RELEASE_NOTES,
   ADMIN_SHORTCUTS,
+  RELEASE_NOTES_PROGRESS_GUIDE_ID,
   buildModuleSteps,
   buildOnboardingSteps,
   buildPlaybookSteps,
@@ -316,4 +322,48 @@ export function searchGlossary(
     const haystack = normalizeHelpText(`${entry.term} ${entry.definition}`);
     return terms.every((term) => haystack.includes(term));
   });
+}
+
+/**
+ * Filtra las novedades de la plataforma según las capacidades RBAC efectivas
+ * del rol: ningún rol recibe ítems sobre módulos que no puede abrir.
+ */
+export function getReleaseNotesForRole(role: AdminRole): AdminReleaseNote[] {
+  return ADMIN_RELEASE_NOTES.map((release) => ({
+    ...release,
+    items: release.items.filter((item) => {
+      // Fail-closed (deny-by-default): todo ítem debe declarar al menos un alcance RBAC.
+      if (!item.roles && !item.route && !item.guideId) return false;
+      if (item.roles && !item.roles.includes(role)) return false;
+      if (item.route && !canAccessAdminPath(role, item.route)) return false;
+      if (item.guideId && !getModuleGuideById(item.guideId, role)) return false;
+      return true;
+    }),
+  })).filter((release) => release.items.length > 0);
+}
+
+export function getLatestReleaseVersionForRole(role: AdminRole): number {
+  const notes = getReleaseNotesForRole(role);
+  return notes.reduce((max, note) => Math.max(max, note.version), 0);
+}
+
+export function getUnreadReleaseSummary(
+  role: AdminRole,
+  progress: AdminHelpProgress[],
+): AdminReleaseSummary {
+  const notes = getReleaseNotesForRole(role);
+  if (notes.length === 0) {
+    return { latestVersion: 0, unreadCount: 0, latestTitle: null, latestDate: null };
+  }
+  const seenVersion =
+    progress.find((item) => item.guideId === RELEASE_NOTES_PROGRESS_GUIDE_ID)?.version ?? 0;
+  const unreadNotes = notes.filter((note) => note.version > seenVersion);
+  const unreadCount = unreadNotes.reduce((acc, note) => acc + note.items.length, 0);
+  const latest = notes[0]!;
+  return {
+    latestVersion: latest.version,
+    unreadCount,
+    latestTitle: latest.items.length === 1 ? latest.items[0]!.title : latest.title,
+    latestDate: latest.date,
+  };
 }

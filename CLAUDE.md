@@ -114,3 +114,12 @@ producción exclusivamente en modo **`full`** (`ADR-204`; referencia a superar: 
   actualizados **en la misma sesión** [`docs/STATE.md`](docs/STATE.md) y
   [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md) (más [`docs/OPERATIONS.md`](docs/OPERATIONS.md) si toca
   entorno, semillas, scripts o base de datos).
+- **Sincronización obligatoria del Centro de Ayuda (`/admin/ayuda`) y Novedades por rol (`ADR-197`):**
+  toda alta, modificación de comportamiento, campo, métrica, estado, permiso o procedimiento bajo
+  `/admin/*` exige actualizar **en el mismo PR**:
+  1. La guía correspondiente en `apps/web/features/admin-help/content/*.ts` (subiendo su `version` y
+     ajustando procedimientos/FAQs si aplica).
+  2. El registro de novedades en `apps/web/features/admin-help/content/release-notes.ts` (sumando o
+     incrementando `version` para que el aviso y la pestaña **5. Novedades** informen
+     automáticamente a **todos los roles afectados**, incluido `SUPERADMIN`).
+  3. Confirmar `registry.test.ts` en verde sin fugas RBAC ni términos obsoletos.

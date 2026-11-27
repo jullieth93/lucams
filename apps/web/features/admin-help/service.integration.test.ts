@@ -3,9 +3,11 @@ import { prisma } from "@/lib/db";
 import {
   getAdminHelpProgress,
   getContextualHelpForPathname,
+  markAdminReleaseNotesSeen,
   saveAdminHelpProgress,
   submitAdminHelpFeedback,
 } from "./service";
+import { getUnreadReleaseSummary } from "./registry";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const RUN = `helpitest_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
@@ -103,5 +105,16 @@ describe.skipIf(!hasDb)("admin help persistence", { timeout: 30_000 }, () => {
     const rows = await getAdminHelpProgress(admin.id);
     expect(rows).toHaveLength(2);
     expect(await prisma.adminHelpFeedback.count({ where: { adminUserId: admin.id } })).toBe(1);
+
+    // Novedades por rol: inicialmente hay no leídas; al marcarlas como leídas persiste en BD y limpia el contador
+    expect(getUnreadReleaseSummary("CMS_EDITOR", rows).unreadCount).toBeGreaterThan(0);
+    const seen = await markAdminReleaseNotesSeen({
+      adminUserId: admin.id,
+      role: "CMS_EDITOR",
+    });
+    expect(seen).toMatchObject({ guideId: "platform-release-notes" });
+    expect(seen?.version).toBeGreaterThan(0);
+    const rowsAfterSeen = await getAdminHelpProgress(admin.id);
+    expect(getUnreadReleaseSummary("CMS_EDITOR", rowsAfterSeen).unreadCount).toBe(0);
   });
 });

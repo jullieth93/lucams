@@ -12,6 +12,7 @@ import {
 } from "./schemas";
 import {
   getContextualHelpForPathname,
+  markAdminReleaseNotesSeen,
   saveAdminHelpProgress,
   submitAdminHelpFeedback,
 } from "./service";
@@ -97,4 +98,16 @@ export async function submitHelpFeedbackAction(input: unknown): Promise<AdminHel
   revalidatePath("/admin/ayuda");
 
   return { ok: true, message: "Gracias por ayudarnos a mejorar esta guía." };
+}
+
+export async function markReleaseNotesSeenAction(): Promise<AdminHelpActionResult> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
+  const progress = await markAdminReleaseNotesSeen({
+    adminUserId: session.admin.id,
+    role: session.admin.role,
+  });
+  if (!progress) return { ok: false, message: "No hay novedades pendientes para tu rol." };
+  revalidatePath("/admin/ayuda");
+  revalidatePath("/admin", "layout");
+  return { ok: true, progress, message: "Novedades marcadas como leídas." };
 }

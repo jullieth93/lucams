@@ -399,6 +399,11 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
         definition:
           "Cualquier buzón marcado con rebote duro o queja en Resend queda bloqueado para recordatorios.",
       },
+      {
+        term: "Re-cotización automática al retomar checkout (`ADR-211`)",
+        definition:
+          "Si un precio o escala mayorista cambió mientras el carrito estaba abandonado, al reabrir el checkout el servidor actualiza al precio vigente y muestra un aviso claro al comprador antes de pagar.",
+      },
     ],
     sections: [
       {
@@ -537,8 +542,9 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
       "recordatorio",
       "configurar recuperación automática",
       "checkout",
+      "re-cotización",
     ],
-    version: 3,
+    version: 4,
   },
   {
     id: "carritos-configuracion",
