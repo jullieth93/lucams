@@ -149,7 +149,7 @@ export function VariantForm({
             placeholder="0"
             mono
             error={state?.fieldErrors?.safetyStock?.[0]}
-            hint="Colchón reservado frente a canales externos y feeds (disponible neto = stock físico − reserva). En lucamsshop.com se vende hasta agotar el stock físico."
+            hint="Colchón reservado frente a todos los canales (disponible neto = máx(0, stock físico − reserva) en lucamsshop.com, canales externos y feeds)."
           />
         )}
         {/* El stock se edita con el botón rápido del listado de opciones y en

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { shouldSeedDefaultPhysicalSpecs } from "./catalog-defaults.mjs";
 import { NEW_PRODUCTS, CHRISTMAS_ORNAMENT_SLUG, MINI_BOOK_SLUG } from "./new-products.mjs";
@@ -65,4 +66,18 @@ test("conserva los precios unitarios, promociones y logística confirmados", () 
   const miniLibros = NEW_PRODUCTS.find((p) => p.slug === MINI_BOOK_SLUG);
   assert.equal(miniLibros.isActive, false);
   assert.ok(miniLibros.variants.every((variant) => variant.price === miniLibros.basePrice));
+});
+
+test("ADR-208 Paso 1B: seed-catalog-canonical no reintroduce el buffer MADE_TO_ORDER_STOCK", () => {
+  const seedSource = readFileSync(new URL("../seed-catalog-canonical.mjs", import.meta.url), "utf8");
+  assert.equal(
+    seedSource.includes("MADE_TO_ORDER_STOCK"),
+    false,
+    "seed-catalog-canonical.mjs no debe referenciar ni sembrar MADE_TO_ORDER_STOCK",
+  );
+  assert.equal(
+    /stock:\s*100_?000/.test(seedSource),
+    false,
+    "seed-catalog-canonical.mjs no debe escribir stock sintético 100_000",
+  );
 });
