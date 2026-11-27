@@ -63,7 +63,12 @@ test.beforeAll(async () => {
     if (!active.get(slug)) continue;
     const variants = await prisma.productVariant.findMany({
       where: { product: { slug }, isActive: true, deletedAt: null },
-      select: { attributes: true, stock: true },
+      select: {
+        attributes: true,
+        stock: true,
+        safetyStock: true,
+        product: { select: { fulfillmentMode: true } },
+      },
     });
     hasSinIman.set(
       slug,
@@ -83,7 +88,16 @@ test.beforeAll(async () => {
       );
     };
     packRangeAll.set(slug, visibleSteps(variants));
-    packSteps.set(slug, visibleSteps(variants.filter((v) => v.stock > 0)));
+    packSteps.set(
+      slug,
+      visibleSteps(
+        variants.filter(
+          (v) =>
+            v.product.fulfillmentMode === "MADE_TO_ORDER" ||
+            v.stock - Math.max(0, v.safetyStock) > 0,
+        ),
+      ),
+    );
   }
 });
 

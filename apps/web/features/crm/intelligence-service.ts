@@ -41,11 +41,17 @@ export type ProductIntentSignal = {
   productId: string;
   productName: string;
   productSlug: string;
+  fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
   wishlistCount: number;
   pendingBackInStockCount: number;
   totalIntentScore: number;
-  availableStock: number;
-  stockAlert: "RESTOCK_READY_TO_NOTIFY" | "LOW_STOCK_HIGH_INTENT" | "OUT_OF_STOCK_DEMAND" | "OK";
+  availableStock: number | null;
+  stockAlert:
+    | "RESTOCK_READY_TO_NOTIFY"
+    | "LOW_STOCK_HIGH_INTENT"
+    | "OUT_OF_STOCK_DEMAND"
+    | "MADE_TO_ORDER"
+    | "OK";
 };
 
 export type UtmChannelPerformance = {
@@ -176,6 +182,7 @@ export async function getCrmBehavioralIntelligence(
     product_id: string;
     product_name: string;
     product_slug: string;
+    fulfillment_mode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
     wishlist_count: number;
     bis_count: number;
     available_stock: number;
@@ -289,6 +296,7 @@ export async function getCrmBehavioralIntelligence(
         p."id" AS product_id,
         p."name" AS product_name,
         p."slug" AS product_slug,
+        p."fulfillmentMode"::text AS fulfillment_mode,
         COALESCE(wl.cnt, 0)::int AS wishlist_count,
         COALESCE(bis.cnt, 0)::int AS bis_count,
         COALESCE(stk.available_stock, 0)::int AS available_stock
@@ -523,6 +531,21 @@ export async function getCrmBehavioralIntelligence(
     intentSignals: intentRows.map((r) => {
       const wishlistCount = Number(r.wishlist_count);
       const pendingBackInStockCount = Number(r.bis_count);
+      const fulfillmentMode =
+        r.fulfillment_mode === "MADE_TO_ORDER" ? "MADE_TO_ORDER" : "PHYSICAL_STOCK";
+      if (fulfillmentMode === "MADE_TO_ORDER") {
+        return {
+          productId: r.product_id,
+          productName: r.product_name,
+          productSlug: r.product_slug,
+          fulfillmentMode,
+          wishlistCount,
+          pendingBackInStockCount,
+          totalIntentScore: wishlistCount + pendingBackInStockCount * 2,
+          availableStock: null,
+          stockAlert: "MADE_TO_ORDER" as const,
+        };
+      }
       const availableStock = Number(r.available_stock);
       let stockAlert: ProductIntentSignal["stockAlert"] = "OK";
       if (availableStock === 0 && (pendingBackInStockCount > 0 || wishlistCount > 0)) {
@@ -536,6 +559,7 @@ export async function getCrmBehavioralIntelligence(
         productId: r.product_id,
         productName: r.product_name,
         productSlug: r.product_slug,
+        fulfillmentMode,
         wishlistCount,
         pendingBackInStockCount,
         totalIntentScore: wishlistCount + pendingBackInStockCount * 2,

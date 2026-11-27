@@ -292,9 +292,6 @@ test.afterAll(async () => {
     }
     await safe(db().letterTile.deleteMany({ where: { setId: t.setId, char: t.char } }));
   }
-  for (const [variantId, stock] of originalStockByVariant) {
-    await db().productVariant.update({ where: { id: variantId }, data: { stock } });
-  }
   if (adminId) await safe(db().adminUser.deleteMany({ where: { id: adminId } }));
   if (adminAuthUserId) await safe(supabase.auth.admin.deleteUser(adminAuthUserId));
   if (adminCtx) await adminCtx.close();
@@ -326,24 +323,6 @@ async function collectStudioDesigns(): Promise<void> {
   }
 }
 
-const originalStockByVariant = new Map<string, number>();
-async function ensureTemporaryStock(productId: string): Promise<void> {
-  const variants = await db().productVariant.findMany({
-    where: { productId, deletedAt: null },
-    select: { id: true, stock: true },
-  });
-  if (variants.length === 0) throw new Error(`Producto sin variantes: ${productId}`);
-  for (const variant of variants) {
-    if (!originalStockByVariant.has(variant.id)) {
-      originalStockByVariant.set(variant.id, variant.stock);
-    }
-  }
-  await db().productVariant.updateMany({
-    where: { id: { in: variants.map((variant) => variant.id) } },
-    data: { stock: 100_000 },
-  });
-}
-
 // ──────────── 1. Finalize letter-set ×10 sets (láminas 300 DPI por tickets) ────────────
 
 test("finalize letter-set ×10: las láminas van por Storage y NINGÚN request a la app supera 4.5 MB", async ({
@@ -351,7 +330,6 @@ test("finalize letter-set ×10: las láminas van por Storage y NINGÚN request a
 }) => {
   test.skip(!letterset, "no hay producto con superficie letterset activo en el ambiente");
   studioProductIds.add(letterset!.id);
-  await ensureTemporaryStock(letterset!.id);
   const tracked = await trackRequests(page);
 
   await page.goto(`/estudio/${letterset!.slug}?copies=10`, { waitUntil: "domcontentloaded" });
@@ -465,7 +443,6 @@ test("finalize nombre: restaurar/activar por admin UI, lámina por Storage al ca
 
   try {
     // 2. Flujo del Estudio: nombre → Vista previa → confirmar → carrito.
-    await ensureTemporaryStock(initial!.id);
     await page.goto(`/estudio/${NAME_PRODUCT_SLUG}`, { waitUntil: "domcontentloaded" });
     await dismissCookies(page);
     const input = page.locator("input.uppercase").first();

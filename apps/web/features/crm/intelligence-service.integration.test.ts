@@ -16,8 +16,17 @@ describe.skipIf(!HAS_DB)(
     const createdProductIds: string[] = [];
     const createdCategoryIds: string[] = [];
     const createdBisIds: string[] = [];
+    const createdCustomerIds: string[] = [];
 
     afterAll(async () => {
+      if (createdCustomerIds.length > 0) {
+        await prisma.wishlistItem
+          .deleteMany({ where: { customerId: { in: createdCustomerIds } } })
+          .catch(() => {});
+        await prisma.customer
+          .deleteMany({ where: { id: { in: createdCustomerIds } } })
+          .catch(() => {});
+      }
       if (createdBisIds.length > 0) {
         await prisma.backInStockSubscription
           .deleteMany({ where: { id: { in: createdBisIds } } })
@@ -232,6 +241,7 @@ describe.skipIf(!HAS_DB)(
       // 4. Señal de intención vs stock agotado
       const myIntent = report.intentSignals.find((s) => s.productId === product.id);
       if (myIntent) {
+        expect(myIntent.fulfillmentMode).toBe("PHYSICAL_STOCK");
         expect(myIntent.pendingBackInStockCount).toBe(1);
         expect(myIntent.availableStock).toBe(0);
         expect(myIntent.stockAlert).toBe("OUT_OF_STOCK_DEMAND");
@@ -242,6 +252,70 @@ describe.skipIf(!HAS_DB)(
       expect(report.assistedRecovery.crmTouchedRevenueCents).toBeGreaterThanOrEqual(16500000);
       expect(report.assistedRecovery.wonOpportunitiesCount).toBeGreaterThanOrEqual(1);
       expect(report.assistedRecovery.wonOpportunitiesRevenueCents).toBeGreaterThanOrEqual(20000000);
+    });
+
+    it("clasifica productos MADE_TO_ORDER en favoritos como MADE_TO_ORDER y nunca como agotados con stock 0", async () => {
+      const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+      const category = await prisma.category.create({
+        data: {
+          name: `itest Cat MTO ${suffix}`,
+          slug: `itest-cat-mto-${suffix}`,
+        },
+      });
+      createdCategoryIds.push(category.id);
+
+      const mtoProduct = await prisma.product.create({
+        data: {
+          name: `itest Separador MTO ${suffix}`,
+          slug: `itest-sep-mto-${suffix}`,
+          sku: `ITEST-MTO-${suffix}`,
+          description: "Producto bajo pedido en favoritos",
+          basePrice: 1200000,
+          categoryId: category.id,
+          isPersonalizable: true,
+          personalizationKind: "PHOTO_PACK",
+          fulfillmentMode: "MADE_TO_ORDER",
+        },
+      });
+      createdProductIds.push(mtoProduct.id);
+
+      const mtoVariant = await prisma.productVariant.create({
+        data: {
+          productId: mtoProduct.id,
+          sku: `ITEST-VAR-MTO-${suffix}`,
+          name: "Base",
+          price: 1200000,
+          stock: 0,
+          safetyStock: 0,
+          isActive: true,
+          attributes: {},
+        },
+      });
+      createdVariantIds.push(mtoVariant.id);
+
+      // 20 favoritos garantizan que el producto entre en el top 8 de intentSignals
+      for (let i = 0; i < 20; i += 1) {
+        const customer = await prisma.customer.create({
+          data: {
+            email: `itest-mto-wl-${suffix}-${i}@lucams.test`,
+            firstName: `Cliente MTO ${i}`,
+            supabaseUserId: `itest-mto-uid-${suffix}-${i}`,
+            referralCode: `MTO${suffix.slice(-5)}${i}`,
+          },
+        });
+        createdCustomerIds.push(customer.id);
+        await prisma.wishlistItem.create({
+          data: { customerId: customer.id, productId: mtoProduct.id },
+        });
+      }
+
+      const report = await getCrmBehavioralIntelligence(30);
+      const sig = report.intentSignals.find((s) => s.productId === mtoProduct.id);
+      expect(sig).toBeDefined();
+      expect(sig?.fulfillmentMode).toBe("MADE_TO_ORDER");
+      expect(sig?.wishlistCount).toBe(20);
+      expect(sig?.availableStock).toBeNull();
+      expect(sig?.stockAlert).toBe("MADE_TO_ORDER");
     });
   },
 );

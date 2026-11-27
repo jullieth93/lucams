@@ -12,6 +12,7 @@ vi.mock("next/cache", () => ({
 
 import { prisma } from "@/lib/db";
 import { createProduct, createVariant, updateProduct, updateVariant } from "./service";
+import { setVariantStockAdmin, VariantStockError } from "./stock-admin";
 import type { ProductCreateInput } from "./schemas";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -121,5 +122,28 @@ describe.skipIf(!hasDb)("catálogo omnicanal — PostgreSQL real", { timeout: 30
 
     const variantUpdated = await updateVariant({ id: variant.id, safetyStock: 4 }, null);
     expect(variantUpdated.safetyStock).toBe(4);
+  });
+
+  it("setVariantStockAdmin rechaza ajustes manuales sobre variantes MADE_TO_ORDER sin escribir InventoryLog", async () => {
+    const product = await createProduct(productInput({ personalizationKind: "PHOTO_PACK" }), null);
+    const variant = await prisma.productVariant.findFirstOrThrow({
+      where: { productId: product.id },
+      select: { id: true, stock: true },
+    });
+    expect(variant.stock).toBe(0);
+
+    await expect(
+      setVariantStockAdmin({ variantId: variant.id, newStock: 25, adminId: "admin-test" }),
+    ).rejects.toSatisfy(
+      (err: unknown) => err instanceof VariantStockError && err.code === "made_to_order",
+    );
+
+    const after = await prisma.productVariant.findUniqueOrThrow({
+      where: { id: variant.id },
+      select: { stock: true },
+    });
+    expect(after.stock).toBe(0);
+    const logs = await prisma.inventoryLog.count({ where: { variantId: variant.id } });
+    expect(logs).toBe(0);
   });
 });
