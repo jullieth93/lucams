@@ -358,7 +358,8 @@ apps/web/app/api/
 │   ├── lifecycle/route.ts                          # Motor Lifecycle cada 15 min: inscripciones, pasos, consentimiento, salidas y atribución (maxDuration=60)
 │   ├── review-request/route.ts                     # Envío diario de invitación a reseñar pedidos entregados
 │   └── tracking-sync/route.ts                      # Polling de respaldo cada 15 min de guías activas contra Aveonline (maxDuration=60)
-├── design-preview/[...path]/route.ts               # Proxy de control de acceso al bucket privado `design-previews` (dueño, admin o bearer token válido)
+├── b2b-proof/[proposalId]/route.ts                 # Gateway privado en streaming + ETag/304 de muestras digitales B2B (`design-previews`, ADR-210)
+├── design-preview/[...path]/route.ts               # Gateway privado en streaming + ETag/304 del bucket `design-previews` (dueño, admin o bearer token válido)
 ├── designs/
 │   ├── save-canvas/route.ts                        # Guardado de payload JSON del lienzo del Estudio con límite estricto de cuerpo
 │   └── [designId]/render-status/route.ts           # Sondeo de avance (`doneUnits / totalUnits`) del RenderJob asociado al diseño

@@ -32,7 +32,7 @@ import type {
 } from "../types";
 import { previewFacePairOfUnit } from "./faces";
 import { loadImage } from "./image-utils";
-import { loadCanvasImage } from "./canvas-image";
+import { loadCanvasImage } from "@/lib/canvas-image";
 import { canvasToPreviewDataUrl } from "./preview-encode";
 import type { PreviewUnitRange } from "./preview-units";
 import { generateGridLayout } from "./grid-layout";

@@ -170,16 +170,16 @@ Script de solo lectura (`SELECT` contra `pg_tables`, `information_schema.role_ta
 
 Ningún secreto ni URL se escribe en texto plano dentro de `cron.job`. Los bloques SQL leen en tiempo de ejecución desde **Supabase Vault** (`vault.decrypted_secrets`):
 
-| Proyecto Supabase | Nombre exacto en `vault.secrets` | Consumidor SQL                           | Propósito                                                                                                     |
-| ----------------- | -------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| **PRD** y **STG** | `cron_base_url`                  | Migraciones `015`..`048` (`pg_cron` app) | URL base sin barra final (`https://lucamsshop.com` en PRD; URL Preview en STG).                               |
-| **PRD** y **STG** | `cron_secret`                    | Migraciones `015`..`048` (`pg_cron` app) | Enviado en el header `x-cron-secret` hacia `GET /api/cron/*` (idéntico a `CRON_SECRET` de Vercel).            |
-| **Solo STG**      | `cron_vercel_bypass`             | Migraciones `023`..`048` (`pg_cron` app) | Secreto de _Protection Bypass for Automation_, enviado como `x-vercel-protection-bypass` cuando existe.       |
-| **Solo STG**      | `monitor_prd_base_url`           | `scripts/monitor-uptime-stg.sql`         | URL pública de Producción (`https://lucamsshop.com`) sondeada cada 10 min desde STG.                          |
-| **Solo STG**      | `monitor_cron_secret`            | `scripts/monitor-uptime-stg.sql`         | `CRON_SECRET` de **Producción** para autenticar `/api/health/crons` y `POST /api/cron/monitor-heartbeat`.     |
-| **Solo STG**      | `monitor_resend_api_key`         | `scripts/monitor-uptime-stg.sql`         | API key de Resend para disparar correos de caída/recuperación directo desde STG aunque Vercel PRD esté caído. |
-| **Solo STG**      | `monitor_email_from`             | `scripts/monitor-uptime-stg.sql`         | Remitente verificado para las alertas del monitor externo.                                                    |
-| **Solo STG**      | `monitor_alert_email`            | `scripts/monitor-uptime-stg.sql`         | Buzón destinatario de alertas críticas de caída de PRD.                                                       |
+| Proyecto Supabase | Nombre exacto en `vault.secrets` | Consumidor SQL                           | Propósito                                                                                                                                         |
+| ----------------- | -------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **PRD** y **STG** | `cron_base_url`                  | Migraciones `015`..`048` (`pg_cron` app) | URL base sin barra final (`https://lucamsshop.com` en PRD; URL Preview en STG).                                                                   |
+| **PRD** y **STG** | `cron_secret`                    | Migraciones `015`..`048` (`pg_cron` app) | Enviado en el header `x-cron-secret` hacia `GET /api/cron/*` (idéntico a `CRON_SECRET` de Vercel).                                                |
+| **Solo STG**      | `cron_vercel_bypass`             | Migraciones `023`..`048` (`pg_cron` app) | Secreto de _Protection Bypass for Automation_, enviado como `x-vercel-protection-bypass` cuando existe.                                           |
+| **Solo STG**      | `monitor_prd_base_url`           | `scripts/monitor-uptime-stg.sql`         | URL pública de Producción (`https://lucamsshop.com`) sondeada cada 10 min desde STG.                                                              |
+| **Solo STG**      | `monitor_cron_secret`            | `scripts/monitor-uptime-stg.sql`         | `MONITOR_HEARTBEAT_SECRET` dedicado de **Producción** para autenticar únicamente `POST /api/cron/monitor-heartbeat` (nunca `CRON_SECRET` global). |
+| **Solo STG**      | `monitor_resend_api_key`         | `scripts/monitor-uptime-stg.sql`         | API key de Resend para disparar correos de caída/recuperación directo desde STG aunque Vercel PRD esté caído.                                     |
+| **Solo STG**      | `monitor_email_from`             | `scripts/monitor-uptime-stg.sql`         | Remitente verificado para las alertas del monitor externo.                                                                                        |
+| **Solo STG**      | `monitor_alert_email`            | `scripts/monitor-uptime-stg.sql`         | Buzón destinatario de alertas críticas de caída de PRD.                                                                                           |
 
 ---
 

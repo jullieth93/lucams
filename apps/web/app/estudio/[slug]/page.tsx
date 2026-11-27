@@ -43,7 +43,7 @@ import {
   ALPHABET,
 } from "@/features/personalization/letter-tiles";
 import { listGalleryImages } from "@/features/personalization/design-gallery";
-import { resolveGalleryTag } from "./lib/product-kind";
+import { resolveGalleryTag } from "@/features/personalization/product-kind";
 import { listCartDesignAssetIdsInUse } from "./lib/cart-design-assets.server";
 import { resolveRecoverVariantId } from "./lib/recover-variant";
 import { NameEditor } from "./name-editor";

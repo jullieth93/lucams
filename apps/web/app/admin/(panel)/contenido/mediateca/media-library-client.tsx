@@ -31,7 +31,7 @@ import {
   compressImageForUpload,
   shrinkToFitUploadBudget,
   UPLOAD_PAYLOAD_BUDGET_BYTES,
-} from "@/app/estudio/[slug]/client-image-compress";
+} from "@/lib/client-image-compress";
 
 /** Referencia de uso (misma forma que CmsMediaUsageRef de lib/cms-media.ts). */
 export type MediaUsageRef = {

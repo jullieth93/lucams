@@ -45,7 +45,11 @@ import { ClearCheckoutSession } from "./clear-checkout-session";
 import { AutoRefresh } from "./auto-refresh";
 import { resolveFunnelEditorKind } from "@/features/analytics/funnel-schema";
 import { TrackPurchase } from "@/components/analytics-trackers";
-import { processPaidOrder, flagForeignApprovedPayment } from "@/features/orders/saga";
+import {
+  processPaidOrder,
+  flagForeignApprovedPayment,
+  scheduleExternalShipmentAfterResponse,
+} from "@/features/orders/saga";
 import {
   findOrderIdByWompiReference,
   isWompiTransactionOlderThanOrder,
@@ -68,7 +72,7 @@ import {
   unitNounForLine,
 } from "@/features/personalization/preview-page-labels";
 import { unitCountNounForLine } from "@/features/cart/line-preview";
-import { isBookmarkGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
+import { isBookmarkGalleryTag } from "@/features/personalization/product-kind";
 import { PagedPreviewThumb } from "@/components/paged-preview-thumb";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
@@ -299,11 +303,16 @@ export default async function CheckoutGraciasPage({
         const result = await processPaidOrder({
           orderId,
           wompiTransactionId: tx.id,
+          deferExternalShipment: true,
         });
+        if (result.shipmentDeferred) {
+          scheduleExternalShipmentAfterResponse(orderId);
+        }
         logger.info({
           event: "checkout.gracias.fallback_result",
           orderId,
           status: result.status,
+          shipmentDeferred: Boolean(result.shipmentDeferred),
           trackingNumber: result.trackingNumber ?? null,
         });
         // Re-leer order para mostrar tracking/status actualizado al cliente.

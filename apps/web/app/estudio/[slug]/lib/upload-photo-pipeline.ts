@@ -65,7 +65,7 @@ import {
   compressImageForUpload,
   shrinkToFitUploadBudget,
   UPLOAD_PAYLOAD_BUDGET_BYTES,
-} from "../client-image-compress";
+} from "@/lib/client-image-compress";
 import { isStillBelowMinimum, upscalePhotoForPrint } from "../client-photo-upscale";
 import { parseSizeCm, PX_PER_CM_300DPI } from "../client-photo-upscale-core";
 import { mapWithConcurrency } from "./upload-with-retry";

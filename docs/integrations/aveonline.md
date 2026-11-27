@@ -139,6 +139,13 @@ sequenceDiagram
   end
 ```
 
+### Desacoplamiento con `after()`, recuperación periódica y alerta `> 30 min`
+
+1. **Hot paths sin espera síncrona de Aveonline**: `/api/webhooks/wompi`, `/checkout/gracias`, `/checkout/pago` (`payCodAction`) y la auto-sanación de `expire-pending` invocan `processPaidOrder({ ..., deferExternalShipment: true })` y programan `dispatchExternalShipmentForOrder(orderId)` vía `scheduleExternalShipmentAfterResponse(orderId)` usando `after()` de Next.js 16 (`next/server`). Así la orden queda confirmada en `PAID` con stock descontado antes de tocar la API externa de Aveonline.
+2. **Claim con fencing (`claimExternalShipmentSlot`)**: antes de llamar a `generarGuia2`, el worker reclama atómicamente `Order.shipmentClaimedAt = claimToken` (solo si `deletedAt: null`, `status in ["PAID", "FULFILLING"]`, `trackingNumber: null`, `needsReconciliation: false` y sin claim vigente dentro de `STALE_CLAIM_MS = 10 min`). Al liberar por error no-timeout, `handleCreateShipmentError` exige coincidencia exacta `shipmentClaimedAt = claimToken`, impidiendo que un worker lento borre el claim de otro o cause doble emisión.
+3. **Respaldo periódico automático (`recoverPendingExternalShipments`)**: si el callback de `after()` falla o se interrumpe antes de generar la guía, `GET /api/cron/tracking-sync` ejecuta cada 15 min una fase acotada (`limit = 3`, presupuesto `15 s`, ordenado por `updatedAt ASC`) que reintenta órdenes `PAID` sin guía usando el mismo `claimExternalShipmentSlot` idempotente.
+4. **Alerta operativa `paid_without_shipment_stale`**: si una orden con transportadora externa (`shippingCarrier` distinto de `lucams` y `b2b-manual`) permanece `PAID` sin `trackingNumber` durante más de **30 minutos** (calculado desde `OrderStatusEvent` a `PAID`, con fallback a `createdAt`), `evaluateAlerts` levanta alerta de severidad `alta` en `/admin/notificaciones`.
+
 ### Reglas críticas de `generarGuia2`
 
 1. **`timeoutMs: 20_000` y PROHIBICIÓN absoluta de retry automático**: `generarGuia2` crea un despacho facturable y no ofrece llave de idempotencia en la API de Aveonline. Si supera `20 s`, el servidor pudo haber emitido la guía igual: `saga.ts` **retiene `shipmentClaimedAt`**, registra `shipmentLastError` con `timeout: true` y prende `Order.needsReconciliation = true` para que el equipo verifique en el panel de Aveonline por `dsreferencia` (`order.id`) antes de reintentar.
@@ -249,7 +256,8 @@ sequenceDiagram
 ### 2. Cron de respaldo `GET /api/cron/tracking-sync`
 
 - **Frecuencia**: `4,19,34,49 * * * *` (**cada 15 minutos**, migración `044`, `maxDuration = 60`).
-- **Alcance por corrida**: selecciona hasta **25 órdenes** (`TRACKING_SYNC_BATCH = 25`) creadas en los últimos **90 días**, con `trackingNumber` no nulo y **excluyendo prefijo `INTERNO-`**, que estén activas (`FULFILLING | SHIPPED`) **o** hayan pasado a `DELIVERED` en los últimos **21 días** sin tener todavía un `ShipmentEvent` con `status = "DELIVERED"` (`shipmentEvents: { none: { status: "DELIVERED" } }`, red de convergencia si el webhook `no-ts` o un cierre manual ocurrió antes de que `obtenerEstadoAuth` replicara `ENTREGADA`), priorizando las de `updatedAt` más antiguo.
+- **Fase 1 — Recuperación de guías pendientes**: antes de sondear rastreo, invoca `recoverPendingExternalShipments({ limit: 3, budgetMs: 15_000 })` para reintentar órdenes `PAID` con transportadora externa sin `trackingNumber` (respaldo idempotente si `after()` se interrumpió), y pasa el presupuesto restante (hasta `45 s` acumulados) al sondeo de rastreo.
+- **Fase 2 — Alcance de rastreo por corrida**: selecciona hasta **25 órdenes** (`TRACKING_SYNC_BATCH = 25`) creadas en los últimos **90 días**, con `trackingNumber` no nulo y **excluyendo prefijo `INTERNO-`**, que estén activas (`FULFILLING | SHIPPED`) **o** hayan pasado a `DELIVERED` en los últimos **21 días** sin tener todavía un `ShipmentEvent` con `status = "DELIVERED"` (`shipmentEvents: { none: { status: "DELIVERED" } }`, red de convergencia si el webhook `no-ts` o un cierre manual ocurrió antes de que `obtenerEstadoAuth` replicara `ENTREGADA`), priorizando las de `updatedAt` más antiguo.
 - **Efecto**: consulta `obtenerEstadoAuth` (`POST /nal/v1.0/guia.php`, `timeoutMs: 5_000`, `retry: true`), enriquece `ShipmentEvent` (`source: "POLL"`) con las descripciones operativas (`historicos[].descripcion`) e invoca `processTrackingUpdate` pasando también `descripcion`, `aclaracion` y fecha del hito más reciente para converger despachos, entregas o el detalle interno de novedades.
 
 ### 3. URLs públicas verificadas de rastreo por transportadora (`tracking-urls.ts`)

@@ -23,7 +23,7 @@ import {
   unitNounForLine,
 } from "@/features/personalization/preview-page-labels";
 import { unitCountNounForLine } from "@/features/cart/line-preview";
-import { isBookmarkGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
+import { isBookmarkGalleryTag } from "@/features/personalization/product-kind";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
 import { getCurrentCustomer } from "@/lib/auth";

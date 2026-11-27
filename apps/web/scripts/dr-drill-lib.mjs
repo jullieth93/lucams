@@ -336,3 +336,201 @@ export function backupFreshnessError({
     `workflow backup.yml (y la regla backup_stale del panel) antes de confiar en este drill.`
   );
 }
+
+// ─── Integridad de auth.users y auth.mfa_factors en el dump (Fase 4 · #17) ────
+
+const QUALIFIED_COPY_HEADER_RE =
+  /^COPY\s+(?:(?:"([^"]+)"|([\w$]+))\.)?(?:"([^"]+)"|([\w$]+))\s+\((.+)\)\s+FROM\s+stdin;$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseCopyColumns(rawCols) {
+  return rawCols.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+}
+
+/**
+ * Inspecciona los bloques COPY de `auth.users`, `auth.mfa_factors` y
+ * `public."AdminUser"` dentro del SQL descifrado (sin emitir jamás PII ni
+ * secretos en resultados o errores).
+ *
+ * Verifica:
+ *   1. Presencia estructural de COPY `auth.users` (con columnas `id`, `email`) y
+ *      COPY `auth.mfa_factors` (con columnas `id`, `user_id`, `factor_type`, `status`).
+ *   2. Exactitud de columnas por fila TSV (detecta truncamiento/corrupción de COPY).
+ *   3. UUID válido en cada `auth.users.id` y mínimo `minAuthUsers` (default 1).
+ *   4. Integridad referencial: 0 filas huérfanas en `auth.mfa_factors.user_id`
+ *      respecto al conjunto `auth.users.id` del mismo dump.
+ *   5. Vínculo de `AdminUser` activos (`isActive = t` y `deletedAt = \N`): cada
+ *      `supabaseUserId` (UUID) debe existir en `auth.users.id`.
+ */
+export function inspectAuthDumpIntegrity(sqlText, { minAuthUsers = 1 } = {}) {
+  const TARGETS = new Set(["auth.users", "auth.mfa_factors", "public.AdminUser"]);
+  const blocks = new Map();
+  let current = null;
+
+  for (const line of String(sqlText).replaceAll("\r\n", "\n").split("\n")) {
+    if (current === null) {
+      const m = line.match(QUALIFIED_COPY_HEADER_RE);
+      if (!m) continue;
+      const schema = m[1] ?? m[2] ?? "public";
+      const table = m[3] ?? m[4];
+      const key = `${schema}.${table}`;
+      if (!TARGETS.has(key)) continue;
+      const columns = parseCopyColumns(m[5]);
+      current = { key, columns, rows: [] };
+      blocks.set(key, current);
+    } else if (line === "\\.") {
+      current = null;
+    } else {
+      current.rows.push(line);
+    }
+  }
+
+  const errors = [];
+
+  if (current !== null) {
+    errors.push(`Bloque COPY de "${current.key}" truncado (falta terminador "\\.").`);
+  }
+
+  const usersBlock = blocks.get("auth.users");
+  const mfaBlock = blocks.get("auth.mfa_factors");
+  const adminBlock = blocks.get("public.AdminUser");
+
+  const userIds = new Set();
+  let invalidUserRows = 0;
+
+  if (!usersBlock) {
+    errors.push('El dump no incluye el bloque COPY de "auth.users".');
+  } else {
+    const idIdx = usersBlock.columns.indexOf("id");
+    const emailIdx = usersBlock.columns.indexOf("email");
+    if (idIdx === -1 || emailIdx === -1) {
+      errors.push('COPY "auth.users" carece de columnas estructurales requeridas (id, email).');
+    } else {
+      for (const row of usersBlock.rows) {
+        const fields = row.split("\t");
+        if (fields.length !== usersBlock.columns.length) {
+          invalidUserRows += 1;
+          continue;
+        }
+        const id = fields[idIdx];
+        if (!UUID_RE.test(id)) {
+          invalidUserRows += 1;
+          continue;
+        }
+        userIds.add(id.toLowerCase());
+      }
+      if (invalidUserRows > 0) {
+        errors.push(`COPY "auth.users" contiene ${invalidUserRows} fila(s) corruptas o sin UUID válido.`);
+      }
+      if (usersBlock.rows.length < minAuthUsers) {
+        errors.push(
+          `COPY "auth.users" contiene ${usersBlock.rows.length} usuario(s) (< mínimo ${minAuthUsers}).`,
+        );
+      }
+    }
+  }
+
+  let mfaFactorsCount = 0;
+  let verifiedMfaFactorsCount = 0;
+  let invalidMfaRows = 0;
+  let orphanMfaFactors = 0;
+
+  if (!mfaBlock) {
+    errors.push('El dump no incluye el bloque COPY de "auth.mfa_factors".');
+  } else {
+    const idIdx = mfaBlock.columns.indexOf("id");
+    const userIdIdx = mfaBlock.columns.indexOf("user_id");
+    const factorTypeIdx = mfaBlock.columns.indexOf("factor_type");
+    const statusIdx = mfaBlock.columns.indexOf("status");
+    if (idIdx === -1 || userIdIdx === -1 || factorTypeIdx === -1 || statusIdx === -1) {
+      errors.push(
+        'COPY "auth.mfa_factors" carece de columnas estructurales requeridas (id, user_id, factor_type, status).',
+      );
+    } else {
+      mfaFactorsCount = mfaBlock.rows.length;
+      for (const row of mfaBlock.rows) {
+        const fields = row.split("\t");
+        if (fields.length !== mfaBlock.columns.length) {
+          invalidMfaRows += 1;
+          continue;
+        }
+        const id = fields[idIdx];
+        const userId = fields[userIdIdx];
+        const status = fields[statusIdx];
+        if (!UUID_RE.test(id) || !UUID_RE.test(userId)) {
+          invalidMfaRows += 1;
+          continue;
+        }
+        if (status === "verified") verifiedMfaFactorsCount += 1;
+        if (usersBlock && !userIds.has(userId.toLowerCase())) {
+          orphanMfaFactors += 1;
+        }
+      }
+      if (invalidMfaRows > 0) {
+        errors.push(
+          `COPY "auth.mfa_factors" contiene ${invalidMfaRows} fila(s) corruptas o sin UUID válido.`,
+        );
+      }
+      if (orphanMfaFactors > 0) {
+        errors.push(
+          `Integridad referencial rota: ${orphanMfaFactors} factor(es) en "auth.mfa_factors" apuntan a usuarios ausentes en "auth.users".`,
+        );
+      }
+    }
+  }
+
+  let activeAdminsChecked = 0;
+  let missingActiveAdminAuthLinks = 0;
+  if (adminBlock && usersBlock) {
+    const supaIdIdx = adminBlock.columns.indexOf("supabaseUserId");
+    const activeIdx = adminBlock.columns.indexOf("isActive");
+    const deletedIdx = adminBlock.columns.indexOf("deletedAt");
+    if (supaIdIdx !== -1) {
+      for (const row of adminBlock.rows) {
+        const fields = row.split("\t");
+        if (fields.length !== adminBlock.columns.length) continue;
+        const isActive = activeIdx === -1 ? true : fields[activeIdx] === "t";
+        const isDeleted = deletedIdx !== -1 && fields[deletedIdx] !== "\\N";
+        if (!isActive || isDeleted) continue;
+        const supaId = fields[supaIdIdx];
+        if (!UUID_RE.test(supaId)) continue;
+        activeAdminsChecked += 1;
+        if (!userIds.has(supaId.toLowerCase())) {
+          missingActiveAdminAuthLinks += 1;
+        }
+      }
+      if (missingActiveAdminAuthLinks > 0) {
+        errors.push(
+          `Integridad Auth↔Admin rota: ${missingActiveAdminAuthLinks} AdminUser activo(s) no tienen registro correspondiente en "auth.users".`,
+        );
+      }
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    usersPresent: Boolean(usersBlock),
+    mfaFactorsPresent: Boolean(mfaBlock),
+    usersCount: usersBlock ? usersBlock.rows.length : 0,
+    mfaFactorsCount,
+    verifiedMfaFactorsCount,
+    orphanMfaFactors,
+    activeAdminsChecked,
+    missingActiveAdminAuthLinks,
+    errors,
+  };
+}
+
+/**
+ * Devuelve `true` solo si el restore encontró colisiones reales de esquema/FK
+ * de GoTrue (`auth-column-drift` o `auth-data-fk`) que impidieron cargar filas
+ * en `auth.users` / `auth.mfa_factors`. Un simple `relation "users" already exists`
+ * (`internal-relation`) NO indica drift de columnas y no debe desactivar la
+ * verificación de conteos en Postgres.
+ */
+export function hasAuthRestoreDrift(summary) {
+  return [...summary.expected.keys()].some((msg) => {
+    const { kind } = classifyRestoreError(msg);
+    return kind === "auth-column-drift" || kind === "auth-data-fk";
+  });
+}

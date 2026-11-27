@@ -78,6 +78,7 @@ import {
   listRelatedProducts,
   listStorefrontVolumeTiers,
 } from "@/features/products/public-service";
+import { netAvailableStock } from "@/features/products/fulfillment";
 import { getProductRatingAggregate } from "@/features/reviews/public-service";
 
 type Params = Promise<{ slug: string }>;
@@ -179,7 +180,9 @@ export default async function ProductoDetallePage({
   // carrito), que reaccionan al selector SIN esperar el re-render del RSC.
   const variantIds = selectable.map((v) => v.id);
   const firstVariantId = selectedVariant?.id ?? null;
-  const stockByVariantId = Object.fromEntries(selectable.map((v) => [v.id, v.stock]));
+  const stockByVariantId = Object.fromEntries(
+    selectable.map((v) => [v.id, netAvailableStock(v.stock, v.safetyStock)]),
+  );
 
   // D1 (Lucy 2026-06-27): la galería muestra las fotos de la OPCIÓN elegida si
   // tiene propias; si no, hereda las del producto (espeja la herencia de price).

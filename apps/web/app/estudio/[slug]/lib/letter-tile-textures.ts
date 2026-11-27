@@ -21,7 +21,7 @@
 
 import type { LetterTileMap } from "@/features/personalization/letter-tiles";
 import type { Magnet3D } from "../fridge-3d-view";
-import { loadCanvasImage } from "./canvas-image";
+import { loadCanvasImage } from "@/lib/canvas-image";
 import {
   LETTER_TILE_CORNER_RATIO,
   LETTER_TILE_FALLBACK_COLOR,

@@ -43,10 +43,26 @@ export const COLLECTED_REVENUE_ORDER_WHERE = {
   ],
 };
 
+/**
+ * Filtro Prisma canónico de reembolsos en efectivo por garantía (`WarrantyClaim`)
+ * sobre órdenes aún contabilizadas en `COLLECTED_REVENUE_ORDER_WHERE`.
+ *
+ * Regla anti-doble-descuento: si la orden completa ya pasó a `Order.status = "REFUNDED"`
+ * (fuera de `COLLECTED_REVENUE_ORDER_WHERE`), NO se vuelve a descontar `refundAmount`.
+ */
+export const COLLECTED_WARRANTY_REFUND_WHERE = {
+  status: "RESOLVED" as const,
+  resolutionType: "REFUND" as const,
+  refundAmount: { gt: 0 },
+  refundedAt: { not: null },
+  orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
+};
+
 export interface NetRevenueBreakdown {
   grossCollectedCents: number;
   codShortfallCents: number;
   retractRefundedCents: number;
+  warrantyRefundedCents: number;
   withholdingCents: number;
   totalDeductionsCents: number;
   netCollectedCents: number;
@@ -54,7 +70,7 @@ export interface NetRevenueBreakdown {
 
 /**
  * Conciliación pura del ingreso neto real en centavos COP (`[FIN-01]` + `ADR-210`):
- *  `Cobrado bruto (Wompi + Pago Directo B2B + COD entregado) − Reembolsos retracto − Faltante COD − Retenciones B2B`.
+ *  `Cobrado bruto (Wompi + Pago Directo B2B + COD entregado) − Reembolsos retracto − Reembolsos garantía − Faltante COD − Retenciones B2B`.
  */
 export function computeNetCollectedRevenue(input: {
   wompiCollectedCents: number;
@@ -62,6 +78,7 @@ export function computeNetCollectedRevenue(input: {
   codDeliveredCents: number;
   codShortfallCents: number;
   retractRefundedCents: number;
+  warrantyRefundedCents?: number;
   withholdingCents?: number;
 }): NetRevenueBreakdown {
   const grossCollectedCents = Math.max(
@@ -72,13 +89,16 @@ export function computeNetCollectedRevenue(input: {
   );
   const codShortfallCents = Math.max(0, Math.trunc(input.codShortfallCents));
   const retractRefundedCents = Math.max(0, Math.trunc(input.retractRefundedCents));
+  const warrantyRefundedCents = Math.max(0, Math.trunc(input.warrantyRefundedCents ?? 0));
   const withholdingCents = Math.max(0, Math.trunc(input.withholdingCents ?? 0));
-  const totalDeductionsCents = codShortfallCents + retractRefundedCents + withholdingCents;
+  const totalDeductionsCents =
+    codShortfallCents + retractRefundedCents + warrantyRefundedCents + withholdingCents;
   const netCollectedCents = Math.max(0, grossCollectedCents - totalDeductionsCents);
   return {
     grossCollectedCents,
     codShortfallCents,
     retractRefundedCents,
+    warrantyRefundedCents,
     withholdingCents,
     totalDeductionsCents,
     netCollectedCents,
@@ -269,6 +289,7 @@ export interface PeriodAggregates {
   byMethod: PaymentMethodAggregate[];
   totalCents: number;
   retractRefundedCents: number;
+  warrantyRefundedCents: number;
   netTotalCents: number;
   previousNetTotalCents: number;
   netRevenueDeltaPct: number | null;
@@ -281,12 +302,12 @@ export interface PeriodAggregates {
 
 /**
  * Consulta ventana actual + anterior y agrega en memoria —
- * incluye deducción de retractos reembolsados en la ventana sobre órdenes que
+ * incluye deducción de retractos y garantías reembolsados en la ventana sobre órdenes que
  * permanecen en `COLLECTED_REVENUE_ORDER_WHERE` (sin doble resta si la orden pasó a REFUNDED).
  */
 export async function getPeriodAggregates(period: FinanzasPeriod): Promise<PeriodAggregates> {
   const range = resolvePeriodRange(period, new Date());
-  const [rows, retractAgg, prevRetractAgg] = await Promise.all([
+  const [rows, retractAgg, prevRetractAgg, warrantyAgg, prevWarrantyAgg] = await Promise.all([
     prisma.order.findMany({
       where: {
         ...COLLECTED_REVENUE_ORDER_WHERE,
@@ -310,20 +331,39 @@ export async function getPeriodAggregates(period: FinanzasPeriod): Promise<Perio
       },
       _sum: { refundAmount: true },
     }),
+    prisma.warrantyClaim.aggregate({
+      where: {
+        ...COLLECTED_WARRANTY_REFUND_WHERE,
+        refundedAt: { gte: range.from, lte: range.to },
+      },
+      _sum: { refundAmount: true },
+    }),
+    prisma.warrantyClaim.aggregate({
+      where: {
+        ...COLLECTED_WARRANTY_REFUND_WHERE,
+        refundedAt: { gte: range.previousFrom, lt: range.from },
+      },
+      _sum: { refundAmount: true },
+    }),
   ]);
   const current = rows.filter((r) => r.createdAt >= range.from);
   const previous = rows.filter((r) => r.createdAt < range.from);
   const totalCents = current.reduce((acc, r) => acc + r.total, 0);
   const currentWithholdingCents = current.reduce((acc, r) => acc + (r.withholdingCents ?? 0), 0);
   const retractRefundedCents = retractAgg._sum.refundAmount ?? 0;
-  const netTotalCents = Math.max(0, totalCents - retractRefundedCents - currentWithholdingCents);
+  const warrantyRefundedCents = warrantyAgg._sum.refundAmount ?? 0;
+  const netTotalCents = Math.max(
+    0,
+    totalCents - retractRefundedCents - warrantyRefundedCents - currentWithholdingCents,
+  );
 
   const prevGrossCents = previous.reduce((acc, r) => acc + r.total, 0);
   const prevWithholdingCents = previous.reduce((acc, r) => acc + (r.withholdingCents ?? 0), 0);
   const prevRetractCents = prevRetractAgg._sum.refundAmount ?? 0;
+  const prevWarrantyCents = prevWarrantyAgg._sum.refundAmount ?? 0;
   const previousNetTotalCents = Math.max(
     0,
-    prevGrossCents - prevRetractCents - prevWithholdingCents,
+    prevGrossCents - prevRetractCents - prevWarrantyCents - prevWithholdingCents,
   );
 
   const aovCents = computeAov(current);
@@ -333,6 +373,7 @@ export async function getPeriodAggregates(period: FinanzasPeriod): Promise<Perio
     byMethod: aggregateByPaymentMethod(current),
     totalCents,
     retractRefundedCents,
+    warrantyRefundedCents,
     netTotalCents,
     previousNetTotalCents,
     netRevenueDeltaPct: pctChange(netTotalCents, previousNetTotalCents),
@@ -356,6 +397,7 @@ export interface AccountingOrderExportRow {
   taxCents: number;
   totalCents: number;
   retractRefundedCents: number;
+  warrantyRefundedCents?: number;
   withholdingCents?: number;
   wompiReference: string | null;
   wompiTransactionId: string | null;
@@ -420,6 +462,7 @@ export function buildAccountingOrdersCsv(
     "total_bruto_cop",
     "retencion_b2b_cop",
     "reembolso_retracto_cop",
+    "reembolso_garantia_cop",
     "total_neto_cop",
     "referencia_wompi",
     "transaccion_wompi",
@@ -436,7 +479,11 @@ export function buildAccountingOrdersCsv(
 
   const lines = rows.map((row) => {
     const withholdingCents = Math.max(0, row.withholdingCents ?? 0);
-    const netCents = Math.max(0, row.totalCents - row.retractRefundedCents - withholdingCents);
+    const warrantyRefundedCents = Math.max(0, row.warrantyRefundedCents ?? 0);
+    const netCents = Math.max(
+      0,
+      row.totalCents - row.retractRefundedCents - warrantyRefundedCents - withholdingCents,
+    );
     const buyerEmail = redactBuyerEmail ? maskEmail(row.email) : row.email;
     return [
       escapeAccountingCsvCell(row.number),
@@ -451,6 +498,7 @@ export function buildAccountingOrdersCsv(
       centsToCopCsvNumber(row.totalCents),
       centsToCopCsvNumber(withholdingCents),
       centsToCopCsvNumber(row.retractRefundedCents),
+      centsToCopCsvNumber(warrantyRefundedCents),
       centsToCopCsvNumber(netCents),
       escapeAccountingCsvCell(row.wompiReference ?? ""),
       escapeAccountingCsvCell(row.wompiTransactionId ?? ""),
@@ -511,6 +559,15 @@ export async function listCollectedOrdersForExport(
           retractRequest: {
             select: { status: true, refundAmount: true },
           },
+          warrantyClaims: {
+            where: {
+              status: "RESOLVED",
+              resolutionType: "REFUND",
+              refundAmount: { gt: 0 },
+              refundedAt: { not: null },
+            },
+            select: { refundAmount: true },
+          },
         },
       },
     },
@@ -523,6 +580,10 @@ export async function listCollectedOrdersForExport(
       }
       return acc;
     }, 0);
+    const warrantyRefundedCents = order.items.reduce(
+      (acc, item) => acc + item.warrantyClaims.reduce((sum, w) => sum + (w.refundAmount ?? 0), 0),
+      0,
+    );
 
     const codStatus =
       order.paymentMethod === "COD"
@@ -541,6 +602,7 @@ export async function listCollectedOrdersForExport(
       taxCents: order.tax,
       totalCents: order.total,
       retractRefundedCents,
+      warrantyRefundedCents,
       withholdingCents: order.withholdingCents,
       wompiReference: order.wompiReference,
       wompiTransactionId: order.wompiTransactionId,

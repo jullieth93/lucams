@@ -114,7 +114,7 @@ import {
   clearStudioCanvasSnapshot,
   shouldUseCanvasSnapshot,
 } from "./lib/draft-marker";
-import { isBookmarkGalleryTag, resolveGalleryTag } from "./lib/product-kind";
+import { isBookmarkGalleryTag, resolveGalleryTag } from "@/features/personalization/product-kind";
 import { remapCanvasAssetUrls } from "./lib/remap-canvas-assets";
 import { resolveBootTemplate } from "./lib/boot-template";
 import {

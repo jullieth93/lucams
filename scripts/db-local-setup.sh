@@ -27,11 +27,8 @@ psql "$LOCAL_DB" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_cron; 
 echo "→ 2/3 prisma migrate deploy"
 DATABASE_URL="$LOCAL_DB" DIRECT_URL="$LOCAL_DB" pnpm --filter @lucams/db exec prisma migrate deploy
 
-echo "→ 3/3 supabase/migrations (RLS, storage, cron)"
-for f in $(ls supabase/migrations/*.sql | sort); do
-  echo "  · $f"
-  psql "$LOCAL_ADMIN" -v ON_ERROR_STOP=1 -f "$f"
-done
+echo "→ 3/3 supabase/migrations (RLS, storage, cron — idempotente vía _lucams_sql_migrations)"
+bash scripts/apply-supabase-migrations.sh "$LOCAL_ADMIN"
 
 # En el stack LOCAL de desarrollo no hay secretos en Vault (`cron_base_url` /
 # `cron_secret`), así que los jobs HTTP (`net.http_get`) fallarían cada minuto

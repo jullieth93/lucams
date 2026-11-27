@@ -19,13 +19,26 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 const sagaCalls: Array<{
   fn: string;
   orderId: string;
-  wompiTransactionId: string;
+  wompiTransactionId?: string;
+  deferExternalShipment?: boolean;
   reason?: string;
 }> = [];
+let paidOrderResponse: {
+  status: string;
+  trackingNumber?: string;
+  shipmentDeferred?: boolean;
+} = { status: "ok", trackingNumber: "TRACK-X" };
 vi.mock("@/features/orders/saga", () => ({
-  processPaidOrder: async (args: { orderId: string; wompiTransactionId: string }) => {
+  processPaidOrder: async (args: {
+    orderId: string;
+    wompiTransactionId: string;
+    deferExternalShipment?: boolean;
+  }) => {
     sagaCalls.push({ fn: "processPaidOrder", ...args });
-    return { status: "ok", trackingNumber: "TRACK-X" };
+    return paidOrderResponse;
+  },
+  scheduleExternalShipmentAfterResponse: (orderId: string) => {
+    sagaCalls.push({ fn: "scheduleExternalShipmentAfterResponse", orderId });
   },
   processFailedPaymentOrder: async (args: {
     orderId: string;
@@ -160,11 +173,13 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
 
   beforeEach(() => {
     sagaCalls.length = 0;
+    paidOrderResponse = { status: "ok", trackingNumber: "TRACK-X" };
   });
 
-  it("APPROVED con firma y monto válidos → processPaidOrder + 200 + webhookEvent procesado", async () => {
+  it("APPROVED con firma y monto válidos → processPaidOrder(deferExternalShipment:true) + 200 + webhookEvent procesado", async () => {
     const ref = `${RUN}-LCM-APR`;
     const orderId = await makeOrder(ref, 55000);
+    paidOrderResponse = { status: "ok", shipmentDeferred: true };
     const res = await POST(
       req(
         signedEvent({
@@ -176,11 +191,16 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
       ),
     );
     expect(res.status).toBe(200);
-    expect(sagaCalls).toHaveLength(1);
+    expect(sagaCalls).toHaveLength(2);
     expect(sagaCalls[0]).toMatchObject({
       fn: "processPaidOrder",
       orderId,
       wompiTransactionId: `${RUN}-tx1`,
+      deferExternalShipment: true,
+    });
+    expect(sagaCalls[1]).toEqual({
+      fn: "scheduleExternalShipmentAfterResponse",
+      orderId,
     });
     const ev = await prisma.webhookEvent.findFirst({
       where: { source: "WOMPI", externalId: { contains: `${RUN}-tx1` } },

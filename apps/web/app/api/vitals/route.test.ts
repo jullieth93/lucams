@@ -9,22 +9,27 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { rateLimit, webVitalCreate } = vi.hoisted(() => ({
-  rateLimit: vi.fn(async (_key: string, _limit?: number, _windowSeconds?: number) => ({
-    allowed: true,
-    count: 1,
-    resetAt: new Date(),
-  })),
+const { rateLimit, webVitalCreate, webVitalCreateMany } = vi.hoisted(() => ({
+  rateLimit: vi.fn(
+    async (_key: string, _limit?: number, _windowSeconds?: number, _cost?: number) => ({
+      allowed: true,
+      count: 1,
+      resetAt: new Date(),
+    }),
+  ),
   webVitalCreate: vi.fn(async () => ({})),
+  webVitalCreateMany: vi.fn(async () => ({ count: 0 })),
 }));
 
 vi.mock("@/lib/rate-limit", () => ({ rateLimit }));
-vi.mock("@/lib/db", () => ({ prisma: { webVital: { create: webVitalCreate } } }));
+vi.mock("@/lib/db", () => ({
+  prisma: { webVital: { create: webVitalCreate, createMany: webVitalCreateMany } },
+}));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { POST } from "./route";
+import { POST, VITALS_MAX_BATCH_SIZE } from "./route";
 
 const VALID_BODY = {
   name: "LCP",
@@ -229,5 +234,112 @@ describe("POST /api/vitals — target del INP (2026-09-18)", () => {
     expect(webVitalCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({ target: null }),
     });
+  });
+});
+
+describe("POST /api/vitals — soporte de lote acotado (Fase 4 · #15)", () => {
+  it("persiste un lote válido en una sola llamada createMany y mantiene compatibilidad con payload único", async () => {
+    const res = await POST(
+      req({
+        metrics: [
+          { name: "TTFB", value: 180, rating: "good", delta: 180, route: "/" },
+          { name: "FCP", value: 850, rating: "good", delta: 850, route: "/" },
+          {
+            name: "LCP",
+            value: 1450,
+            rating: "good",
+            delta: 1450,
+            route: "/producto/[slug]",
+            target: "img.hero",
+          },
+        ],
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, accepted: 3 });
+    // H-1 anti-amplificación: cobra el costo real de 3 filas en IP-rows y en el backstop global.
+    expect(rateLimit).toHaveBeenCalledWith(expect.stringMatching(/^vitals:rows:ip:/), 120, 60, 3);
+    expect(rateLimit).toHaveBeenCalledWith("vitals:new-row:global", 3000, 300, 3);
+    expect(webVitalCreate).not.toHaveBeenCalled();
+    expect(webVitalCreateMany).toHaveBeenCalledTimes(1);
+    expect(webVitalCreateMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ name: "TTFB", value: 180, route: "/" }),
+        expect.objectContaining({ name: "FCP", value: 850, route: "/" }),
+        expect.objectContaining({ name: "LCP", value: 1450, target: "img.hero" }),
+      ],
+    });
+  });
+
+  it("descarta únicamente métricas fuera de rango dentro de un lote válido", async () => {
+    const res = await POST(
+      req({
+        metrics: [
+          { name: "INP", value: 28_680, rating: "poor", delta: 28_680, route: "/" },
+          { name: "LCP", value: 1200, rating: "good", delta: 1200, route: "/" },
+        ],
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, accepted: 1, dropped: 1 });
+    expect(webVitalCreate).toHaveBeenCalledTimes(1);
+    expect(webVitalCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ name: "LCP", value: 1200 }),
+    });
+  });
+
+  it("rechaza con 400 lote vacío, lote excedido (>VITALS_MAX_BATCH_SIZE) o con campos desconocidos", async () => {
+    const emptyRes = await POST(req({ metrics: [] }));
+    expect(emptyRes.status).toBe(400);
+
+    const oversized = Array.from({ length: VITALS_MAX_BATCH_SIZE + 1 }, () => ({
+      ...VALID_BODY,
+    }));
+    const overRes = await POST(req({ metrics: oversized }));
+    expect(overRes.status).toBe(400);
+
+    const extraFieldRes = await POST(req({ metrics: [VALID_BODY], extra: true }));
+    expect(extraFieldRes.status).toBe(400);
+
+    const malformedItemRes = await POST(
+      req({ metrics: [VALID_BODY, { ...VALID_BODY, name: "INVALID_METRIC" }] }),
+    );
+    expect(malformedItemRes.status).toBe(400);
+
+    expect(webVitalCreate).not.toHaveBeenCalled();
+    expect(webVitalCreateMany).not.toHaveBeenCalled();
+  });
+
+  it("rechaza con 413 un payload que excede el límite de 16 KB", async () => {
+    const huge = new Request("https://lucamsshop.com/api/vitals", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-vercel-forwarded-for": "203.0.113.7",
+      },
+      body: JSON.stringify({ metrics: [VALID_BODY], padding: "x".repeat(17 * 1024) }),
+    });
+    const res = await POST(huge);
+    expect(res.status).toBe(413);
+    expect(webVitalCreate).not.toHaveBeenCalled();
+    expect(webVitalCreateMany).not.toHaveBeenCalled();
+  });
+
+  it("rechaza con 429 si un lote excede el presupuesto por IP de filas (anti-amplificación H-1)", async () => {
+    rateLimit.mockImplementation(async (key: string) =>
+      key.startsWith("vitals:rows:ip:") ? blocked : allowed,
+    );
+    const res = await POST(
+      req({
+        metrics: [
+          { name: "TTFB", value: 180, rating: "good", delta: 180, route: "/" },
+          { name: "LCP", value: 1200, rating: "good", delta: 1200, route: "/" },
+        ],
+      }),
+    );
+    expect(res.status).toBe(429);
+    expect(webVitalCreateMany).not.toHaveBeenCalled();
   });
 });

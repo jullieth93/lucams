@@ -135,6 +135,7 @@ describe("computeNetCollectedRevenue ([FIN-01])", () => {
       grossCollectedCents: 16_000_000,
       codShortfallCents: 500_000,
       retractRefundedCents: 2_500_000,
+      warrantyRefundedCents: 0,
       withholdingCents: 0,
       totalDeductionsCents: 3_000_000,
       netCollectedCents: 13_000_000,
@@ -147,15 +148,17 @@ describe("computeNetCollectedRevenue ([FIN-01])", () => {
         codDeliveredCents: 0,
         codShortfallCents: 0,
         retractRefundedCents: 0,
+        warrantyRefundedCents: 1_200_000,
         withholdingCents: 125_000,
       }),
     ).toEqual({
       grossCollectedCents: 15_000_000,
       codShortfallCents: 0,
       retractRefundedCents: 0,
+      warrantyRefundedCents: 1_200_000,
       withholdingCents: 125_000,
-      totalDeductionsCents: 125_000,
-      netCollectedCents: 14_875_000,
+      totalDeductionsCents: 1_325_000,
+      netCollectedCents: 13_675_000,
     });
   });
 
@@ -207,5 +210,45 @@ describe("buildAccountingOrdersCsv — A1 redacción selectiva de PII preservand
 
     const full = buildAccountingOrdersCsv(sample, { redactBuyerEmail: false });
     expect(full).toContain("comprador@empresa.co");
+  });
+
+  it("incluye columna reembolso_garantia_cop y descuenta garantías del total_neto_cop", () => {
+    const csv = buildAccountingOrdersCsv([
+      {
+        number: "LCM-2026-0501",
+        createdAt: new Date("2026-09-18T14:00:00.000-05:00"),
+        status: "DELIVERED" as const,
+        paymentMethod: "WOMPI" as const,
+        subtotalCents: 10_000_000,
+        discountCents: 0,
+        loyaltyDiscountCents: 0,
+        shippingCents: 0,
+        taxCents: 0,
+        totalCents: 10_000_000,
+        retractRefundedCents: 1_000_000,
+        warrantyRefundedCents: 2_500_000,
+        wompiReference: "LCM-2026-0501",
+        wompiTransactionId: "tx_501",
+        codStatus: null,
+        codRemittedCents: null,
+        billingDocumentType: null,
+        billingDocumentNumber: null,
+        billingName: null,
+        dianStatus: "NOT_REQUIRED" as const,
+        dianCufe: null,
+        email: "cliente@lucams.test",
+      },
+    ]);
+    const [headerLine, dataLine] = csv
+      .replace(/^\uFEFF/, "")
+      .trim()
+      .split("\r\n");
+    const headers = headerLine.split(",");
+    const values = dataLine.split(",");
+    expect(headers).toContain("reembolso_garantia_cop");
+    expect(values[headers.indexOf("total_bruto_cop")]).toBe("100000");
+    expect(values[headers.indexOf("reembolso_retracto_cop")]).toBe("10000");
+    expect(values[headers.indexOf("reembolso_garantia_cop")]).toBe("25000");
+    expect(values[headers.indexOf("total_neto_cop")]).toBe("65000");
   });
 });

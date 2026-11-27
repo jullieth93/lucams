@@ -280,7 +280,7 @@ export async function getCrmBehavioralIntelligence(
         GROUP BY "productId"
       ),
       stk AS (
-        SELECT "productId", COALESCE(SUM("stock"), 0)::int AS available_stock
+        SELECT "productId", COALESCE(SUM(GREATEST(0, "stock" - GREATEST("safetyStock", 0))), 0)::int AS available_stock
         FROM "ProductVariant"
         WHERE "isActive" = true AND "deletedAt" IS NULL
         GROUP BY "productId"

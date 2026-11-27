@@ -54,7 +54,7 @@ import { Box, ChevronLeft, ChevronRight, Copy, Loader2, Minus, Plus, X } from "l
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
 import { createLetterSetDesignAction } from "@/features/personalization/actions";
 import { finalizeWithStagedProduction } from "./lib/finalize-staged-production";
-import { shrinkBlobToFitUploadBudget } from "./client-image-compress";
+import { shrinkBlobToFitUploadBudget } from "@/lib/client-image-compress";
 import { uploadPreviewPagesWithRetry } from "./preview-pages-upload";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { stashPersonalizedAddToCart } from "@/lib/analytics";
@@ -80,7 +80,7 @@ import { StudioSimpleHeader } from "./studio-simple-header";
 import { STUDIO_MAX_WIDTH } from "./studio-layout";
 import { resolveLetterSetVariant, type LetterSetVariant } from "./lib/letter-set-resolve";
 import { dataUrlToBlob } from "./lib/image-utils";
-import { loadCanvasImage } from "./lib/canvas-image";
+import { loadCanvasImage } from "@/lib/canvas-image";
 import type { Magnet3D } from "./fridge-3d-view";
 import { buildLetterTileTextures, LETTER_TILE_CORNER_RATIO } from "./lib/letter-tile-textures";
 import { NAME_TILE_THEMES } from "./letter-tile";

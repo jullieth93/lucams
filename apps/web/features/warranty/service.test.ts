@@ -2,7 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { warrantyWindowEnd, isWithinWarranty, sanitizeWarrantyEvidenceUrls } from "./service";
+import {
+  warrantyWindowEnd,
+  isWithinWarranty,
+  sanitizeWarrantyEvidenceUrls,
+  parseCopPesosToCents,
+  computeWarrantyRefundBounds,
+} from "./service";
 
 describe("garantía — ventana (Ley 1480)", () => {
   const delivered = new Date("2026-01-15T00:00:00Z");
@@ -82,5 +88,62 @@ describe("sanitizeWarrantyEvidenceUrls — defensa XSS/protocolos peligrosos (Bl
     expect(sanitizeWarrantyEvidenceUrls(null)).toEqual([]);
     expect(sanitizeWarrantyEvidenceUrls("https://cdn.lucams.co/foto.jpg")).toEqual([]);
     expect(sanitizeWarrantyEvidenceUrls(["", "   ", 123])).toEqual([]);
+  });
+});
+
+describe("parseCopPesosToCents y computeWarrantyRefundBounds (#6)", () => {
+  it("convierte pesos COP válidos a centavos enteros y rechaza 0, negativos, malformados u overflow INT4", () => {
+    expect(parseCopPesosToCents("25000")).toBe(2_500_000);
+    expect(parseCopPesosToCents(" 12345.67 ")).toBe(1_234_567);
+    expect(parseCopPesosToCents("100.5")).toBe(10_050);
+    expect(parseCopPesosToCents("0")).toBeNull();
+    expect(parseCopPesosToCents("-1000")).toBeNull();
+    expect(parseCopPesosToCents("100.123")).toBeNull();
+    expect(parseCopPesosToCents("25.000")).toBeNull();
+    expect(parseCopPesosToCents("22000000")).toBeNull(); // > INT4 max (21.47M COP)
+  });
+
+  it("acota el reembolso al mínimo entre remanente de línea y efectivo disponible de la orden", () => {
+    // Orden multi-ítem: línea 30.000, total 110.000 (sin descuentos)
+    expect(
+      computeWarrantyRefundBounds({
+        orderStatus: "DELIVERED",
+        lineTotalCents: 3_000_000,
+        orderSubtotalCents: 10_000_000,
+        orderTotalCents: 11_000_000,
+        orderCouponDiscountCents: 0,
+        orderLoyaltyDiscountCents: 0,
+        alreadyRefundedOnItemCents: 0,
+        alreadyRefundedOnOrderCents: 0,
+      }),
+    ).toEqual({ maxRefundCents: 3_000_000, suggestedRefundCents: 3_000_000 });
+
+    // Orden con descuento fuerte donde el efectivo remanente de la orden es menor que la línea
+    expect(
+      computeWarrantyRefundBounds({
+        orderStatus: "DELIVERED",
+        lineTotalCents: 5_000_000,
+        orderSubtotalCents: 10_000_000,
+        orderTotalCents: 7_000_000,
+        orderCouponDiscountCents: 3_000_000,
+        orderLoyaltyDiscountCents: 0,
+        alreadyRefundedOnItemCents: 0,
+        alreadyRefundedOnOrderCents: 4_000_000,
+      }),
+    ).toEqual({ maxRefundCents: 3_000_000, suggestedRefundCents: 3_000_000 });
+
+    // Orden ya en REFUNDED → 0 disponible (impide doble reembolso)
+    expect(
+      computeWarrantyRefundBounds({
+        orderStatus: "REFUNDED",
+        lineTotalCents: 3_000_000,
+        orderSubtotalCents: 3_000_000,
+        orderTotalCents: 3_000_000,
+        orderCouponDiscountCents: 0,
+        orderLoyaltyDiscountCents: 0,
+        alreadyRefundedOnItemCents: 0,
+        alreadyRefundedOnOrderCents: 0,
+      }),
+    ).toEqual({ maxRefundCents: 0, suggestedRefundCents: 0 });
   });
 });

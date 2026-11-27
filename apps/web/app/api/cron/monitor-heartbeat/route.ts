@@ -13,8 +13,9 @@
  *   - la regla uptime_monitor_failing alerta si la última corrida reportó fallas
  *     persistentes (probes de PRD caídos — complementa el email Resend del job).
  *
- * Protegido por CRON_SECRET (header `x-cron-secret`, timing-safe — nunca en la
- * URL), igual que los demás endpoints /api/cron/*.
+ * Protegido por `MONITOR_HEARTBEAT_SECRET` dedicado (con fallback a `CRON_SECRET`
+ * solo mientras se completa la rotación; header `x-cron-secret`, timing-safe —
+ * nunca en la URL). Ver `monitorHeartbeatSecretOk` en `lib/cron-auth.ts`.
  *
  * Body JSON: { "detail": "OK 5/5" | "FALLA n/5: /api/health/x, …" } — queda en
  * AlertState.lastDetail como trazabilidad (nunca secretos; nunca URLs firmadas).
@@ -24,7 +25,7 @@ import type { NextRequest } from "next/server";
 import { recordMonitorHeartbeat } from "@/features/observability/cron-heartbeat";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
-import { cronSecretOk } from "@/lib/cron-auth";
+import { monitorHeartbeatSecretOk } from "@/lib/cron-auth";
 import { readBodyWithLimit } from "@/lib/read-body-with-limit";
 
 // LUC-SEC-007 — techo de aplicación del body de ESTA ruta (plataforma = 2ª capa).
@@ -34,7 +35,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const provided = req.headers.get("x-cron-secret"); // #14 solo header (?secret= queda en logs)
-  if (!cronSecretOk(provided)) {
+  if (!monitorHeartbeatSecretOk(provided)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 

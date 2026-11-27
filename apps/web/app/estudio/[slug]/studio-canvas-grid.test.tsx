@@ -62,7 +62,7 @@ vi.mock("./studio-slot-edit-modal", () => ({
     return null;
   },
 }));
-vi.mock("./use-prefers-reduced-motion", () => ({ usePrefersReducedMotion: () => true }));
+vi.mock("@/lib/use-prefers-reduced-motion", () => ({ usePrefersReducedMotion: () => true }));
 
 /** Observer falso: registra los slotIndex observados y expone el callback. */
 const io = vi.hoisted(() => ({

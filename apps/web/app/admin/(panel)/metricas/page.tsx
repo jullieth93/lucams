@@ -21,6 +21,7 @@ import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import {
   COLLECTED_REVENUE_ORDER_WHERE,
+  COLLECTED_WARRANTY_REFUND_WHERE,
   getPeriodAggregates,
   resolvePeriodRange,
   startOfMonthCO,
@@ -144,13 +145,20 @@ export default async function AdminMetricasPage({
           ...COLLECTED_REVENUE_ORDER_WHERE,
           createdAt: { gte: startOfMonth },
         },
-        _sum: { total: true },
+        _sum: { total: true, withholdingCents: true },
       }),
       prisma.retractRequest.aggregate({
         where: {
           status: "REFUNDED",
           refundedAt: { gte: startOfMonth },
           orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
+        },
+        _sum: { refundAmount: true },
+      }),
+      prisma.warrantyClaim.aggregate({
+        where: {
+          ...COLLECTED_WARRANTY_REFUND_WHERE,
+          refundedAt: { gte: startOfMonth },
         },
         _sum: { refundAmount: true },
       }),
@@ -174,9 +182,17 @@ export default async function AdminMetricasPage({
   const ordersByStatus = orderData[0];
   const ordersLast30 = orderData[1];
   const grossMonthRevenueCents = orderData[2]._sum.total ?? 0;
+  const monthWithholdingCents = orderData[2]._sum.withholdingCents ?? 0;
   const monthRetractRefundCents = orderData[3]._sum.refundAmount ?? 0;
-  const revenueCents = Math.max(0, grossMonthRevenueCents - monthRetractRefundCents);
-  const topByVariant = orderData[4];
+  const monthWarrantyRefundCents = orderData[4]._sum.refundAmount ?? 0;
+  const revenueCents = Math.max(
+    0,
+    grossMonthRevenueCents -
+      monthWithholdingCents -
+      monthRetractRefundCents -
+      monthWarrantyRefundCents,
+  );
+  const topByVariant = orderData[5];
 
   const orderCount = new Map<OrderStatus, number>(
     ordersByStatus.map((g) => [g.status, g._count._all]),
@@ -250,7 +266,7 @@ export default async function AdminMetricasPage({
               label="Ingresos netos del mes"
               value={formatCOP(revenueCents)}
               trend="up"
-              trendLabel={`Caja cobrada en ${monthLabel} (Wompi + COD entregado − retractos)`}
+              trendLabel={`Caja cobrada en ${monthLabel} (Wompi + pago directo + COD entregado − retractos y garantías)`}
             />
           </div>
         }
@@ -430,9 +446,9 @@ export default async function AdminMetricasPage({
             ) : (
               <strong>Finanzas</strong>
             )}
-            : suman pagos en línea confirmados (Wompi) y contra entrega ya entregados, y restan las
-            devoluciones reembolsadas por retracto. Nunca se cuentan borradores ni pedidos
-            eliminados.
+            : suman pagos en línea confirmados (Wompi), pago directo B2B verificado y contra entrega
+            ya entregados, y restan las devoluciones reembolsadas por retracto y garantía. Nunca se
+            cuentan borradores ni pedidos eliminados.
             {canSeeContenido && (
               <>
                 {" "}

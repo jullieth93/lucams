@@ -9,9 +9,8 @@
  * elegibilidad se calcula al vuelo: item de catálogo estándar (sin customDesign ni
  * designId), orden DELIVERED, dentro de la ventana, sin solicitud previa.
  *
- * Nota: la ventana cuenta días hábiles Lun-Vie; NO descuenta festivos colombianos
- * (raros; el admin aprueba cada solicitud y puede cubrir bordes). Es levemente más
- * estricto que la ley en semanas con festivo — documentado, con válvula admin.
+ * La ventana cuenta días hábiles colombianos (Lun–Vie excluyendo festivos oficiales
+ * de Colombia vía `@/lib/colombian-sla`, en reloj de pared `America/Bogota`).
  */
 
 import "server-only";
@@ -22,7 +21,13 @@ import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { maskEmail, maskPersonName } from "@/lib/pii-mask";
 import { sendRetractApproved, sendRetractRejected, sendRetractRefunded } from "./emails";
 import { RETRACT_WINDOW_BUSINESS_DAYS } from "@/lib/consumer-law";
-import { computeRetractSlaDueAt, evaluateSlaStatus, type SlaEvaluation } from "@/lib/colombian-sla";
+import {
+  addColombianBusinessDaysEndOfDay,
+  computeRetractSlaDueAt,
+  evaluateSlaStatus,
+  isColombianBusinessDay,
+  type SlaEvaluation,
+} from "@/lib/colombian-sla";
 import { restoreRedeemedPointsForRetract } from "@/features/loyalty/service";
 import { resolvePostSaleContact } from "@/features/identity/resolution-service";
 import {
@@ -41,27 +46,24 @@ export { RETRACT_WINDOW_BUSINESS_DAYS };
 const COT_OFFSET_MS = 5 * 60 * 60 * 1000;
 
 /**
- * Avanza `n` días hábiles (Lun-Vie, en calendario colombiano) desde `from`. No
- * descuenta festivos CO (raros; el admin aprueba cada solicitud).
+ * Avanza `n` días hábiles colombianos (Lun–Vie excluyendo festivos oficiales CO, en
+ * reloj de pared `America/Bogota`) desde `from`.
  */
 export function addBusinessDays(from: Date, n: number): Date {
+  const targetDays = Math.max(0, Math.trunc(n));
   const cot = new Date(from.getTime() - COT_OFFSET_MS); // reloj de pared COT
   let added = 0;
-  while (added < n) {
+  while (added < targetDays) {
     cot.setUTCDate(cot.getUTCDate() + 1);
-    const day = cot.getUTCDay(); // 0=Dom … 6=Sáb (en COT)
-    if (day !== 0 && day !== 6) added++;
+    const instantUtc = new Date(cot.getTime() + COT_OFFSET_MS);
+    if (isColombianBusinessDay(instantUtc)) added++;
   }
   return new Date(cot.getTime() + COT_OFFSET_MS); // instante UTC real
 }
 
-/** Fin de la ventana: 23:59:59.999 hora Colombia del último día hábil, inclusive. */
+/** Fin de la ventana: 23:59:59.999 hora Colombia del último día hábil colombiano, inclusive. */
 export function retractWindowEnd(deliveredAt: Date): Date {
-  const endCot = new Date(
-    addBusinessDays(deliveredAt, RETRACT_WINDOW_BUSINESS_DAYS).getTime() - COT_OFFSET_MS,
-  );
-  endCot.setUTCHours(23, 59, 59, 999); // fin del día en COT
-  return new Date(endCot.getTime() + COT_OFFSET_MS);
+  return addColombianBusinessDaysEndOfDay(deliveredAt, RETRACT_WINDOW_BUSINESS_DAYS);
 }
 
 export function isWithinRetractWindow(deliveredAt: Date, now: Date): boolean {
@@ -190,6 +192,15 @@ export async function getRetractableItems(
           designId: true,
           variant: { select: { product: { select: { name: true } } } },
           retractRequest: { select: { status: true, refundAmount: true } },
+          warrantyClaims: {
+            where: {
+              status: "RESOLVED",
+              resolutionType: "REFUND",
+              refundAmount: { gt: 0 },
+              refundedAt: { not: null },
+            },
+            select: { refundAmount: true },
+          },
         },
       },
     },
@@ -232,6 +243,15 @@ export async function getRetractableItemsByOrderToken(
           designId: true,
           variant: { select: { product: { select: { name: true } } } },
           retractRequest: { select: { status: true, refundAmount: true } },
+          warrantyClaims: {
+            where: {
+              status: "RESOLVED",
+              resolutionType: "REFUND",
+              refundAmount: { gt: 0 },
+              refundedAt: { not: null },
+            },
+            select: { refundAmount: true },
+          },
         },
       },
     },
@@ -257,6 +277,7 @@ function mapOrderToRetractableItems(
       designId: string | null;
       variant: { product: { name: string } };
       retractRequest: { status: string; refundAmount: number } | null;
+      warrantyClaims?: Array<{ refundAmount: number | null }>;
     }>;
   },
   now: Date,
@@ -264,10 +285,15 @@ function mapOrderToRetractableItems(
   const delivered = order.status === "DELIVERED" && !!order.deliveredAt;
   const withinWindow = order.deliveredAt ? isWithinRetractWindow(order.deliveredAt, now) : false;
   const activeRefundedCents = order.items.reduce((acc, it) => {
-    if (it.retractRequest && it.retractRequest.status !== "REJECTED") {
-      return acc + it.retractRequest.refundAmount;
-    }
-    return acc;
+    const retractCents =
+      it.retractRequest && it.retractRequest.status !== "REJECTED"
+        ? it.retractRequest.refundAmount
+        : 0;
+    const warrantyCents = (it.warrantyClaims ?? []).reduce(
+      (sum, w) => sum + (w.refundAmount ?? 0),
+      0,
+    );
+    return acc + retractCents + warrantyCents;
   }, 0);
 
   return order.items.map((it) => {
@@ -346,6 +372,15 @@ export async function createRetractRequest(
             select: {
               id: true,
               retractRequest: { select: { status: true, refundAmount: true } },
+              warrantyClaims: {
+                where: {
+                  status: "RESOLVED",
+                  resolutionType: "REFUND",
+                  refundAmount: { gt: 0 },
+                  refundedAt: { not: null },
+                },
+                select: { refundAmount: true },
+              },
             },
           },
         },
@@ -371,14 +406,17 @@ export async function createRetractRequest(
   const lineTotal = item.unitPrice * item.qty;
   const ord = item.order;
   const alreadyRefundedCents = ord.items.reduce((acc, sibling) => {
-    if (
+    const siblingRetract =
       sibling.id !== item.id &&
       sibling.retractRequest &&
       sibling.retractRequest.status !== "REJECTED"
-    ) {
-      return acc + sibling.retractRequest.refundAmount;
-    }
-    return acc;
+        ? sibling.retractRequest.refundAmount
+        : 0;
+    const siblingWarranty = (sibling.warrantyClaims ?? []).reduce(
+      (sum, w) => sum + (w.refundAmount ?? 0),
+      0,
+    );
+    return acc + siblingRetract + siblingWarranty;
   }, 0);
   const { cashRefundCents: refundAmount } = computeRetractRefundBreakdown({
     lineTotal,
@@ -458,6 +496,15 @@ export async function createGuestRetractRequest(
             select: {
               id: true,
               retractRequest: { select: { status: true, refundAmount: true } },
+              warrantyClaims: {
+                where: {
+                  status: "RESOLVED",
+                  resolutionType: "REFUND",
+                  refundAmount: { gt: 0 },
+                  refundedAt: { not: null },
+                },
+                select: { refundAmount: true },
+              },
             },
           },
         },
@@ -484,14 +531,17 @@ export async function createGuestRetractRequest(
   const lineTotal = item.unitPrice * item.qty;
   const ord = item.order;
   const alreadyRefundedCents = ord.items.reduce((acc, sibling) => {
-    if (
+    const siblingRetract =
       sibling.id !== item.id &&
       sibling.retractRequest &&
       sibling.retractRequest.status !== "REJECTED"
-    ) {
-      return acc + sibling.retractRequest.refundAmount;
-    }
-    return acc;
+        ? sibling.retractRequest.refundAmount
+        : 0;
+    const siblingWarranty = (sibling.warrantyClaims ?? []).reduce(
+      (sum, w) => sum + (w.refundAmount ?? 0),
+      0,
+    );
+    return acc + siblingRetract + siblingWarranty;
   }, 0);
   const { cashRefundCents: refundAmount } = computeRetractRefundBreakdown({
     lineTotal,
@@ -572,6 +622,15 @@ export async function createRetractRequestAsAdmin(
             select: {
               id: true,
               retractRequest: { select: { status: true, refundAmount: true } },
+              warrantyClaims: {
+                where: {
+                  status: "RESOLVED",
+                  resolutionType: "REFUND",
+                  refundAmount: { gt: 0 },
+                  refundedAt: { not: null },
+                },
+                select: { refundAmount: true },
+              },
             },
           },
         },
@@ -586,14 +645,17 @@ export async function createRetractRequestAsAdmin(
   const lineTotal = item.unitPrice * item.qty;
   const ord = item.order;
   const alreadyRefundedCents = ord.items.reduce((acc, sibling) => {
-    if (
+    const siblingRetract =
       sibling.id !== item.id &&
       sibling.retractRequest &&
       sibling.retractRequest.status !== "REJECTED"
-    ) {
-      return acc + sibling.retractRequest.refundAmount;
-    }
-    return acc;
+        ? sibling.retractRequest.refundAmount
+        : 0;
+    const siblingWarranty = (sibling.warrantyClaims ?? []).reduce(
+      (sum, w) => sum + (w.refundAmount ?? 0),
+      0,
+    );
+    return acc + siblingRetract + siblingWarranty;
   }, 0);
   const { cashRefundCents: refundAmount } = computeRetractRefundBreakdown({
     lineTotal,

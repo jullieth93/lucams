@@ -33,6 +33,7 @@
 import "server-only";
 import { Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { netAvailableStock } from "@/features/products/fulfillment";
 import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 
 /**
@@ -77,13 +78,17 @@ type StockItem = {
  *  - assertStockAvailable validaría por-item (2×qty3 con stock 4 pasan ambos) en vez de por el
  *    total real (6 > 4).
  */
-function aggregateByVariant(items: ReadonlyArray<StockItem>): StockItem[] {
+export function aggregateByVariant(items: ReadonlyArray<StockItem>): StockItem[] {
   const totals = new Map<string, number>();
   for (const it of items) {
     if (it.qty <= 0) continue;
     totals.set(it.variantId, (totals.get(it.variantId) ?? 0) + it.qty);
   }
-  return [...totals].map(([variantId, qty]) => ({ variantId, qty }));
+  // Orden determinístico por variantId: evita bloqueos de fila en orden inverso (deadlock 40P01)
+  // cuando dos transacciones multi-ítem concurrentes tocan el mismo par de variantes.
+  return [...totals]
+    .map(([variantId, qty]) => ({ variantId, qty }))
+    .sort((a, b) => (a.variantId < b.variantId ? -1 : a.variantId > b.variantId ? 1 : 0));
 }
 
 async function physicalStockItems(
@@ -131,6 +136,7 @@ export async function assertStockAvailable(
       select: {
         id: true,
         stock: true,
+        safetyStock: true,
         name: true,
         sku: true,
         product: { select: { name: true, fulfillmentMode: true } },
@@ -138,8 +144,9 @@ export async function assertStockAvailable(
     });
     if (!v) throw new InsufficientStockError(it.variantId, it.qty, 0);
     if (v.product.fulfillmentMode === "MADE_TO_ORDER") continue;
-    if (v.stock < it.qty) {
-      throw new InsufficientStockError(it.variantId, it.qty, v.stock, variantDisplayName(v));
+    const available = netAvailableStock(v.stock, v.safetyStock);
+    if (available < it.qty) {
+      throw new InsufficientStockError(it.variantId, it.qty, available, variantDisplayName(v));
     }
   }
 }
@@ -196,25 +203,36 @@ export async function decrementStockForOrder(
   // Agregado por variant: un solo UPDATE + un solo InventoryLog por variant, aunque la orden tenga
   // varias líneas del mismo variant (ver aggregateByVariant — evita el P2002 del índice único).
   for (const item of items) {
-    // Optimistic atómico: UPDATE … WHERE id=$1 AND stock>=$2
-    const res = await tx.productVariant.updateMany({
-      where: { id: item.variantId, stock: { gte: item.qty } },
-      data: { stock: { decrement: item.qty } },
-    });
-    if (res.count !== 1) {
-      // Carrera perdida: stock se agotó entre validación y este UPDATE.
+    // Optimistic atómico en Postgres: respeta safetyStock (stock - GREATEST(safetyStock, 0) >= qty)
+    // con row-lock implícito y evita carreras de sobreventa sobre la reserva de seguridad.
+    const updatedAt = new Date();
+    const updatedCount = await tx.$executeRaw`
+      UPDATE "ProductVariant"
+      SET "stock" = "stock" - ${item.qty},
+          "updatedAt" = ${updatedAt}
+      WHERE "id" = ${item.variantId}
+        AND ("stock" - GREATEST("safetyStock", 0)) >= ${item.qty}
+    `;
+    if (updatedCount !== 1) {
+      // Carrera perdida: disponible neto (stock - safetyStock) insuficiente entre validación y este UPDATE.
       // Throw → tx caller rollback → Order NO transiciona a PAID.
       // Lookup del nombre para que el aviso al cliente nombre el producto
       // agotado (la saga lo re-lee vía err.productName); ruta rara, una
       // lectura extra es inocua.
       const v = await tx.productVariant.findUnique({
         where: { id: item.variantId },
-        select: { stock: true, name: true, sku: true, product: { select: { name: true } } },
+        select: {
+          stock: true,
+          safetyStock: true,
+          name: true,
+          sku: true,
+          product: { select: { name: true } },
+        },
       });
       throw new InsufficientStockError(
         item.variantId,
         item.qty,
-        v?.stock,
+        v ? netAvailableStock(v.stock, v.safetyStock) : undefined,
         v ? variantDisplayName(v) : undefined,
       );
     }

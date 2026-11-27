@@ -42,6 +42,7 @@ function req(opts: { secret?: string; body?: string }): NextRequest {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("CRON_SECRET", SECRET);
+  vi.stubEnv("MONITOR_HEARTBEAT_SECRET", "");
 });
 
 afterEach(() => {
@@ -66,6 +67,25 @@ describe("POST /api/cron/monitor-heartbeat — auth (mismo patrón que los demá
     const res = await POST(req({ secret: SECRET }));
     expect(res.status).toBe(401);
     expect(recordMonitorHeartbeat).not.toHaveBeenCalled();
+  });
+
+  it("con MONITOR_HEARTBEAT_SECRET configurado: acepta SOLO el secreto dedicado y rechaza CRON_SECRET global", async () => {
+    const dedicated = "monitor-heartbeat-only-secret";
+    vi.stubEnv("MONITOR_HEARTBEAT_SECRET", dedicated);
+
+    // El CRON_SECRET global ya NO autoriza esta ruta cuando existe el dedicado.
+    const rejected = await POST(
+      req({ secret: SECRET, body: JSON.stringify({ detail: "OK 5/5" }) }),
+    );
+    expect(rejected.status).toBe(401);
+    expect(recordMonitorHeartbeat).not.toHaveBeenCalled();
+
+    // El secreto dedicado SÍ autoriza el latido.
+    const accepted = await POST(
+      req({ secret: dedicated, body: JSON.stringify({ detail: "OK 5/5" }) }),
+    );
+    expect(accepted.status).toBe(200);
+    expect(recordMonitorHeartbeat).toHaveBeenCalledWith("OK 5/5");
   });
 });
 

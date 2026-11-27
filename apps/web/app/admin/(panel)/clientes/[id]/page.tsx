@@ -234,6 +234,11 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                 −{formatCOP(data.kpis.retractRefundedCents)} reembolsados por retracto
               </p>
             )}
+            {data.kpis.warrantyRefundedCents > 0 && (
+              <p className="mt-0.5 text-[11px] font-medium text-rose-700 tabular-nums">
+                −{formatCOP(data.kpis.warrantyRefundedCents)} reembolsados por garantía
+              </p>
+            )}
           </AdminCard>
 
           <AdminCard className="p-4">

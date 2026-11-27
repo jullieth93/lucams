@@ -16,20 +16,20 @@
  */
 
 import { NextResponse } from "next/server";
-import { listCatalogProducts, type ProductListFilters } from "@/lib/catalog";
+import { MAX_PRICE_CENTS } from "@/features/products/price-filter";
+import { countCatalogProducts, listCatalogProducts, type ProductListFilters } from "@/lib/catalog";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 
-// Guard de enteros no negativos (auditoría 2026-08-24, C-10): parseInt("abc") → NaN
-// llegaba al filtro en memoria (minPrice >= NaN → siempre false → lista vacía 200 OK
-// sin explicación) y se ecoaba como null en `filters` de la respuesta.
+// Guard de enteros no negativos acotados a INT4 (C-10 + Fase 5 #10):
+// parseInt("abc") → NaN y valores > MAX_PRICE_CENTS provocarían PrismaClientValidationError.
 const toInt = (v: string | null): number | undefined => {
   if (!v) return undefined;
   const n = Number.parseInt(v, 10);
-  return Number.isFinite(n) && n >= 0 ? n : undefined;
+  return Number.isFinite(n) && n >= 0 && n <= MAX_PRICE_CENTS ? n : undefined;
 };
 
 export async function GET(req: Request) {
@@ -66,12 +66,16 @@ export async function GET(req: Request) {
     offset: Math.min(10_000, Math.max(0, parseInt(sp.get("offset") ?? "0", 10) || 0)),
   };
 
-  const products = await listCatalogProducts(filters);
+  const [products, total] = await Promise.all([
+    listCatalogProducts(filters),
+    countCatalogProducts(filters),
+  ]);
 
   return NextResponse.json(
     {
       products,
       count: products.length,
+      total,
       filters,
       generatedAt: new Date().toISOString(),
     },

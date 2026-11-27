@@ -57,6 +57,7 @@ import {
   getCategoryTree,
   getCategoryBySlug,
   listCatalogProducts,
+  countCatalogProducts,
   getCatalogProductDetail,
   listOcasiones,
   getOcasionBySlug,
@@ -66,6 +67,11 @@ import {
   listTemplatesByProduct,
   listPublicCoupons,
 } from "./catalog";
+import {
+  getStorefrontPriceRange,
+  listStorefrontProductsPaginated,
+  searchStorefrontProducts,
+} from "@/features/products/public-service";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
@@ -795,21 +801,48 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
       expect(p1.ocasionSlugs).toContain(ocasionMatrimonioSlug);
     });
 
-    it("filtro de precio (priceMin/priceMax) opera POST-fetch sobre minPrice", async () => {
-      // priceMin 9000 excluye p1 (minPrice 8000) pero incluye p2 (30000) y p3 (50000).
-      const list = await listCatalogProducts({
+    it("filtro de precio SQL (priceMin/priceMax) evalúa variantes activas ANTES de take/skip", async () => {
+      // p1 tiene variantes activas 8000 y 22000; p2 tiene 30000 (price: null -> basePrice); p3 50000.
+      // priceMin 25000 excluye p1 (max 22000 < 25000) e incluye p2 (30000) y p3 (50000).
+      const high = await listCatalogProducts({
         categorySlug: rootCatSlug,
-        priceMin: 9_000,
+        priceMin: 25_000,
+        sort: "price_asc",
+        limit: 1,
+        offset: 0,
+      });
+      // Paginación exacta ANTES de take/skip: el primer producto retornado es p2 (no vacío por
+      // haber descartado p1 post-fetch!).
+      expect(high.map((p) => p.slug)).toEqual([p2Slug]);
+      expect(
+        await countCatalogProducts({
+          categorySlug: rootCatSlug,
+          priceMin: 25_000,
+        }),
+      ).toBe(2);
+
+      // Página 2 con offset=1 devuelve exactamente p3.
+      const highPage2 = await listCatalogProducts({
+        categorySlug: rootCatSlug,
+        priceMin: 25_000,
+        sort: "price_asc",
+        limit: 1,
+        offset: 1,
+      });
+      expect(highPage2.map((p) => p.slug)).toEqual([p3Slug]);
+
+      // Rango [15000, 25000] incluye p1 gracias a su variante activa de 22000.
+      const mid = await listCatalogProducts({
+        categorySlug: rootCatSlug,
+        priceMin: 15_000,
+        priceMax: 25_000,
         limit: 50,
       });
-      const slugs = list.map((p) => p.slug);
-      expect(slugs).not.toContain(p1Slug); // minPrice 8000 < 9000
-      expect(slugs).toContain(p2Slug);
-      expect(slugs).toContain(p3Slug);
+      expect(mid.map((p) => p.slug)).toEqual([p1Slug]);
     });
 
-    it("priceMax filtra por minPrice <= max", async () => {
-      // priceMax 9000 incluye solo p1 (minPrice 8000); excluye p2 (30000) y p3 (50000).
+    it("priceMax incluye productos con alguna variante activa <= max e ignora variantes inactivas", async () => {
+      // priceMax 9000 incluye solo p1 (variante activa 8000); excluye p2 (30000) y p3 (50000).
       const list = await listCatalogProducts({
         categorySlug: rootCatSlug,
         priceMax: 9_000,
@@ -819,6 +852,60 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
       expect(slugs).toContain(p1Slug);
       expect(slugs).not.toContain(p2Slug);
       expect(slugs).not.toContain(p3Slug);
+
+      // Agregamos una variante INACTIVA barata (3000) a p2 (basePrice 30000): NO debe aparecer
+      // con maxPrice 9000 ni en listCatalogProducts ni en listStorefrontProductsPaginated.
+      const p2Row = await prisma.product.findUniqueOrThrow({
+        where: { slug: p2Slug },
+        select: { id: true },
+      });
+      const inactiveCheap = await prisma.productVariant.create({
+        data: {
+          productId: p2Row.id,
+          name: "Inactiva barata",
+          sku: `${RUN}-P2-INACTIVE-CHEAP`.toUpperCase(),
+          price: 3_000,
+          stock: 5,
+          isActive: false,
+          attributes: {},
+        },
+        select: { id: true },
+      });
+      try {
+        const afterCatalog = await listCatalogProducts({
+          categorySlug: rootCatSlug,
+          priceMax: 9_000,
+          limit: 50,
+        });
+        expect(afterCatalog.map((p) => p.slug)).toEqual([p1Slug]);
+
+        const afterStorefront = await listStorefrontProductsPaginated({
+          categorySlug: rootCatSlug,
+          maxPrice: 9_000,
+          page: 1,
+          pageSize: 1,
+        });
+        expect(afterStorefront.total).toBe(1);
+        expect(afterStorefront.items.map((p) => p.slug)).toEqual([p1Slug]);
+
+        // Y en el rango [15000, 25000], listStorefrontProductsPaginated incluye p1 por su variante
+        // activa de 22000 aunque su basePrice sea 10000.
+        const sfMid = await listStorefrontProductsPaginated({
+          categorySlug: rootCatSlug,
+          minPrice: 15_000,
+          maxPrice: 25_000,
+          page: 1,
+          pageSize: 10,
+        });
+        expect(sfMid.total).toBe(1);
+        expect(sfMid.items.map((p) => p.slug)).toEqual([p1Slug]);
+
+        const range = await getStorefrontPriceRange();
+        expect(range.min).toBeGreaterThan(0);
+        expect(range.max).toBeGreaterThanOrEqual(P3_BASE);
+      } finally {
+        await prisma.productVariant.delete({ where: { id: inactiveCheap.id } });
+      }
     });
 
     it("sort=price_asc ordena por basePrice ascendente", async () => {
@@ -1196,6 +1283,52 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
     it("respeta el límite de resultados", async () => {
       const results = await searchCatalog(`${RUN}`, 1);
       expect(results.length).toBeLessThanOrEqual(1);
+    });
+
+    it("encuentra productos por SKU de variante activa (searchCatalog y searchStorefrontProducts) e ignora variantes inactivas", async () => {
+      const activeVarSku = `${RUN}-P1-B`;
+      const catRes = await searchCatalog(activeVarSku, 10);
+      expect(catRes.map((r) => r.slug)).toContain(p1Slug);
+
+      const sfRes = await searchStorefrontProducts(activeVarSku, {
+        limit: 10,
+        minPrice: 15_000,
+        maxPrice: 25_000,
+      });
+      expect(sfRes.map((r) => r.slug)).toContain(p1Slug);
+
+      // Si el rango de precio excluye todas las variantes activas de p1, no aparece.
+      const sfExcluded = await searchStorefrontProducts(activeVarSku, {
+        limit: 10,
+        minPrice: 30_000,
+      });
+      expect(sfExcluded.map((r) => r.slug)).not.toContain(p1Slug);
+
+      // Una variante INACTIVA con SKU único (sin compartir el prefijo RUN del nombre de p1 para no
+      // disparar similitud trigram por nombre) NO debe matchear en ninguno de los dos stacks.
+      const inactiveSku = `ZZQ-INACT-${Math.floor(Math.random() * 1e8)
+        .toString(36)
+        .toUpperCase()}`;
+      const inactiveVar = await prisma.productVariant.create({
+        data: {
+          productId: p1Id,
+          name: "Inactiva SKU",
+          sku: inactiveSku,
+          price: 15_000,
+          stock: 1,
+          isActive: false,
+          attributes: {},
+        },
+        select: { id: true },
+      });
+      try {
+        expect((await searchCatalog(inactiveSku, 10)).map((r) => r.slug)).not.toContain(p1Slug);
+        expect(
+          (await searchStorefrontProducts(inactiveSku, { limit: 10 })).map((r) => r.slug),
+        ).not.toContain(p1Slug);
+      } finally {
+        await prisma.productVariant.delete({ where: { id: inactiveVar.id } });
+      }
     });
   });
 

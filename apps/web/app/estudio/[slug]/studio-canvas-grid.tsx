@@ -46,7 +46,7 @@ import {
   type StudioStoreState,
 } from "./lib/store";
 import { StudioStoreContext } from "./lib/active-studio-store";
-import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import { unitIndexOfSlot, deployedSizeCm } from "./lib/faces";
 import { generateGridLayout } from "./lib/grid-layout";
 import { useStudioTexts } from "./studio-texts-provider";

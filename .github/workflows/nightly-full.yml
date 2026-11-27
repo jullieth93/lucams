@@ -101,11 +101,7 @@ jobs:
       - name: Aplicar migraciones Prisma
         run: pnpm --filter @lucams/db exec prisma migrate deploy
       - name: Aplicar migraciones SQL de Supabase (RLS, storage, pg_cron)
-        run: |
-          for f in $(ls supabase/migrations/*.sql | sort); do
-            echo "→ $f"
-            psql "$SUPABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -f "$f"
-          done
+        run: bash scripts/apply-supabase-migrations.sh "$SUPABASE_ADMIN_URL"
       - name: Vitest (suites exclusivas de GoTrue/Storage real + Wompi sandbox)
         run: >-
           pnpm --filter web exec vitest run
@@ -176,11 +172,7 @@ jobs:
       - name: Aplicar migraciones Prisma
         run: pnpm --filter @lucams/db exec prisma migrate deploy
       - name: Aplicar migraciones SQL de Supabase (RLS, storage, pg_cron)
-        run: |
-          for f in $(ls supabase/migrations/*.sql | sort); do
-            echo "→ $f"
-            psql "$SUPABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -f "$f"
-          done
+        run: bash scripts/apply-supabase-migrations.sh "$SUPABASE_ADMIN_URL"
       - name: Seed del catálogo CANÓNICO (base que el delta v2 exige)
         run: pnpm --filter @lucams/db exec node scripts/seed-catalog-canonical.mjs --apply
       - name: Seed de ocasiones (prerrequisito de los links del delta v2)
@@ -293,11 +285,7 @@ jobs:
       - name: Aplicar migraciones Prisma
         run: pnpm --filter @lucams/db exec prisma migrate deploy
       - name: Aplicar migraciones SQL de Supabase (RLS, storage, pg_cron)
-        run: |
-          for f in $(ls supabase/migrations/*.sql | sort); do
-            echo "→ $f"
-            psql "$SUPABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -f "$f"
-          done
+        run: bash scripts/apply-supabase-migrations.sh "$SUPABASE_ADMIN_URL"
       - name: Seed del catálogo (contexto de storefront para el checkout)
         run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs --apply
       - name: Instalar navegador Playwright (chromium completo + deps)
