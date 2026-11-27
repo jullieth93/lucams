@@ -372,6 +372,10 @@ export async function convertApprovedProposalToOrder(input: {
                   qty: it.qty,
                   designUnits: it.designUnits,
                   unitPrice: it.unitPriceCents,
+                  // Paridad con Storefront (`createOrderFromCartTx`): OrderItem.titleSnapshot
+                  // guarda el nombre del producto (las vistas renderizan variant.name aparte).
+                  titleSnapshot: it.variant.product.name,
+                  skuSnapshot: it.skuSnapshot ?? it.variant.sku,
                   warrantyMonths: it.variant.product.warrantyMonths,
                   designId: it.designId,
                   metadata: {

@@ -564,8 +564,8 @@ function PublicOrderNewConfirmation({
           items={order.items.map((it) => {
             const du = Math.max(1, it.designUnits);
             return {
-              sku: it.variant.sku || it.variant.product.sku,
-              name: it.variant.product.name,
+              sku: it.skuSnapshot ?? (it.variant.sku || it.variant.product.sku),
+              name: it.titleSnapshot ?? it.variant.product.name,
               variantName: it.variant.name,
               priceCents: Math.round(it.unitPrice / du),
               quantity: it.qty * du,
@@ -882,13 +882,13 @@ function PublicOrderItemRow({
         pageUrls={pageUrls}
         pageLabels={pageLabels}
         watermarkNote={watermarkNote}
-        productName={it.variant.product.name}
+        productName={it.titleSnapshot ?? it.variant.product.name}
         unitNounPlural={unitNounPlural}
         qty={it.qty}
       />
       <div className="min-w-0 flex-1">
         <div className="text-brand-purple-dark text-sm font-semibold">
-          {it.variant.product.name}
+          {it.titleSnapshot ?? it.variant.product.name}
         </div>
         <div className="text-brand-muted text-xs">
           {it.variant.name} · {designUnitsPrefix}
@@ -905,7 +905,7 @@ function PublicOrderItemRow({
               pages={pageUrls}
               pageLabels={pageLabels}
               watermarkNote={watermarkNote}
-              productName={it.variant.product.name}
+              productName={it.titleSnapshot ?? it.variant.product.name}
               triggerLabel="Ver"
               title="Tu diseño ·"
               description="Vista previa ampliada del diseño personalizado de esta línea del pedido."

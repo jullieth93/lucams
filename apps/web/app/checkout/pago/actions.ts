@@ -33,6 +33,7 @@ const CUSTOMER_SAFE_CHECKOUT_CODES = new Set([
   "COD_NOT_ALLOWED",
   "ORDER_AMOUNT_TOO_LARGE", // #9 — copy customer-safe ("escríbenos y te lo cotizamos")
   "CART_ITEMS_UNAVAILABLE", // N-01 — copy customer-safe ("revisa tu carrito y confirma de nuevo")
+  "CART_PRICES_UPDATED", // D-2 — copy customer-safe ("actualizamos los precios…")
   "CART_EMPTY",
   "CART_NOT_FOUND",
   "MISSING_CONTACT",
@@ -166,6 +167,13 @@ export async function payWompiAction(formData: FormData): Promise<void> {
       logger.warn({ event: "checkout.pago.unavailable_items_bounce", method: "WOMPI" });
       redirect(`/carrito?error=${encodeURIComponent(err.message)}`);
     }
+    // D-2 (ADR-211) — una tarifa cambió entre el render y el click en pagar.
+    // syncCartPrices ya actualizó CartItem.unitPrice en DB; mandamos a /checkout/envio
+    // con aviso suave para re-cotizar envío (valor declarado) y re-confirmar total.
+    if (err instanceof CheckoutError && err.code === "CART_PRICES_UPDATED") {
+      logger.info({ event: "checkout.pago.prices_updated_bounce", method: "WOMPI" });
+      redirect(`/checkout/envio?priceNotice=${encodeURIComponent(err.message)}`);
+    }
     // Flete manipulado u obsoleto (carrito/dirección cambiaron tras cotizar —
     // certificación 2026-07-29): volver al step de envío a re-cotizar. El mensaje
     // de SHIPPING_SELECTION_INVALID es customer-safe (es-CO, tuteo).
@@ -292,6 +300,11 @@ export async function payCodAction(formData: FormData): Promise<void> {
     if (err instanceof CheckoutError && err.code === "CART_ITEMS_UNAVAILABLE") {
       logger.warn({ event: "checkout.pago.unavailable_items_bounce", method: "COD" });
       redirect(`/carrito?error=${encodeURIComponent(err.message)}`);
+    }
+    // D-2 (ADR-211) — tarifa actualizada en carrera (ver payWompiAction).
+    if (err instanceof CheckoutError && err.code === "CART_PRICES_UPDATED") {
+      logger.info({ event: "checkout.pago.prices_updated_bounce", method: "COD" });
+      redirect(`/checkout/envio?priceNotice=${encodeURIComponent(err.message)}`);
     }
     // Flete manipulado u obsoleto — ver payWompiAction. El mensaje es customer-safe.
     if (err instanceof CheckoutError && err.code === "SHIPPING_SELECTION_INVALID") {

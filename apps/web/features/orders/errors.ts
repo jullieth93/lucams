@@ -157,3 +157,19 @@ export class OrderAmountTooLargeError extends Error {
     this.name = "OrderAmountTooLargeError";
   }
 }
+
+/**
+ * D-2 (ADR-211) — Carrera TOCTOU entre la lectura del carrito en `finalizeCheckout`
+ * y la transacción de `createOrderFromCartTx`: las líneas o sus precios cambiaron
+ * en Postgres antes de abrir la transacción (p. ej. otra pestaña re-cotizó o editó
+ * el carrito). Abortamos antes de crear o reconciliar la orden para jamás cobrar
+ * en silencio un total distinto al exhibido.
+ */
+export class OrderCartSnapshotMismatchError extends Error {
+  constructor() {
+    super(
+      "Actualizamos los precios o cantidades de tu carrito según la tarifa vigente. Revisa el nuevo total antes de confirmar tu pago.",
+    );
+    this.name = "OrderCartSnapshotMismatchError";
+  }
+}

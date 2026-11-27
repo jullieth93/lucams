@@ -1377,9 +1377,9 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       setCartCookie(sid);
       await seedFullState();
 
-      // El carrito cambia tras la cotización (otro item en otra pestaña).
+      // El carrito cambia tras la cotización (otro item en otra pestaña con la tarifa vigente).
       await prisma.cartItem.create({
-        data: { cartId, variantId: variantWithDims, qty: 1, unitPrice: 10_000 },
+        data: { cartId, variantId: variantWithDims, qty: 1, unitPrice: 50_000 },
       });
 
       await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
@@ -1389,6 +1389,48 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       // No se creó NINGUNA Order ni se invocó el gateway de pago.
       expect(await prisma.order.count({ where: { email: { contains: RUN } } })).toBe(0);
       expect(paymentCalls).toHaveLength(0);
+    }, 30000);
+
+    it("D-2 (ADR-211): re-cotiza CartItem al cambiar precio en catálogo, rebota en carrera sin crear Order y sella titleSnapshot/skuSnapshot", async () => {
+      const sid = uuid();
+      const { cartId } = await createCartWithItem({ sessionId: sid, qty: 1, unitPrice: 50_000 });
+      setCartCookie(sid);
+      await seedFullState();
+
+      // Simular cambio de precio en catálogo (de 50_000 a 55_000) mientras el usuario está en pago.
+      await prisma.productVariant.update({
+        where: { id: variantWithDims },
+        data: { price: 55_000 },
+      });
+
+      try {
+        // En carrera: finalizeCheckout actualiza el carrito y aborta con CART_PRICES_UPDATED sin crear orden.
+        await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
+          name: "CheckoutError",
+          code: "CART_PRICES_UPDATED",
+        });
+        expect(await prisma.order.count({ where: { email: { contains: RUN } } })).toBe(0);
+
+        // El CartItem ya quedó actualizado a 55_000 en DB; al re-cotizar envío y confirmar, la orden nace
+        // con el precio vigente y snapshots inmutables titleSnapshot/skuSnapshot.
+        const updatedItem = await prisma.cartItem.findFirst({ where: { cartId } });
+        expect(updatedItem?.unitPrice).toBe(55_000);
+
+        await seedFullState();
+        const res = await finalizeCheckout({ redirectUrl: "https://x.test" });
+        const orderItem = await prisma.orderItem.findFirst({
+          where: { orderId: res.orderId },
+          include: { variant: { include: { product: true } } },
+        });
+        expect(orderItem?.unitPrice).toBe(55_000);
+        expect(orderItem?.titleSnapshot).toBe(orderItem?.variant.product.name);
+        expect(orderItem?.skuSnapshot).toBe(orderItem?.variant.sku);
+      } finally {
+        await prisma.productVariant.update({
+          where: { id: variantWithDims },
+          data: { price: 50_000 },
+        });
+      }
     }, 30000);
   });
 });

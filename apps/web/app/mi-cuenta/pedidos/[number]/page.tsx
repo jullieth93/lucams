@@ -294,11 +294,11 @@ export default async function CustomerPedidoDetallePage({
                         ? "Vista previa con marca de agua — tu impresión final no la lleva."
                         : null
                     }
-                    productName={it.variant.product.name}
+                    productName={it.titleSnapshot ?? it.variant.product.name}
                     trigger={
                       <button
                         type="button"
-                        aria-label={`Ver el diseño de ${it.variant.product.name}`}
+                        aria-label={`Ver el diseño de ${it.titleSnapshot ?? it.variant.product.name}`}
                         className="bg-brand-purple/5 focus-visible:ring-brand-turquoise relative h-14 w-14 flex-shrink-0 cursor-zoom-in overflow-hidden rounded-lg focus-visible:ring-2 focus-visible:outline-none"
                       >
                         <Image
@@ -328,7 +328,7 @@ export default async function CustomerPedidoDetallePage({
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="text-brand-purple-dark text-sm font-semibold">
-                    {it.variant.product.name}
+                    {it.titleSnapshot ?? it.variant.product.name}
                   </div>
                   <div className="text-brand-muted text-xs">
                     {it.variant.name} ·{" "}
@@ -357,7 +357,7 @@ export default async function CustomerPedidoDetallePage({
                             ? "Vista previa con marca de agua — tu impresión final no la lleva."
                             : null
                         }
-                        productName={it.variant.product.name}
+                        productName={it.titleSnapshot ?? it.variant.product.name}
                         triggerLabel="Ver"
                         title="Tu diseño ·"
                         description="Vista previa ampliada del diseño personalizado de esta línea del pedido."

@@ -368,8 +368,8 @@ function buildB2bWorkshopLines(order: AdminOrder) {
     .filter((it) => it.variant.product.fulfillmentMode !== "PHYSICAL_STOCK" || Boolean(it.design))
     .map((it) => ({
       orderItemId: it.id,
-      title: `${it.variant.product.name} · ${it.variant.name}`,
-      sku: it.variant.sku,
+      title: `${it.titleSnapshot ?? it.variant.product.name} · ${it.variant.name}`,
+      sku: it.skuSnapshot ?? it.variant.sku,
       qty: it.qty,
       designUnits: it.designUnits,
       productionCount: it.design?.productionUrls?.length ?? 0,
@@ -1186,7 +1186,7 @@ function AdminOrderItemRow({
       <div className="min-w-0 flex-1">
         <AdminOrderItemTitle
           productId={it.variant.productId}
-          productName={it.variant.product.name}
+          productName={it.titleSnapshot ?? it.variant.product.name}
           variantName={it.variant.name}
           canViewCatalog={caps.canViewCatalog}
         />
@@ -1199,7 +1199,7 @@ function AdminOrderItemRow({
           {unitPricePrefix}
           cant. {it.qty}
           {physicalSummary ? ` (${physicalSummary} uds.)` : ""} ·{" "}
-          <span className="font-mono">{it.variant.sku}</span>
+          <span className="font-mono">{it.skuSnapshot ?? it.variant.sku}</span>
         </div>
 
         {physicalSummary && (
