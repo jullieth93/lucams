@@ -17,11 +17,20 @@ import { BILLING_DOCUMENT_ENABLED } from "@/features/checkout/billing-document";
 import { getPublicB2bConfiguratorCatalog } from "@/features/opportunities/configurator-catalog";
 import { B2bInquiryForm } from "./b2b-inquiry-form";
 
+const B2B_DESCRIPTION =
+  "Configura fotoimanes personalizados, calendarios y detalles magnéticos por volumen para empresas, bodas, grados y eventos en toda Colombia.";
+
 export const metadata: Metadata = {
-  title: "Regalos Corporativos y Eventos | Lucams Shop",
-  description:
-    "Configura fotoimanes personalizados, calendarios y detalles magnéticos por volumen para empresas, bodas, grados y eventos en toda Colombia.",
+  title: "Regalos Corporativos y Eventos",
+  description: B2B_DESCRIPTION,
   alternates: { canonical: "/empresas-y-eventos" },
+  openGraph: {
+    title: "Regalos Corporativos y Eventos · Lucams Shop",
+    description: B2B_DESCRIPTION,
+    type: "website",
+    locale: "es_CO",
+    siteName: "Lucams Shop",
+  },
 };
 
 export const dynamic = "force-dynamic";
