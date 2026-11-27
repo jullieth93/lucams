@@ -79,6 +79,7 @@ import {
   listStorefrontVolumeTiers,
 } from "@/features/products/public-service";
 import { netAvailableStock } from "@/features/products/fulfillment";
+import { SITE_NAME, stripSiteNameSuffix } from "@/lib/site";
 import { getProductRatingAggregate } from "@/features/reviews/public-service";
 
 type Params = Promise<{ slug: string }>;
@@ -92,23 +93,25 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   // (soft 404, verificado en producción — auditoría SEO 2026-10-28). Decidiendo el 404
   // antes de confirmar el head, la respuesta sale con status 404 real.
   if (!product) notFound();
-  const title = product.seoTitle ?? product.name;
+  const title = stripSiteNameSuffix(product.seoTitle ?? "") || stripSiteNameSuffix(product.name);
+  const socialTitle =
+    title.toLowerCase() === SITE_NAME.toLowerCase() ? SITE_NAME : `${title} · ${SITE_NAME}`;
   const description = product.seoDescription ?? product.description.slice(0, 160);
   const image = product.images[0] ?? "/brand/lucams-logo.png";
   return {
     title,
     description,
     openGraph: {
-      title,
+      title: socialTitle,
       description,
       type: "website",
       images: [{ url: image, alt: product.name }],
       locale: "es_CO",
-      siteName: "Lucams Shop",
+      siteName: SITE_NAME,
     },
     twitter: {
       card: "summary_large_image",
-      title,
+      title: socialTitle,
       description,
       images: [image],
     },
