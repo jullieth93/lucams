@@ -35,6 +35,7 @@ import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { STOREFRONT_PRODUCT_WHERE } from "./storefront-visibility";
 import { netAvailableStock, type FulfillmentMode } from "./fulfillment";
+import { buildActiveVariantPriceSqlClause, buildActiveVariantPriceWhere } from "./price-filter";
 
 /* Mismo tag/TTL que lib/catalog.ts: updateTag("catalog") en las mutaciones admin
    (features/products/service.ts, features/categories/service.ts, stock-admin.ts,
@@ -332,21 +333,28 @@ export async function listStorefrontProductsPaginated(
 }
 
 function buildStorefrontWhere(opts: StorefrontFilters): Prisma.ProductWhereInput {
+  const andClauses: Prisma.ProductWhereInput[] = [];
+  if (opts.categorySlug) {
+    andClauses.push({
+      OR: [
+        { category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug } },
+        {
+          category: {
+            ...STOREFRONT_WHERE.category,
+            parent: { slug: opts.categorySlug },
+          },
+        },
+      ],
+    });
+  }
+  const priceWhere = buildActiveVariantPriceWhere(opts.minPrice, opts.maxPrice);
+  if (priceWhere) {
+    andClauses.push(priceWhere);
+  }
+
   return {
     ...STOREFRONT_WHERE,
-    ...(opts.categorySlug
-      ? {
-          OR: [
-            { category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug } },
-            {
-              category: {
-                ...STOREFRONT_WHERE.category,
-                parent: { slug: opts.categorySlug },
-              },
-            },
-          ],
-        }
-      : {}),
+    ...(andClauses.length > 0 ? { AND: andClauses } : {}),
     ...(opts.ocasionSlug
       ? {
           ocasionTags: {
@@ -358,14 +366,6 @@ function buildStorefrontWhere(opts: StorefrontFilters): Prisma.ProductWhereInput
     ...(opts.excludeSlug ? { NOT: { slug: opts.excludeSlug } } : {}),
     ...(opts.isPersonalizable ? { isPersonalizable: true } : {}),
     ...(opts.onlyDiscounted ? { compareAtPrice: { not: null } } : {}),
-    ...(opts.minPrice != null || opts.maxPrice != null
-      ? {
-          basePrice: {
-            ...(opts.minPrice != null ? { gte: opts.minPrice } : {}),
-            ...(opts.maxPrice != null ? { lte: opts.maxPrice } : {}),
-          },
-        }
-      : {}),
   };
 }
 
@@ -434,7 +434,7 @@ function toStorefrontCard({
 }: Prisma.ProductGetPayload<{ select: typeof STOREFRONT_CARD_SELECT }>): StorefrontProductCard {
   const overridePrices = variants
     .map((v) => v.price)
-    .filter((price): price is number => price !== null && price > 0);
+    .filter((price): price is number => price !== null && price >= 0);
   const minVariantPrice =
     overridePrices.length > 0 ? Math.min(p.basePrice, ...overridePrices) : p.basePrice;
   // p.compareAtPrice está denormalizado = promo de la opción más barata
@@ -488,14 +488,40 @@ export async function getCategoryFeaturedProductCard(
  */
 export const getStorefrontPriceRange = cachedCatalog(
   async function getStorefrontPriceRange(): Promise<{ min: number; max: number }> {
-    const agg = await prisma.product.aggregate({
-      where: STOREFRONT_WHERE,
-      _min: { basePrice: true },
-      _max: { basePrice: true },
-    });
+    const [variantAgg, fallbackAgg] = await Promise.all([
+      prisma.productVariant.aggregate({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          price: { not: null },
+          product: STOREFRONT_WHERE,
+        },
+        _min: { price: true },
+        _max: { price: true },
+      }),
+      prisma.product.aggregate({
+        where: {
+          ...STOREFRONT_WHERE,
+          OR: [
+            { variants: { none: {} } },
+            { variants: { some: { isActive: true, deletedAt: null, price: null } } },
+          ],
+        },
+        _min: { basePrice: true },
+        _max: { basePrice: true },
+      }),
+    ]);
+
+    const mins = [variantAgg._min.price, fallbackAgg._min.basePrice].filter(
+      (v): v is number => v != null,
+    );
+    const maxs = [variantAgg._max.price, fallbackAgg._max.basePrice].filter(
+      (v): v is number => v != null,
+    );
+
     return {
-      min: agg._min.basePrice ?? 0,
-      max: agg._max.basePrice ?? 0,
+      min: mins.length > 0 ? Math.min(...mins) : 0,
+      max: maxs.length > 0 ? Math.max(...maxs) : 0,
     };
   },
   ["storefront-price-range"],
@@ -531,7 +557,13 @@ export type SearchResult = StorefrontProductCard & {
 
 export async function searchStorefrontProducts(
   rawQuery: string,
-  opts?: { limit?: number; categorySlug?: string; ocasionSlug?: string },
+  opts?: {
+    limit?: number;
+    categorySlug?: string;
+    ocasionSlug?: string;
+    minPrice?: number;
+    maxPrice?: number;
+  },
 ): Promise<SearchResult[]> {
   // #1 (perf/correctitud) — límite parametrizado. Default 8 (dropdown del header, sin cambios); en
   // /productos se pide 100 para traer TODO el set matcheado ANTES de filtrar/paginar (antes el LIMIT
@@ -590,11 +622,14 @@ export async function searchStorefrontProducts(
       )`
     : Prisma.empty;
 
+  const priceClause = buildActiveVariantPriceSqlClause(opts?.minPrice, opts?.maxPrice);
+
   // Query principal: scoring híbrido.
   //   - 3.0 si match exacto en name (case-insensitive + unaccent)
   //   - 2.0 si prefix en name
-  //   - 1.5 si prefix en sku/slug
+  //   - 1.5 si prefix en sku/slug o SKU de variante activa
   //   - similarity(name, q) escalado [0, 1] como base si pasa threshold
+  //   - 0.8 si substring en sku/slug o SKU de variante activa
   //   - 0.6 si substring en description
   // GREATEST() toma el mayor → un mismo row no se "infla" sumando.
   const rows = await prisma.$queryRaw<Row[]>`
@@ -606,9 +641,23 @@ export async function searchStorefrontProducts(
         CASE WHEN immutable_unaccent(LOWER(p.name)) = immutable_unaccent(LOWER(${safe})) THEN 3.0 ELSE 0 END,
         CASE WHEN immutable_unaccent(LOWER(p.name)) LIKE immutable_unaccent(LOWER(${prefixPattern})) THEN 2.0 ELSE 0 END,
         CASE WHEN LOWER(p.sku) LIKE LOWER(${prefixPattern}) OR LOWER(p.slug) LIKE LOWER(${prefixPattern}) THEN 1.5 ELSE 0 END,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM "ProductVariant" pv
+          WHERE pv."productId" = p.id
+            AND pv."isActive" = true
+            AND pv."deletedAt" IS NULL
+            AND LOWER(pv.sku) LIKE LOWER(${prefixPattern})
+        ) THEN 1.5 ELSE 0 END,
         similarity(immutable_unaccent(p.name), immutable_unaccent(${safe})),
         CASE WHEN immutable_unaccent(LOWER(p.description)) LIKE immutable_unaccent(LOWER(${pattern})) THEN 0.6 ELSE 0 END,
-        CASE WHEN LOWER(p.sku) LIKE LOWER(${pattern}) OR LOWER(p.slug) LIKE LOWER(${pattern}) THEN 0.8 ELSE 0 END
+        CASE WHEN LOWER(p.sku) LIKE LOWER(${pattern}) OR LOWER(p.slug) LIKE LOWER(${pattern}) THEN 0.8 ELSE 0 END,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM "ProductVariant" pv
+          WHERE pv."productId" = p.id
+            AND pv."isActive" = true
+            AND pv."deletedAt" IS NULL
+            AND LOWER(pv.sku) LIKE LOWER(${pattern})
+        ) THEN 0.8 ELSE 0 END
       ) AS score
     FROM "Product" p
     JOIN "Category" c ON c.id = p."categoryId"
@@ -619,11 +668,19 @@ export async function searchStorefrontProducts(
       AND c."isActive" = true
       ${categoryClause}
       ${ocasionClause}
+      ${priceClause}
       AND (
         immutable_unaccent(LOWER(p.name)) LIKE immutable_unaccent(LOWER(${pattern}))
         OR immutable_unaccent(LOWER(p.description)) LIKE immutable_unaccent(LOWER(${pattern}))
         OR LOWER(p.sku) LIKE LOWER(${pattern})
         OR LOWER(p.slug) LIKE LOWER(${pattern})
+        OR EXISTS (
+          SELECT 1 FROM "ProductVariant" pv
+          WHERE pv."productId" = p.id
+            AND pv."isActive" = true
+            AND pv."deletedAt" IS NULL
+            AND LOWER(pv.sku) LIKE LOWER(${pattern})
+        )
         OR similarity(immutable_unaccent(p.name), immutable_unaccent(${safe})) > 0.25
       )
     ORDER BY score DESC, p."isFeatured" DESC, p."createdAt" DESC
@@ -651,6 +708,7 @@ export async function searchStorefrontProducts(
       AND c."isActive" = true
       ${categoryClause}
       ${ocasionClause}
+      ${priceClause}
       AND similarity(immutable_unaccent(p.name), immutable_unaccent(${safe})) > 0.1
     ORDER BY score DESC
     LIMIT 3
@@ -915,7 +973,7 @@ function relatedCardPricing(
 ): { minVariantPrice: number; inStock: boolean } {
   const overridePrices = variants
     .map((v) => v.price)
-    .filter((price): price is number => price !== null && price > 0);
+    .filter((price): price is number => price !== null && price >= 0);
   return {
     minVariantPrice: overridePrices.length > 0 ? Math.min(basePrice, ...overridePrices) : basePrice,
     inStock:
