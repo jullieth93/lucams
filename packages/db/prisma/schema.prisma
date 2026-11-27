@@ -1114,6 +1114,10 @@ model OrderItem {
   qty            Int
   designUnits    Int                      @default(1)
   unitPrice      Int
+  // D-2 (ADR-211) — snapshot inmutable del nombre del producto y SKU al confirmar
+  // el pedido. Renombrar o reorganizar catálogo jamás altera pedidos históricos.
+  titleSnapshot  String?
+  skuSnapshot    String?
   // Garantía ofrecida al confirmar esta compra. Es un snapshot: editar el
   // producto después solo afecta ventas futuras, nunca derechos ya adquiridos.
   warrantyMonths Int                      @default(1)

@@ -148,7 +148,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
       discount: order.discount + order.loyaltyDiscount,
       shippingCarrier: order.shippingCarrier ? carrierDisplayName(order.shippingCarrier) : null,
       items: order.items.map((it) => ({
-        name: it.variant.product.name,
+        name: it.titleSnapshot ?? it.variant.product.name,
         qty: it.qty,
         units: lineDisplayUnits(it),
         lineTotal: it.unitPrice * it.qty,
@@ -741,7 +741,7 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
       isGift: order.isGift,
       giftMessage: order.giftMessage,
       items: order.items.map((it) => ({
-        name: it.variant.product.name,
+        name: it.titleSnapshot ?? it.variant.product.name,
         qty: it.qty,
         units: lineDisplayUnits(it),
         lineTotal: it.unitPrice * it.qty,

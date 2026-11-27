@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
+import { PriceUpdatedBanner } from "../_components/price-updated-banner";
 import { DatosForm } from "./datos-form";
 import { TrackBeginCheckout } from "@/components/analytics-trackers";
+import { formatPriceChangesNotice } from "@/features/cart/price-changes";
 import {
   loadCheckoutContext,
   assertCheckoutAvailability,
@@ -40,10 +42,12 @@ export default async function CheckoutDatosPage() {
   const savedAddresses = ctx.customerId ? await getSavedAddressesForCheckout(ctx.customerId) : [];
   const texts = await getCheckoutTexts();
   const guestIncentive = await getGuestLoyaltyIncentive(ctx);
+  const priceNotice = formatPriceChangesNotice(ctx.priceChanges);
 
   return (
     <div className="mx-auto max-w-6xl">
       <CheckoutStepper current={1} />
+      {priceNotice && <PriceUpdatedBanner message={priceNotice} />}
       <TrackBeginCheckout
         valueCents={ctx.cart.subtotal}
         items={ctx.cart.items.map((i) => {

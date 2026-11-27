@@ -15,7 +15,8 @@ import "server-only";
 import { cookies } from "next/headers";
 import { peekCartSession } from "@/lib/cart-session";
 import { parseUtmCookie, UTM_COOKIE_NAME } from "@/lib/utm-attribution";
-import { getCartDetail } from "@/features/cart/service";
+import { getCartDetail, syncCartPrices } from "@/features/cart/service";
+import { formatPriceChangesNotice, type CartPriceChange } from "@/features/cart/price-changes";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -31,6 +32,7 @@ import {
   InsufficientStockError,
   OrderAlreadyPaidError,
   OrderAmountTooLargeError,
+  OrderCartSnapshotMismatchError,
   OrderUnavailableItemsError,
 } from "@/features/orders/errors";
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
@@ -88,6 +90,7 @@ export class CheckoutError extends Error {
       | "COUPON_INVALIDATED"
       | "LOYALTY_INVALIDATED"
       | "CART_ITEMS_UNAVAILABLE"
+      | "CART_PRICES_UPDATED"
       | "COD_NOT_ALLOWED"
       | "ORDER_ALREADY_PAID"
       | "PAYMENT_IN_FLIGHT",
@@ -112,13 +115,21 @@ export type CheckoutContext = {
   // contrasta con el email digitado antes de escribir en el perfil (T7).
   customerEmail: string | null;
   state: CheckoutState;
+  /** D-2 (ADR-211): líneas cuyo precio vigente cambió al re-cotizar el carrito en checkout. */
+  priceChanges: CartPriceChange[];
 };
 
 /**
  * Carga cart + customer + state actual. Lanza CART_EMPTY si el cart
  * está vacío (caller debe redirigir a /carrito).
+ *
+ * D-2 (ADR-211): sincroniza `CartItem.unitPrice` contra las tarifas y escalas
+ * mayoristas vigentes (`syncCartPrices`) para nunca cobrar precios obsoletos en
+ * silencio y devolver `priceChanges` para el banner informativo del checkout.
  */
-export async function loadCheckoutContext(): Promise<CheckoutContext> {
+export async function loadCheckoutContext(opts?: {
+  syncPrices?: boolean;
+}): Promise<CheckoutContext> {
   const [sessionId, user, state] = await Promise.all([
     peekCartSession(),
     getCurrentUser(),
@@ -144,7 +155,18 @@ export async function loadCheckoutContext(): Promise<CheckoutContext> {
       })
     : null;
   const customerId = customer?.id ?? null;
-  const cart = await getCartDetail(sessionId, customerId);
+  const shouldSync = opts?.syncPrices !== false && typeof syncCartPrices === "function";
+  let cart: NonNullable<Awaited<ReturnType<typeof getCartDetail>>> | null = null;
+  let priceChanges: CartPriceChange[] = [];
+  if (shouldSync) {
+    const synced = await syncCartPrices(sessionId, customerId);
+    if (synced) {
+      cart = synced.cart;
+      priceChanges = synced.priceChanges;
+    }
+  } else {
+    cart = await getCartDetail(sessionId, customerId);
+  }
   if (!cart) throw new CheckoutError("CART_NOT_FOUND");
   if (cart.items.length === 0) throw new CheckoutError("CART_EMPTY");
 
@@ -188,7 +210,7 @@ export async function loadCheckoutContext(): Promise<CheckoutContext> {
     }
   }
 
-  return { cart, customerId, customerEmail, state: currentState };
+  return { cart, customerId, customerEmail, state: currentState, priceChanges };
 }
 
 /**
@@ -564,6 +586,24 @@ export async function finalizeCheckout(input: {
   const ctx = await loadCheckoutContext();
   const { state } = ctx;
 
+  // D-2 (ADR-211) — Carrera de cambio de tarifa entre el render de /checkout/pago
+  // y el click en «Pagar»: syncCartPrices ya actualizó CartItem.unitPrice en DB;
+  // abortamos antes de crear la orden para jamás cobrar en silencio un total
+  // distinto al exhibido. Las actions redirigen con aviso suave y re-cotización.
+  if (ctx.priceChanges.length > 0) {
+    const notice =
+      formatPriceChangesNotice(ctx.priceChanges) ??
+      "Actualizamos los precios de tu carrito según la tarifa vigente.";
+    logger.info({
+      event: "checkout.finalize.prices_updated",
+      changedCount: ctx.priceChanges.length,
+    });
+    throw new CheckoutError(
+      "CART_PRICES_UPDATED",
+      `${notice} Revisa el nuevo total antes de confirmar tu pago.`,
+    );
+  }
+
   if (!state.contact) throw new CheckoutError("MISSING_CONTACT");
   if (!state.address) throw new CheckoutError("MISSING_ADDRESS");
   if (!state.shippingSelection) throw new CheckoutError("MISSING_SHIPPING_SELECTION");
@@ -641,6 +681,7 @@ export async function finalizeCheckout(input: {
     order = await createOrderFromCart({
       cartId: ctx.cart.cartId,
       customerId: ctx.customerId,
+      expectedCartHash: fingerprintCartItems(ctx.cart.items),
       ...(utmAttribution ? { attribution: utmAttribution } : {}),
       shipping: {
         fullName: state.contact.fullName,
@@ -720,6 +761,10 @@ export async function finalizeCheckout(input: {
         dropped: err.items,
       });
       throw new CheckoutError("CART_ITEMS_UNAVAILABLE", err.message);
+    }
+    if (err instanceof OrderCartSnapshotMismatchError) {
+      logger.warn({ event: "checkout.finalize.cart_snapshot_mismatch" });
+      throw new CheckoutError("CART_PRICES_UPDATED", err.message);
     }
     // Carrera TOCTOU de reconciliación (2026-09-29): el webhook Wompi commiteó PAID mientras
     // createOrderFromCart releía/reconciliaba la orden PENDING de este cart. El gate atómico
@@ -1127,7 +1172,7 @@ export async function applyCoupon(
 ): Promise<{ ok: true; code: string; discount: number } | { ok: false; message: string }> {
   const code = rawCode.trim();
   if (!code) return { ok: false, message: "Escribe un código." };
-  const ctx = await loadCheckoutContext();
+  const ctx = await loadCheckoutContext({ syncPrices: false });
   const shippingCost = ctx.state.shippingSelection?.fleteCop ?? 0;
   const priced = await priceCouponForCart({
     code,
@@ -1151,21 +1196,21 @@ export async function removeCoupon(): Promise<void> {
  * null si no hay cupón; `error` si el guardado dejó de ser válido (ej. el carrito
  * bajó del mínimo) — el resumen lo muestra como aviso y no descuenta.
  */
-export async function getAppliedCoupon(): Promise<{
+export async function getAppliedCoupon(ctx?: CheckoutContext): Promise<{
   code: string;
   discount: number;
   error?: string;
 } | null> {
-  const ctx = await loadCheckoutContext();
-  const code = ctx.state.couponCode;
+  const context = ctx ?? (await loadCheckoutContext({ syncPrices: false }));
+  const code = context.state.couponCode;
   if (!code) return null;
-  const shippingCost = ctx.state.shippingSelection?.fleteCop ?? 0;
+  const shippingCost = context.state.shippingSelection?.fleteCop ?? 0;
   const priced = await priceCouponForCart({
     code,
-    cartId: ctx.cart.cartId,
+    cartId: context.cart.cartId,
     shippingCost,
-    customerId: ctx.customerId,
-    email: ctx.state.contact?.email ?? null,
+    customerId: context.customerId,
+    email: context.state.contact?.email ?? null,
   });
   if (priced.ok) return { code, discount: priced.discount };
   return { code, discount: 0, error: priced.message };
@@ -1222,21 +1267,23 @@ export type CheckoutLoyaltyInfo = {
  * getAppliedCoupon): si dejó de valer, devuelve `error` y el resumen no
  * descuenta.
  */
-export async function getCheckoutLoyalty(): Promise<CheckoutLoyaltyInfo | null> {
+export async function getCheckoutLoyalty(
+  ctx?: CheckoutContext,
+): Promise<CheckoutLoyaltyInfo | null> {
   const settings = await getLoyaltySettings();
   if (!settings.enabled) return null;
-  const ctx = await loadCheckoutContext();
-  if (!ctx.customerId) return null;
+  const context = ctx ?? (await loadCheckoutContext({ syncPrices: false }));
+  if (!context.customerId) return null;
   const customer = await prisma.customer.findFirst({
-    where: { id: ctx.customerId, deletedAt: null },
+    where: { id: context.customerId, deletedAt: null },
     select: { loyaltyPoints: true },
   });
   const balance = customer?.loyaltyPoints ?? 0;
-  const merchandise = await merchandiseAfterCouponCents(ctx);
+  const merchandise = await merchandiseAfterCouponCents(context);
 
   let applied: CheckoutLoyaltyInfo["applied"] = null;
   let error: string | undefined;
-  const requested = ctx.state.loyaltyPoints;
+  const requested = context.state.loyaltyPoints;
   if (requested && requested > 0) {
     const quote = quoteRedemption({
       requestedPoints: requested,
@@ -1248,7 +1295,7 @@ export async function getCheckoutLoyalty(): Promise<CheckoutLoyaltyInfo | null> 
     else error = quote.message;
   }
 
-  const shipping = ctx.state.shippingSelection?.fleteCop ?? 0;
+  const shipping = context.state.shippingSelection?.fleteCop ?? 0;
   const estimatedTotal = merchandise + shipping - (applied?.discountCents ?? 0);
   return {
     balance,
@@ -1313,7 +1360,7 @@ export async function applyLoyaltyPoints(
   if (!settings.enabled) {
     return { ok: false, message: "El programa de puntos está en pausa en este momento." };
   }
-  const ctx = await loadCheckoutContext();
+  const ctx = await loadCheckoutContext({ syncPrices: false });
   if (!ctx.customerId) {
     return { ok: false, message: "Inicia sesión para redimir tus Puntos Lucams." };
   }

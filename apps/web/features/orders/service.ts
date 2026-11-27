@@ -33,6 +33,7 @@ import { assertStockAvailable, revertStockForOrder, variantDisplayName } from ".
 import {
   OrderAlreadyPaidError,
   OrderAmountTooLargeError,
+  OrderCartSnapshotMismatchError,
   OrderUnavailableItemsError,
   RefundMoneyNotConfirmedError,
 } from "./errors";
@@ -126,6 +127,12 @@ export type CreateOrderFromCartInput = {
     utmCampaign?: string | null;
     landingPath?: string | null;
   } | null;
+  /**
+   * D-2 (ADR-211) — Huella del carrito vista por `finalizeCheckout` (`fingerprintCartItems`).
+   * Si el carrito en Postgres divergió (cambio concurrente de precio o cantidad antes de
+   * iniciar la tx), `createOrderFromCartTx` aborta con `OrderCartSnapshotMismatchError`.
+   */
+  expectedCartHash?: string;
 };
 
 export type CreateOrderFromCartResult = {
@@ -335,6 +342,32 @@ async function createOrderFromCartTx(
       );
     }
 
+    // D-2 (ADR-211) — Cierre de ventana TOCTOU entre finalizeCheckout y esta tx:
+    // verifica que el contenido y precios leídos en la transacción coincidan exactamente
+    // con la huella que el cliente confirmó (incluyendo inventoryUnits y unitPrice).
+    if (input.expectedCartHash) {
+      const txCartHash = cart.items
+        .map((it) => {
+          const invUnits = inventoryUnitsForOrderItem({
+            qty: it.qty,
+            customDesign: it.design?.canvasData ?? it.customDesign,
+            metadata: it.design?.metadata ?? it.metadata,
+            variantAttrs: it.variant.attributes,
+            productSchema: it.variant.product.personalizationSchema,
+          });
+          return `${it.variantId}x${it.qty}:${invUnits}@${it.unitPrice}`;
+        })
+        .sort()
+        .join("|");
+      if (txCartHash !== input.expectedCartHash) {
+        logger.warn({
+          event: "order.create.cart_snapshot_mismatch",
+          cartId: input.cartId,
+        });
+        throw new OrderCartSnapshotMismatchError();
+      }
+    }
+
     // Customer EFECTIVO del pedido (bug STG LCM-2026-0010 — ver order-customer.ts):
     // input.customerId es el Customer de la SESIÓN; si el contacto digitado trae
     // otro email, el pedido NO es de esa cuenta. Se resuelve acá — dentro de la
@@ -524,6 +557,9 @@ async function createOrderFromCartTx(
         qty: ci.qty,
         designUnits,
         unitPrice: ci.unitPrice,
+        // D-2 (ADR-211) — snapshot inmutable del nombre y SKU al confirmar la compra.
+        titleSnapshot: ci.variant.product.name,
+        skuSnapshot: ci.variant.sku,
         // Garantía inmutable de esta compra: una edición futura del producto
         // nunca reduce el término anunciado y aceptado al confirmar el pedido.
         warrantyMonths: ci.variant.product.warrantyMonths,
