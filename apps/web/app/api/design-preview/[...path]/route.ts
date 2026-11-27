@@ -21,6 +21,7 @@ import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
 import { hashBearerToken } from "@/lib/token-hash";
 import { CART_SESSION_COOKIE } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
+import { buildWeakEtag, isWildcardIfNoneMatch, matchesIfNoneMatch } from "@/lib/http-etag";
 import {
   canAccessDesignPreview,
   parsePreviewStoragePath,
@@ -49,7 +50,10 @@ const MIME_BY_EXT: Record<string, string> = {
 };
 
 function notFound() {
-  return Response.json({ error: "not found" }, { status: 404 });
+  return Response.json(
+    { error: "not found" },
+    { status: 404, headers: { "cache-control": "no-store" } },
+  );
 }
 
 /** Lee la cookie cart_session del header crudo (testeable sin next/headers). */
@@ -74,7 +78,15 @@ export async function GET(req: Request, ctx: { params: Promise<{ path?: string[]
 
   const design = await prisma.design.findUnique({
     where: { id: parsed.designId },
-    select: { customerId: true, sessionId: true, shareTokenHash: true },
+    select: {
+      customerId: true,
+      sessionId: true,
+      shareTokenHash: true,
+      updatedAt: true,
+      clientRev: true,
+      previewWatermarkedAt: true,
+      purgedAt: true,
+    },
   });
   if (!design) return notFound();
 
@@ -124,6 +136,28 @@ export async function GET(req: Request, ctx: { params: Promise<{ path?: string[]
   });
   if (!allowed) return notFound();
 
+  const etag = buildWeakEtag([
+    "design-preview:v1",
+    parsed.designId,
+    rel,
+    design.updatedAt.getTime(),
+    design.clientRev,
+    design.previewWatermarkedAt?.getTime() ?? 0,
+    design.purgedAt?.getTime() ?? 0,
+  ]);
+  const baseHeaders: Record<string, string> = {
+    // Privada y corta: la URL lleva capacidad por query o identidad por
+    // cookie — ninguna caché compartida debe retenerla.
+    "cache-control": "private, max-age=300",
+    "x-content-type-options": "nosniff",
+    etag,
+    vary: "Cookie",
+  };
+  const ifNoneMatch = req.headers.get("if-none-match");
+  if (matchesIfNoneMatch(ifNoneMatch, etag)) {
+    return new Response(null, { status: 304, headers: baseHeaders });
+  }
+
   const { data, error } = await supabaseService.storage.from(BUCKET).download(rel);
   if (error || !data) {
     // Objeto faltante (purga de retención, diseño viejo sin artefacto): 404
@@ -134,14 +168,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ path?: string[]
     return notFound();
   }
 
+  if (isWildcardIfNoneMatch(ifNoneMatch)) {
+    return new Response(null, { status: 304, headers: baseHeaders });
+  }
+
   const ext = rel.split(".").pop()!.toLowerCase();
-  return new Response(Buffer.from(await data.arrayBuffer()), {
-    headers: {
-      "content-type": MIME_BY_EXT[ext] ?? "application/octet-stream",
-      // Privada y corta: la URL lleva capacidad por query o identidad por
-      // cookie — ninguna caché compartida debe retenerla.
-      "cache-control": "private, max-age=300",
-      "x-content-type-options": "nosniff",
-    },
-  });
+  const headers: Record<string, string> = {
+    ...baseHeaders,
+    "content-type": MIME_BY_EXT[ext] ?? "application/octet-stream",
+    ...(typeof data.size === "number" && data.size >= 0
+      ? { "content-length": String(data.size) }
+      : {}),
+  };
+  return new Response(data.stream(), { status: 200, headers });
 }

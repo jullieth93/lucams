@@ -18,6 +18,7 @@ import {
   savePaymentMethodStep,
 } from "@/features/checkout/service";
 import { InsufficientStockError } from "@/features/orders/errors";
+import { scheduleExternalShipmentAfterResponse } from "@/features/orders/saga";
 import { advanceAbandonedCartCheckoutStep } from "@/features/cart/recovery-service";
 import { getClientIp } from "@/lib/client-ip";
 
@@ -230,9 +231,16 @@ export async function payCodAction(formData: FormData): Promise<void> {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
 
   try {
-    // Para COD, finalizeCheckout confirma la orden (stock + guía contraentrega + email)
-    // y devuelve la URL pública por token (/pedido/<token>?nueva=1).
-    const result = await finalizeCheckout({ redirectUrl: `${siteUrl}/checkout/gracias` });
+    // Para COD, finalizeCheckout confirma la orden (stock + email) y difiere la guía
+    // externa Aveonline a after() (respaldada por /api/cron/tracking-sync) para no
+    // bloquear el redirect al comprador por hasta 20 s.
+    const result = await finalizeCheckout({
+      redirectUrl: `${siteUrl}/checkout/gracias`,
+      deferExternalShipment: true,
+    });
+    if (result.shipmentDeferred) {
+      scheduleExternalShipmentAfterResponse(result.orderId);
+    }
     await finishCheckoutSession(); // limpiar la cookie de checkout (el cart ya lo vació el saga)
     logger.info({
       event: "checkout.pago.cod_confirmed",

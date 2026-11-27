@@ -98,203 +98,47 @@
 import { useEffect, useMemo } from "react";
 import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
+import {
+  BLANK_FACE_COLOR,
+  CALENDAR_CARD_THICKNESS_CM,
+  FACE_ALPHA_TEST,
+  FACE_FLIP_ROTATION,
+  FULL_REGION,
+  MAGNET_BACK_COLOR,
+  MAGNET_THICKNESS_CM,
+  MIN_WORLD_DEPTH,
+  TILE_THICKNESS_CM,
+  coverRegion,
+  foldedFaceRegion,
+  foldedStripMetrics,
+  magnetWorldSizes,
+  parseSizeCm,
+  realWorldDepth,
+  textureRegionTransform,
+  type MagnetShape,
+  type TextureRegion,
+} from "./lib/magnet-3d-constants";
 
-export type MagnetShape = "rectangle" | "circle" | "heart" | "custom";
-
-// ──────────────────────────────────────────────────────────────────
-//  Helpers puros (sin three en runtime → testeables en vitest node)
-// ──────────────────────────────────────────────────────────────────
-
-/**
- * Parsea "6.5×6.5", "7.5x10", "6" → { wCm, hCm }. Con un solo número asume cuadrado/diámetro.
- * Misma gramática que `parseSize` de lib/size-comparator.ts (duplicada acá porque ese módulo no
- * exporta el parser y los helpers 3D no deben acoplarse a copy de marketing).
- */
-export function parseSizeCm(sizeCm: string | undefined): { wCm: number; hCm: number } | null {
-  if (!sizeCm) return null;
-  const m = sizeCm.match(/^(\d+(?:\.\d+)?)(?:\s*[×x]\s*(\d+(?:\.\d+)?))?$/i);
-  if (!m) return null;
-  const w = parseFloat(m[1]!);
-  const h = m[2] ? parseFloat(m[2]) : w;
-  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
-  return { wCm: w, hCm: h };
-}
-
-/**
- * Región normalizada de textura para la cara impresa de MagnetMesh. Coordenadas 0..1 con `y`
- * medido DESDE ARRIBA de la imagen (como se lee). `flipV` invierte el mapeo vertical y `flipU`
- * el horizontal (la cara trasera del separador doblado cuelga rotada ~180° sobre el pliegue:
- * flipV+flipU = rotación de 180° de la textura → el diseño B se lee DERECHO desde atrás, no
- * espejado ni cabeza abajo).
- *
- * `swapAxes` (2026-09-25): la textura llegó ROTADA 90° respecto a la cara física — el editor
- * aún aplica `rotateTextures90` (ola 6, pensada para los stages horizontales legacy 600×200)
- * sobre stages que ahora son VERTICALES (200×600 / 400×420). El muestreo cruza los ejes UV
- * (texture.rotation = +π/2) para que la cara se vea EXACTAMENTE como el cliente la diseñó en
- * el canvas. Si el editor deja de rotar, la textura llega con la orientación de la cara y
- * `swapAxes` no se activa (ver foldedFaceRegion) — ambos mundos quedan cubiertos.
- */
-export type TextureRegion = {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  flipV?: boolean;
-  flipU?: boolean;
-  swapAxes?: boolean;
+export {
+  BLANK_FACE_COLOR,
+  CALENDAR_CARD_THICKNESS_CM,
+  FACE_ALPHA_TEST,
+  FACE_FLIP_ROTATION,
+  FULL_REGION,
+  MAGNET_BACK_COLOR,
+  MAGNET_THICKNESS_CM,
+  MIN_WORLD_DEPTH,
+  TILE_THICKNESS_CM,
+  coverRegion,
+  foldedFaceRegion,
+  foldedStripMetrics,
+  magnetWorldSizes,
+  parseSizeCm,
+  realWorldDepth,
+  textureRegionTransform,
+  type MagnetShape,
+  type TextureRegion,
 };
-
-const FULL_REGION: TextureRegion = { x: 0, y: 0, w: 1, h: 1 };
-
-/**
- * Transform de la textura clonada (repeat/offset/rotation) para mapear `region` sobre la tapa
- * del extruido. Los UV de la tapa del ExtrudeGeometry son las coordenadas CRUDAS del shape
- * (x ∈ [−w/2, w/2], y ∈ [−h/2, h/2]), así: u_img = x·repeat.x + offset.x, v_img = y·repeat.y +
- * offset.y. Con v medido desde ABAJO en three y `ry` desde ARRIBA en la imagen:
- *   sin flip:  u_img = rx + rw/2 + x·rw/w,   v_img = (1 − ry − rh) + (y/h + 0.5)·rh
- *   con flipU/flipV se niega el repeat correspondiente y el offset NO cambia — el muestreo
- *   queda SIEMPRE dentro de la región ([rx, rx+rw] × [1−ry−rh, 1−ry] ⊆ [0,1]²).
- * (Ola 4 — bug de la cara B NEGRA: el offset viejo sumaba +rh con flipV → v ≥ 1 fuera de rango;
- *  con ClampToEdgeWrapping toda la cara muestreaba la fila del borde superior del lienzo —
- *  transparente (0,0,0,0 → negro) u oscura — estirada.)
- *
- * Con `swapAxes` se devuelve rotation = +π/2 (centro UV (0,0) = centro del shape): la matriz UV
- * de three queda u_img = repeat.x·y + offset.x, v_img = −repeat.y·x + offset.y — los ejes se
- * cruzan y la región (calculada contra el aspecto DEROTADO en foldedFaceRegion) se muestrea
- * derecha. flipV niega repeat.x y flipU lleva repeat.y a positivo (misma regla de "negar el
- * repeat", con los ejes ya cruzados); los offsets no cambian.
- */
-export function textureRegionTransform(
-  region: TextureRegion,
-  width: number,
-  height: number,
-): { repeat: [number, number]; offset: [number, number]; rotation: number } {
-  const { x: rx, y: ry, w: rw, h: rh, flipV, flipU, swapAxes } = region;
-  if (swapAxes) {
-    return {
-      repeat: [(flipV ? -rh : rh) / height, (flipU ? rw : -rw) / width],
-      offset: [1 - ry - rh / 2, rx + rw / 2],
-      rotation: Math.PI / 2,
-    };
-  }
-  return {
-    repeat: [(flipU ? -rw : rw) / width, (flipV ? -rh : rh) / height],
-    offset: [rx + rw / 2, 1 - ry - rh / 2],
-    rotation: 0,
-  };
-}
-
-/**
- * Equivalente a background-size:cover en coordenadas de región: la mayor sub-región centrada de
- * la imagen (aspecto `srcAspect` = w/h) que llena una cara de aspecto `dstAspect` sin deformar.
- */
-export function coverRegion(srcAspect: number, dstAspect: number): TextureRegion {
-  if (srcAspect <= 0 || dstAspect <= 0) return FULL_REGION;
-  if (Math.abs(srcAspect - dstAspect) < 1e-3) return FULL_REGION;
-  if (srcAspect < dstAspect) {
-    // La imagen es más angosta/alta que la cara → recorta banda vertical centrada.
-    const h = srcAspect / dstAspect;
-    return { x: 0, y: (1 - h) / 2, w: 1, h };
-  }
-  const w = dstAspect / srcAspect;
-  return { x: (1 - w) / 2, y: 0, w, h: 1 };
-}
-
-/**
- * Región de textura para una cara del separador doblado (FoldedStripMesh).
- *
- * 2026-09-25 — bug STG "fotos ROTADAS 90° en el 3D": los stages de los separadores ahora son
- * VERTICALES (2×6 → 200×600; 4×4.2 → 400×420) pero el editor sigue aplicando `rotateTextures90`
- * (ola 6 — pensada para el lienzo horizontal legacy 600×200) antes de entregar las texturas,
- * así que llegan HORIZONTALES (600×200 / 420×400) a una cara física vertical (ancho = lado
- * corto, largo = lado largo). Si la orientación de la textura y la de la cara se cruzan
- * (una horizontal y la otra vertical), la región cover se calcula contra el aspecto DEROTADO
- * y se marca `swapAxes` para muestrear con los ejes UV cruzados — la cara se ve exactamente
- * como el cliente la diseñó en el canvas. Cuando el editor deje de rotar, la textura llega
- * vertical (orientación coincidente) y no se activa nada: ambos mundos quedan cubiertos.
- */
-export function foldedFaceRegion(
-  wRatio: number,
-  hRatio: number,
-  stripW: number,
-  hang: number,
-): TextureRegion {
-  const srcAspect = wRatio / hRatio;
-  const dstAspect = stripW / hang;
-  const swapAxes = (srcAspect - 1) * (dstAspect - 1) < 0;
-  const region = coverRegion(swapAxes ? 1 / srcAspect : srcAspect, dstAspect);
-  return swapAxes ? { ...region, swapAxes: true } : region;
-}
-
-/** Tamaño físico por defecto cuando falta el dato de cm (imán cuadrado típico de la tienda). */
-const DEFAULT_MAGNET_CM = 6.5;
-
-/**
- * Tamaños físicos en unidades de mundo para una tira de imanes, dados sus cm reales y la escala
- * de la escena (`uPerCm` = unidades de mundo por centímetro, derivada del tamaño real del
- * escenario: nevera ~170 cm de alto, tablero ~45 cm de ancho).
- *
- * Reglas:
- *  - Por pieza manda `wCm/hCm` del propio Magnet3D; si falta, se usa `fallbackSizeCm` (sizeCm de
- *    la variante del producto); si ninguna fuente tiene cm para TODAS las piezas → null (el
- *    caller cae al layout viejo de ajuste-a-celda, p.ej. letras del nombre).
- *  - El ASPECTO físico lo manda wRatio/hRatio (el template): la textura nunca se deforma; los cm
- *    fijan la ESCALA (ancho), el alto se deriva del aspecto.
- *  - TAMAÑO REAL SIEMPRE (2026-09-15): ya NO hay ajuste a la celda — la pieza conserva su tamaño
- *    físico en cualquier cantidad (un 7.5×10 siempre se ve más grande que un 4×4.2). Cuando el
- *    clúster no cabe en la región, el CALLER redistribuye (más filas/columnas) y la cámara
- *    reencuadra el conjunto; encoger las piezas está prohibido.
- */
-export function magnetWorldSizes(
-  items: readonly { wRatio: number; hRatio: number; wCm?: number; hCm?: number }[],
-  uPerCm: number,
-  opts: { fallbackSizeCm?: string } = {},
-): { w: number; h: number }[] | null {
-  const parsed = parseSizeCm(opts.fallbackSizeCm);
-  const anyCm = items.some((m) => m.wCm ?? m.hCm ?? parsed);
-  if (!anyCm) return null;
-  const sizes = items.map((m) => {
-    const aspect = m.hRatio / m.wRatio;
-    const wCm = m.wCm ?? parsed?.wCm ?? (m.hCm ? m.hCm / aspect : DEFAULT_MAGNET_CM);
-    const w = wCm * uPerCm;
-    return { w, h: w * aspect };
-  });
-  const maxW = Math.max(...sizes.map((s) => s.w));
-  const maxH = Math.max(...sizes.map((s) => s.h));
-  if (!(maxW > 0) || !(maxH > 0)) return null; // cm inválidos (0/NaN) → ajuste-a-celda
-  return sizes;
-}
-
-/**
- * Métricas del separador magnético DOBLADO (tira impresa de stripW × stripL que se pliega sobre
- * un borde redondeado de radio `rFold`; las dos caras cierran por el imán).
- *
- *  - `foldAngle`: ángulo que GIRA el material en el pliegue = ángulo entre una cara y la otra
- *    medido por fuera (π = doblado plano sobre una hoja; ~2.16 sobre el lomo de un libro en
- *    carpa, donde cada cara se abre δ = (π − foldAngle)/2 de la vertical).
- *  - `delta`: esa apertura por cara — es lo que rota cada grupo de cara sobre X.
- *  - `crestArc`: arco de la cresta sobre el borde = foldAngle (la cresta abraza tangencialmente
- *    desde la cara frontal hasta la trasera: thetaStart = delta, thetaLength = foldAngle).
- *  - `hang`: largo visible de cada cara — la cresta COME tira: hang = (stripL − rFold·crestArc)/2.
- *
- * Marco local del componente: eje del pliegue = X, la cara frontal cuelga hacia −Y en el lado
- * +Z (rotada −delta sobre X), la trasera en el lado −Z (rotada π+delta).
- */
-export function foldedStripMetrics(
-  stripL: number,
-  rFold: number,
-  foldAngle: number,
-): {
-  delta: number;
-  hang: number;
-  /** Arco de la cresta (rad) = foldAngle, acotado a [0, π]. */
-  crestArc: number;
-} {
-  const crestArc = Math.min(Math.PI, Math.max(0, foldAngle));
-  const delta = (Math.PI - foldAngle) / 2;
-  const hang = Math.max(0.05, (stripL - rFold * crestArc) / 2);
-  return { delta, hang, crestArc };
-}
 
 // ──────────────────────────────────────────────────────────────────
 //  MagnetMesh — pieza extruida con cara impresa
@@ -303,64 +147,6 @@ export function foldedStripMetrics(
 /** Radio de esquina histórico de la silueta rectangular: espejo del clip de la textura
  *  (roundRect r = min(8, w/12) px sobre texW=512 → 8/512 del ancho). */
 const LEGACY_CORNER_RATIO = 8 / 512;
-
-/**
- * Grosor FÍSICO real de la pieza (Fase 2.11, owner 2026-10-07). Un fotoimán
- * flexible real tiene 1–3 mm; se adopta 2 mm para el imán y 1.5 mm para las
- * fichas de letras (mismo material, un punto más finas — conserva el feedback
- * histórico de Lucy: "bajar un punto, no planas"). Antes `MAGNET_DEPTH = 0.04`
- * era una CONSTANTE DE MUNDO: en la nevera (uPerCm≈0.0494) equivalía a ~0.8 cm
- * (~1.1 cm con bisel) y en el mural (uPerCm=0.1) a ~0.4 cm (~0.56 cm con
- * bisel) — 4–8× el grosor real. Ahora el grosor se DERIVA del `uPerCm` de cada
- * escena (realWorldDepth). Regla "TAMAÑO REAL SIEMPRE" intacta: esto es el
- * GROSOR de la pieza; la cara (w/h) sigue saliendo de magnetWorldSizes.
- */
-export const MAGNET_THICKNESS_CM = 0.2;
-export const TILE_THICKNESS_CM = 0.15;
-/**
- * Tarjetas del Calendario Set 12 (2026-10-12 — bug "tarjetas gruesas como imanes"): las
- * tarjetas mes usan las escenas nevera/mural y heredaban el grosor del FOTOIMÁN (2 mm de
- * goma ferrita) → se veían como imanes gruesos, mensaje errado del producto físico. La
- * tarjeta es CARTULINA (~0.4 mm). En las escenas actuales el piso anti-z-fighting
- * (MIN_WORLD_DEPTH) manda sobre 0.04 cm (nevera 0.002 u, mural 0.004 u → piso 0.008 u):
- * la tarjeta queda ~20% más fina que el imán en la nevera (0.008 vs 0.0099 u) y 2.5× más
- * fina en el mural (0.008 vs 0.02 u); en el visor tarjeta-a-tarjeta (0.54 u/cm) sí rige el
- * valor real (0.0216 u).
- */
-export const CALENDAR_CARD_THICKNESS_CM = 0.04;
-
-/**
- * Mínimo de mundo del grosor extruido (Fase 2.11): 0.008 u. Justificación: la
- * tapa impresa flota 0.0012 u sobre el bisel (frontZ/backZ en
- * ExtrudedMagnetMesh); un grosor < ~6× ese epsilon deja el cuerpo dentro del
- * ruido de profundidad (z-fighting contra la superficie en ángulos rasantes),
- * vuelve el bisel (0.2·depth) sub-píxel y la pieza "desaparece" de perfil.
- * Las escenas actuales quedan POR ENCIMA del piso con su grosor real (nevera
- * ≈0.0099 u, mural 0.02 u): el mínimo solo protege escenas futuras de escala
- * más gruesa (uPerCm < 0.04).
- */
-export const MIN_WORLD_DEPTH = 0.008;
-
-/**
- * Grosor de la pieza en unidades de mundo: el grosor FÍSICO (`thicknessCm`,
- * default 2 mm del fotoimán) convertido con la escala de la escena (`uPerCm`),
- * con piso MIN_WORLD_DEPTH. Reemplaza a las constantes de mundo MAGNET_DEPTH /
- * TILE_DEPTH (Fase 2.11).
- */
-export function realWorldDepth(uPerCm: number, thicknessCm = MAGNET_THICKNESS_CM): number {
-  return Math.max(MIN_WORLD_DEPTH, thicknessCm * uPerCm);
-}
-
-/** Negro del IMÁN (goma ferrita sin laminar): el reverso de los separadores magnéticos — la
- *  cara contraria al diseño — y los cantos/tapas internas (material del imán). NO es el cartón
- *  crema histórico (#F1EBDD): decisión del cliente 2026-09-22. */
-export const MAGNET_BACK_COLOR = "#1A1A1A";
-
-/** Blanco de RESPALDO de una cara B sin diseñar mientras se genera la textura del
- *  patrón de marca «Lucams» (decisión owner 2026-11-03 — la cara B vacía ya no se
- *  imprime en blanco: lleva el patrón, default-back-face.ts; el blanco queda solo
- *  como fallback del instante de carga, igual que el placeholder de una foto). */
-export const BLANK_FACE_COLOR = "#FFFFFF";
 
 /** Silueta física centrada en el origen (unidades de mundo). Espejo exacto de buildShapePath. */
 function buildSilhouette(
@@ -407,19 +193,6 @@ function buildSilhouette(
   s.closePath();
   return s;
 }
-
-/**
- * Umbral de corte alfa de las tapas impresas (2026-10-12 — bug "tiras negras"): el PNG
- * troquelado tiene RGB(0,0,0) donde α=0; sin manejo de alfa esos píxeles renderizan NEGRO en
- * los bordes de la silueta (donde la geometría extruida y el recorte difieren por el radio de
- * esquina / anti-aliasing). Se usa alphaTest (cutout, pase OPACO) y NO `transparent`: el
- * blending mandaría las tapas al pase transparente, ordenado por distancia al centro de la
- * pieza — con varias piezas coplanares (p.ej. Alargados sobre la hoja) el orden de pintado se
- * invertiría en ciertos ángulos. No reintroduce el bug histórico de la "cara B NEGRA"
- * (ola 4): ese era muestreo UV fuera de rango con ClampToEdge, resuelto en
- * `textureRegionTransform` — acá el muestreo sigue siempre dentro de la región.
- */
-export const FACE_ALPHA_TEST = 0.5;
 
 /**
  * Núcleo geometría+materiales de la pieza extruida, con la textura YA cargada. La textura se
@@ -682,7 +455,7 @@ const CARD_THICK = 0.012;
  * Funciona para la pieza plana (MagnetMesh) y para el separador doblado (FoldedStripMesh —
  * su eje largo también es Y: las caras cuelgan hacia −Y y el pliegue corre sobre X).
  */
-export const FACE_FLIP_ROTATION: readonly [number, number, number] = [0, Math.PI, 0];
+// FACE_FLIP_ROTATION re-exportado desde ./lib/magnet-3d-constants.
 
 /**
  * La tira impresa (stripW × stripL, unidades de mundo) doblada a la mitad sobre un borde: dos

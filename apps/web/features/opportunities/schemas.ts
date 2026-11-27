@@ -11,6 +11,7 @@ import {
   normalizeAndValidateNit,
   normalizePhoneWithDial,
 } from "@/lib/colombia-validators";
+import { fitsMoneyInt4, MAX_MONEY_CENTS } from "@/lib/money";
 
 export const OPPORTUNITY_STAGES = ["NEW", "QUALIFYING", "PROPOSAL_SENT", "WON", "LOST"] as const;
 
@@ -357,6 +358,9 @@ export const B2bInquirySchema = z
 
 export type B2bInquiryInput = z.infer<typeof B2bInquirySchema>;
 
+/** Techo entero en pesos COP compatible con columnas PostgreSQL INT4 en centavos (`$21.474.836 COP`). */
+export const MAX_B2B_MONEY_PESOS = Math.floor(MAX_MONEY_CENTS / 100);
+
 export const ProposalDraftItemSchema = z.object({
   variantId: z.string().trim().min(1, "Selecciona una opción válida."),
   qty: z.coerce.number().int().min(1, "La cantidad debe ser al menos 1.").max(100_000),
@@ -365,42 +369,86 @@ export const ProposalDraftItemSchema = z.object({
     .number()
     .int("El precio unitario debe ser entero en pesos COP.")
     .min(0)
-    .max(500_000_000),
+    .max(
+      MAX_B2B_MONEY_PESOS,
+      "El precio unitario supera el límite técnico permitido ($21.474.836 COP).",
+    ),
   packagingNote: z.string().trim().max(240).optional().default(""),
   designId: z.string().trim().max(64).optional().default(""),
 });
 
-export const SaveProposalDraftSchema = z.object({
-  opportunityId: z.string().trim().min(1),
-  proposalId: z.string().trim().max(64).optional().default(""),
-  validUntilDate: z
-    .string()
-    .trim()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Ingresa una fecha de vigencia válida.")
-    .refine((val) => val >= todayBogotaIso(), {
-      message: "La vigencia de la propuesta no puede estar en el pasado.",
-    }),
-  proofMode: z.enum(PROPOSAL_PROOF_MODES),
-  artworkMode: z.enum(B2B_ARTWORK_MODES),
-  packagingType: z.enum(B2B_PACKAGING_TYPES),
-  estimatedProductionDays: z.coerce.number().int().min(1).max(90),
-  shippingMode: z.enum(PROPOSAL_SHIPPING_MODES),
-  shippingCarrier: z.string().trim().max(80).optional().default(""),
-  shippingService: z.string().trim().max(120).optional().default(""),
-  packageCount: z.coerce.number().int().min(1).max(100).default(1),
-  departmentCode: z.string().trim().min(1, "Selecciona el departamento destino.").max(12),
-  cityCode: z.string().trim().min(1, "Selecciona el municipio destino.").max(12),
-  shippingPesos: z.coerce.number().int().min(0).max(100_000_000),
-  discountPesos: z.coerce.number().int().min(0).max(500_000_000).default(0),
-  allowDirectTransfer: z.boolean().default(false),
-  allowBelowCostOverride: z.boolean().default(false),
-  clientNotes: z.string().trim().max(2500).optional().default(""),
-  termsNotes: z.string().trim().max(2500).optional().default(""),
-  items: z
-    .array(ProposalDraftItemSchema)
-    .min(1, "Agrega al menos una línea a la propuesta.")
-    .max(20),
-});
+export const SaveProposalDraftSchema = z
+  .object({
+    opportunityId: z.string().trim().min(1),
+    proposalId: z.string().trim().max(64).optional().default(""),
+    validUntilDate: z
+      .string()
+      .trim()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Ingresa una fecha de vigencia válida.")
+      .refine((val) => val >= todayBogotaIso(), {
+        message: "La vigencia de la propuesta no puede estar en el pasado.",
+      }),
+    proofMode: z.enum(PROPOSAL_PROOF_MODES),
+    artworkMode: z.enum(B2B_ARTWORK_MODES),
+    packagingType: z.enum(B2B_PACKAGING_TYPES),
+    estimatedProductionDays: z.coerce.number().int().min(1).max(90),
+    shippingMode: z.enum(PROPOSAL_SHIPPING_MODES),
+    shippingCarrier: z.string().trim().max(80).optional().default(""),
+    shippingService: z.string().trim().max(120).optional().default(""),
+    packageCount: z.coerce.number().int().min(1).max(100).default(1),
+    departmentCode: z.string().trim().min(1, "Selecciona el departamento destino.").max(12),
+    cityCode: z.string().trim().min(1, "Selecciona el municipio destino.").max(12),
+    shippingPesos: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(
+        MAX_B2B_MONEY_PESOS,
+        "El costo de envío supera el límite técnico permitido ($21.474.836 COP).",
+      ),
+    discountPesos: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(
+        MAX_B2B_MONEY_PESOS,
+        "El descuento supera el límite técnico permitido ($21.474.836 COP).",
+      )
+      .default(0),
+    allowDirectTransfer: z.boolean().default(false),
+    allowBelowCostOverride: z.boolean().default(false),
+    clientNotes: z.string().trim().max(2500).optional().default(""),
+    termsNotes: z.string().trim().max(2500).optional().default(""),
+    items: z
+      .array(ProposalDraftItemSchema)
+      .min(1, "Agrega al menos una línea a la propuesta.")
+      .max(20),
+  })
+  .superRefine((val, ctx) => {
+    const maxInt4 = BigInt(MAX_MONEY_CENTS);
+    const hundred = BigInt(100);
+    let subtotalCents = BigInt(0);
+    for (const it of val.items) {
+      subtotalCents +=
+        BigInt(it.qty) * BigInt(it.designUnits) * BigInt(it.unitPricePesos) * hundred;
+    }
+    const rawDiscountCents = BigInt(val.discountPesos) * hundred;
+    const discountCents = rawDiscountCents > subtotalCents ? subtotalCents : rawDiscountCents;
+    const totalCents = subtotalCents - discountCents + BigInt(val.shippingPesos) * hundred;
+    if (
+      subtotalCents > maxInt4 ||
+      totalCents > maxInt4 ||
+      !fitsMoneyInt4(Number(subtotalCents)) ||
+      !fitsMoneyInt4(Number(totalCents))
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["items"],
+        message:
+          "El monto total de la propuesta supera el límite técnico por orden ($21.474.836 COP). Divide el pedido en entregas parciales.",
+      });
+    }
+  });
 
 export type SaveProposalDraftInput = z.infer<typeof SaveProposalDraftSchema>;
 
@@ -417,8 +465,17 @@ export const ReportDirectPaymentSchema = z.object({
 
 export const ConfirmDirectPaymentSchema = z.object({
   orderId: z.string().trim().min(1),
-  receivedCashPesos: z.coerce.number().int().min(0).max(2_000_000_000),
-  withholdingPesos: z.coerce.number().int().min(0).max(500_000_000).default(0),
+  receivedCashPesos: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_B2B_MONEY_PESOS, "El monto recibido supera el límite permitido ($21.474.836 COP)."),
+  withholdingPesos: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_B2B_MONEY_PESOS, "La retención supera el límite permitido ($21.474.836 COP).")
+    .default(0),
   referenceOverride: z.string().trim().max(120).optional().default(""),
   notes: z.string().trim().max(600).optional().default(""),
 });

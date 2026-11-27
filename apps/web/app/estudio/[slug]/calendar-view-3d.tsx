@@ -27,7 +27,7 @@
 
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import { useIsTouch } from "./use-is-touch";
 import { OrbitControls, RoundedBox, GradientTexture } from "@react-three/drei";
 import * as THREE from "three";

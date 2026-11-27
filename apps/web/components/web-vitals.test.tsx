@@ -66,7 +66,7 @@ vi.mock("next/navigation", () => ({
   useSelectedLayoutSegments: () => [],
 }));
 
-import { WebVitalsReporter } from "./web-vitals";
+import { WebVitalsReporter, VITALS_BATCH_MAX_ITEMS, VITALS_FLUSH_DELAY_MS } from "./web-vitals";
 import {
   acceptAllPreferences,
   COOKIE_CONSENT_NAME,
@@ -93,15 +93,19 @@ function fireMetric() {
   vitals.callback(METRIC);
 }
 
-/** Payloads JSON que el componente envió vía fetch fallback. */
+/** Payloads individuales aplanados desde los lotes `{ metrics: [...] }` enviados vía fetch fallback. */
 function sentPayloads(): Array<Record<string, unknown>> {
-  return fetchMock.mock.calls.map((c) => {
+  return fetchMock.mock.calls.flatMap((c) => {
     const [, init] = c as unknown as [string, { body: string }];
-    return JSON.parse(init.body) as Record<string, unknown>;
+    const parsed = JSON.parse(init.body) as
+      { metrics?: Array<Record<string, unknown>> } | Record<string, unknown>;
+    if (Array.isArray(parsed.metrics)) return parsed.metrics;
+    return [parsed as Record<string, unknown>];
   });
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
   clearConsentCookie();
   fetchMock.mockClear();
   vi.stubGlobal("fetch", fetchMock);
@@ -110,16 +114,18 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   clearConsentCookie();
   vi.unstubAllGlobals();
   // Restore navigator if a test stubbed sendBeacon via defineProperty.
   delete (window.navigator as { sendBeacon?: unknown }).sendBeacon;
 });
 
-describe("WebVitalsReporter — consent gate (F-19)", () => {
+describe("WebVitalsReporter — consent gate (F-19) y batching cliente (Fase 4 · #15)", () => {
   it("does NOT send the beacon when the visitor has not answered the banner yet", () => {
     render(<WebVitalsReporter />);
     fireMetric();
+    vi.advanceTimersByTime(VITALS_FLUSH_DELAY_MS);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -127,41 +133,71 @@ describe("WebVitalsReporter — consent gate (F-19)", () => {
     writeClientCookiePreferences(rejectAllPreferences());
     render(<WebVitalsReporter />);
     fireMetric();
+    vi.advanceTimersByTime(VITALS_FLUSH_DELAY_MS);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("sends the beacon with the normalized route once analytics is accepted", () => {
+  it("agrupa múltiples métricas dentro de la ventana de batching en un único POST { metrics: [...] }", () => {
     writeClientCookiePreferences(acceptAllPreferences());
     render(<WebVitalsReporter />);
     fireMetric();
+    vitals.callback!({
+      name: "FCP",
+      value: 720,
+      rating: "good",
+      delta: 720,
+      navigationType: "navigate",
+    });
+    // Antes del timer no dispara requests individuales.
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(VITALS_FLUSH_DELAY_MS);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
     expect(url).toBe("/api/vitals");
-    const body = JSON.parse(init.body) as Record<string, unknown>;
-    expect(body).toMatchObject({ name: "LCP", route: "/producto/[slug]" });
+    const body = JSON.parse(init.body) as { metrics: Array<Record<string, unknown>> };
+    expect(body.metrics).toHaveLength(2);
+    expect(body.metrics[0]).toMatchObject({ name: "LCP", route: "/producto/[slug]" });
+    expect(body.metrics[1]).toMatchObject({ name: "FCP", route: "/producto/[slug]" });
+  });
+
+  it("hace flush inmediato al alcanzar VITALS_BATCH_MAX_ITEMS sin esperar el timer", () => {
+    writeClientCookiePreferences(acceptAllPreferences());
+    render(<WebVitalsReporter />);
+    for (let i = 0; i < VITALS_BATCH_MAX_ITEMS; i++) {
+      fireMetric();
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sentPayloads()).toHaveLength(VITALS_BATCH_MAX_ITEMS);
   });
 
   it("starts sending mid-session when the visitor accepts after the component mounted", () => {
     render(<WebVitalsReporter />);
     fireMetric();
+    vi.advanceTimersByTime(VITALS_FLUSH_DELAY_MS);
     expect(fetchMock).not.toHaveBeenCalled();
     // Same render, no remount: the lazy cookie read picks up the new choice.
     writeClientCookiePreferences(acceptAllPreferences());
     fireMetric();
+    vi.advanceTimersByTime(VITALS_FLUSH_DELAY_MS);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("stops sending mid-session when the visitor revokes analytics", () => {
+  it("stops sending mid-session (y descarta métricas en cola) when the visitor revokes analytics", () => {
     writeClientCookiePreferences(acceptAllPreferences());
     render(<WebVitalsReporter />);
     fireMetric();
+    vi.advanceTimersByTime(VITALS_FLUSH_DELAY_MS);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    writeClientCookiePreferences(rejectAllPreferences());
+
+    // Encola una métrica y revoca el consentimiento ANTES de que venza el timer.
     fireMetric();
+    writeClientCookiePreferences(rejectAllPreferences());
+    vi.advanceTimersByTime(VITALS_FLUSH_DELAY_MS);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("uses navigator.sendBeacon when available (primary path)", () => {
+  it("uses navigator.sendBeacon when available (primary path) y vacía la cola al instante en pagehide", () => {
     writeClientCookiePreferences(acceptAllPreferences());
     const sendBeacon = vi.fn(() => true);
     Object.defineProperty(window.navigator, "sendBeacon", {
@@ -170,6 +206,7 @@ describe("WebVitalsReporter — consent gate (F-19)", () => {
     });
     render(<WebVitalsReporter />);
     fireMetric();
+    window.dispatchEvent(new Event("pagehide"));
     expect(sendBeacon).toHaveBeenCalledTimes(1);
     const [url, blob] = sendBeacon.mock.calls[0] as unknown as [string, Blob];
     expect(url).toBe("/api/vitals");
@@ -177,13 +214,40 @@ describe("WebVitalsReporter — consent gate (F-19)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("hace fallback a fetch keepalive si navigator.sendBeacon devuelve false (M-2)", () => {
+    writeClientCookiePreferences(acceptAllPreferences());
+    const sendBeacon = vi.fn(() => false);
+    Object.defineProperty(window.navigator, "sendBeacon", {
+      configurable: true,
+      value: sendBeacon,
+    });
+    render(<WebVitalsReporter />);
+    fireMetric();
+    vi.advanceTimersByTime(VITALS_FLUSH_DELAY_MS);
+    expect(sendBeacon).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("flushea métricas encoladas tras volver de otra pestaña sin perderlas en el segundo pagehide (M-2)", () => {
+    writeClientCookiePreferences(acceptAllPreferences());
+    render(<WebVitalsReporter />);
+    fireMetric();
+    window.dispatchEvent(new Event("pagehide"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Usuario regresa, dispara una nueva métrica y cierra la pestaña antes del timer de 2 s.
+    fireMetric();
+    window.dispatchEvent(new Event("pagehide"));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("normaliza /estudio/<slug> → /estudio/[slug] (INP del Estudio agregable, 2026-09-18)", () => {
     vitals.pathname = "/estudio/set-fotoimanes-polaroid";
     writeClientCookiePreferences(acceptAllPreferences());
     render(<WebVitalsReporter />);
     fireMetric();
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
-    expect(JSON.parse(init.body)).toMatchObject({ route: "/estudio/[slug]" });
+    vi.advanceTimersByTime(VITALS_FLUSH_DELAY_MS);
+    expect(sentPayloads()[0]).toMatchObject({ route: "/estudio/[slug]" });
   });
 
   it("para INP adjunta el selector del elemento (attribution.interactionTarget)", () => {
@@ -199,8 +263,8 @@ describe("WebVitalsReporter — consent gate (F-19)", () => {
       navigationType: "navigate",
       attribution: { interactionTarget: "main.bg-brand-cream.flex-1#contenido" },
     });
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
-    expect(JSON.parse(init.body)).toMatchObject({
+    vi.advanceTimersByTime(VITALS_FLUSH_DELAY_MS);
+    expect(sentPayloads()[0]).toMatchObject({
       name: "INP",
       target: "main.bg-brand-cream.flex-1#contenido",
     });
@@ -210,8 +274,8 @@ describe("WebVitalsReporter — consent gate (F-19)", () => {
     writeClientCookiePreferences(acceptAllPreferences());
     render(<WebVitalsReporter />);
     fireMetric(); // LCP sin attribution
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
-    expect(JSON.parse(init.body)).not.toHaveProperty("target");
+    vi.advanceTimersByTime(VITALS_FLUSH_DELAY_MS);
+    expect(sentPayloads()[0]).not.toHaveProperty("target");
   });
 });
 

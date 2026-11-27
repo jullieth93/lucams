@@ -53,6 +53,7 @@ import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
 import { TrackViewItemList } from "@/components/analytics-trackers";
 import { CategoryIntro } from "@/components/category-intro";
 import { getPageSeo } from "@/lib/cms-tokens";
+import { MAX_PRICE_CENTS } from "@/features/products/price-filter";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -117,6 +118,11 @@ function pickInt(sp: Record<string, string | string[] | undefined>, key: string)
   return Number.isFinite(n) ? n : undefined;
 }
 
+function pickPriceInt(sp: Record<string, string | string[] | undefined>, key: string) {
+  const n = pickInt(sp, key);
+  return n !== undefined && n >= 0 && n <= MAX_PRICE_CENTS ? n : undefined;
+}
+
 export default async function ProductosPage({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams;
   const q = pickString(sp, "q")?.trim();
@@ -125,8 +131,8 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
   const personalizable = pickFlag(sp, "personalizable");
   const descuento = pickFlag(sp, "descuento");
   const destacados = pickFlag(sp, "destacados");
-  const minPrice = pickInt(sp, "minPrice");
-  const maxPrice = pickInt(sp, "maxPrice");
+  const minPrice = pickPriceInt(sp, "minPrice");
+  const maxPrice = pickPriceInt(sp, "maxPrice");
   const ordenRaw = pickString(sp, "orden");
   const orden = (
     ordenRaw && ["recent", "price-asc", "price-desc", "featured", "name"].includes(ordenRaw)
@@ -183,12 +189,14 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
   let totalPages: number;
 
   if (q && q.length >= 2) {
-    // #1 + [CX-01] — traer hasta 100 honrando en SQL tanto la jerarquía padre→hijas de
-    // `categoria` como el tag `ocasion`, antes de filtrar/ordenar/paginar sobre el set completo.
+    // #1 + [CX-01] + Fase 5 #10 — traer hasta 100 honrando en SQL la jerarquía padre→hijas de
+    // `categoria`, el tag `ocasion` y el rango de precio sobre variantes activas antes de paginar.
     const results = await searchStorefrontProducts(q, {
       limit: 100,
       categorySlug: categoria,
       ocasionSlug: ocasion,
+      minPrice,
+      maxPrice,
     });
     // #8 — filtrar y ordenar sobre los results (que ahora traen isFeatured) ANTES de mapear a cards:
     // con búsqueda activa, "Destacados" y "Ordenar por" antes se ignoraban en silencio.
@@ -196,8 +204,6 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
       if (personalizable && !r.isPersonalizable) return false;
       if (descuento && r.compareAtPrice == null) return false;
       if (destacados && !r.isFeatured) return false; // ← filtro que faltaba
-      if (minPrice != null && r.basePrice < minPrice) return false;
-      if (maxPrice != null && r.basePrice > maxPrice) return false;
       return true;
     });
     // "recent" (default) preserva el orden de relevancia (score) de la búsqueda. Los demás reordenan

@@ -37,7 +37,7 @@ import {
   unitNounForLine,
 } from "@/features/personalization/preview-page-labels";
 import { unitCountNounForLine } from "@/features/cart/line-preview";
-import { isBookmarkGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
+import { isBookmarkGalleryTag } from "@/features/personalization/product-kind";
 import {
   describeVariantAttributes,
   parseVariantAttributes,

@@ -8,56 +8,14 @@
  * El mismo diseño se re-dibuja en canvas para el PNG de producción (ver name-editor).
  */
 
-export const TILE_BORDER_COLORS = ["#7C6AAD", "#5DD9D1", "#E85B9F", "#F58A6F", "#FFD93D"] as const;
+import {
+  TILE_BORDER_COLORS,
+  NAME_TILE_THEMES,
+  getNameTileTheme,
+  type NameTileTheme,
+} from "@/features/personalization/letter-tile-themes";
 
-/*
- * Temas de color de las fichas (ADR-057). Hoy recolorean el placeholder; mañana cada
- * tema mapea a un "Set de fichas" ilustrado que Lucy gestiona en el admin (niña/niño/
- * arcoíris/neutro). El tema elegido se guarda en el diseño (metadata.themeId).
- */
-export type NameTileTheme = {
-  id: string;
-  label: string;
-  emoji: string;
-  colors: readonly string[];
-};
-
-export const NAME_TILE_THEMES: readonly NameTileTheme[] = [
-  {
-    id: "arcoiris",
-    label: "Arcoíris",
-    emoji: "🌈",
-    colors: ["#E85B9F", "#F58A6F", "#FFD93D", "#3FB8AF", "#4A90D9", "#9B5DE5"],
-  },
-  {
-    id: "vibrante",
-    label: "Vibrante",
-    emoji: "⚡",
-    colors: ["#E63946", "#F4511E", "#FFC300", "#43AA8B", "#1D6FB8", "#9B5DE5"],
-  },
-  {
-    id: "nina",
-    label: "Niña",
-    emoji: "💗",
-    colors: ["#E85B9F", "#F58A6F", "#C86FB0", "#FF3D7F", "#9B5DE5"],
-  },
-  {
-    id: "nino",
-    label: "Niño",
-    emoji: "💙",
-    colors: ["#5DD9D1", "#4A90D9", "#1D6FB8", "#43AA8B", "#7C6AAD"],
-  },
-  {
-    id: "neutro",
-    label: "Neutro",
-    emoji: "🖤",
-    colors: ["#3D2E5C", "#2B2D42", "#6B7280", "#8B5A2B", "#7C6AAD"],
-  },
-];
-
-export function getNameTileTheme(id: string | null | undefined): NameTileTheme {
-  return NAME_TILE_THEMES.find((t) => t.id === id) ?? NAME_TILE_THEMES[0];
-}
+export { TILE_BORDER_COLORS, NAME_TILE_THEMES, getNameTileTheme, type NameTileTheme };
 
 /**
  * Colores curados (aptos para impresión) para elegir el color de cada letra. Paleta

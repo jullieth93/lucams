@@ -9,6 +9,7 @@
 
 import { useActionState } from "react";
 import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
+import { formatCOP } from "@/lib/format";
 import {
   assignWarrantyAction,
   reviewWarrantyAction,
@@ -24,6 +25,8 @@ export function WarrantyActions({
   status,
   resolutionType = null,
   canRefund = false,
+  maxRefundCents = 0,
+  suggestedRefundCents = 0,
   assignedToAdminId = null,
   currentAdminId,
   assignableAdmins = [],
@@ -32,6 +35,8 @@ export function WarrantyActions({
   status: string;
   resolutionType?: string | null;
   canRefund?: boolean;
+  maxRefundCents?: number;
+  suggestedRefundCents?: number;
   assignedToAdminId?: string | null;
   currentAdminId?: string;
   assignableAdmins?: Array<{ id: string; email: string }>;
@@ -163,22 +168,89 @@ export function WarrantyActions({
         ) : (
           <details>
             <summary className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 cursor-pointer list-none rounded-md border bg-white px-3 py-1.5 text-xs font-semibold">
-              Marcar resuelto…
+              {resolutionType === "REFUND" ? "Registrar devolución y cerrar…" : "Marcar resuelto…"}
             </summary>
             <form action={resolve} className="mt-2 flex flex-col gap-2">
               <input type="hidden" name="id" value={id} />
+              {resolutionType === "REFUND" && (
+                <>
+                  {maxRefundCents <= 0 && (
+                    <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-800">
+                      Sin saldo reembolsable disponible (el pedido ya fue reembolsado o el efectivo
+                      de la línea ya se devolvió por completo).
+                    </p>
+                  )}
+                  <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-700">
+                    <span>Monto devuelto (COP · máx. {formatCOP(maxRefundCents)})</span>
+                    <input
+                      type="number"
+                      name="refundAmountPesos"
+                      required
+                      min={0.01}
+                      max={
+                        maxRefundCents > 0 ? Number((maxRefundCents / 100).toFixed(2)) : undefined
+                      }
+                      step="0.01"
+                      defaultValue={
+                        suggestedRefundCents > 0
+                          ? suggestedRefundCents % 100 === 0
+                            ? String(suggestedRefundCents / 100)
+                            : (suggestedRefundCents / 100).toFixed(2)
+                          : ""
+                      }
+                      className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border bg-white px-2 py-1.5 text-xs tabular-nums focus:ring-2 focus:outline-none"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-700">
+                    <span>Método de reembolso</span>
+                    <select
+                      name="refundMethod"
+                      required
+                      defaultValue="WOMPI_VOID"
+                      className="border-brand-purple/20 text-brand-purple-dark focus:ring-brand-purple/30 rounded-md border bg-white px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
+                    >
+                      <option value="WOMPI_VOID">Reversa Wompi</option>
+                      <option value="BANK_TRANSFER">Transferencia bancaria</option>
+                    </select>
+                  </label>
+                  <label className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50/70 p-2 text-[11px] text-rose-900">
+                    <input
+                      type="checkbox"
+                      name="refundConfirmed"
+                      value="true"
+                      required
+                      className="mt-0.5 h-3.5 w-3.5 rounded border-rose-300 text-rose-600"
+                    />
+                    <span>
+                      Confirmo que ya devolví el dinero al cliente por el monto y método indicados.
+                    </span>
+                  </label>
+                </>
+              )}
               <input
                 name="note"
                 maxLength={500}
-                placeholder="Nota (opcional): cómo se ejecutó el remedio"
+                placeholder={
+                  resolutionType === "REFUND"
+                    ? "Nota / comprobante (opcional): ref. transferencia o reversa"
+                    : "Nota (opcional): cómo se ejecutó el remedio"
+                }
                 className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border bg-white px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
               />
               <button
                 type="submit"
-                disabled={resolvePending}
-                className="self-start rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                disabled={resolvePending || (resolutionType === "REFUND" && maxRefundCents <= 0)}
+                className={`self-start rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 ${
+                  resolutionType === "REFUND"
+                    ? "bg-rose-600 hover:bg-rose-700"
+                    : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
               >
-                {resolvePending ? "…" : "Confirmar resolución"}
+                {resolvePending
+                  ? "…"
+                  : resolutionType === "REFUND"
+                    ? "Confirmar reembolso (MFA)"
+                    : "Confirmar resolución"}
               </button>
             </form>
           </details>

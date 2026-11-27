@@ -7,17 +7,18 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { rateLimit, listCatalogProducts } = vi.hoisted(() => ({
+const { rateLimit, listCatalogProducts, countCatalogProducts } = vi.hoisted(() => ({
   rateLimit: vi.fn(async (_key: string, _limit?: number, _windowSeconds?: number) => ({
     allowed: true,
     count: 1,
     resetAt: new Date(),
   })),
   listCatalogProducts: vi.fn(async (_filters: Record<string, unknown>) => []),
+  countCatalogProducts: vi.fn(async (_filters: Record<string, unknown>) => 0),
 }));
 
 vi.mock("@/lib/rate-limit", () => ({ rateLimit }));
-vi.mock("@/lib/catalog", () => ({ listCatalogProducts }));
+vi.mock("@/lib/catalog", () => ({ listCatalogProducts, countCatalogProducts }));
 
 import { GET } from "./route";
 
@@ -45,14 +46,23 @@ describe("GET /api/catalog/products — hardening de params", () => {
     expect(lastFilters().priceMax).toBeUndefined();
   });
 
-  it("priceMin/priceMax negativos quedan undefined", async () => {
+  it("priceMin/priceMax negativos o > INT4 quedan undefined", async () => {
     await GET(req("?priceMin=-5000&priceMax=-1"));
+    expect(lastFilters().priceMin).toBeUndefined();
+    expect(lastFilters().priceMax).toBeUndefined();
+
+    await GET(req("?priceMin=99999999999&priceMax=2147483648"));
     expect(lastFilters().priceMin).toBeUndefined();
     expect(lastFilters().priceMax).toBeUndefined();
   });
 
-  it("priceMin/priceMax válidos pasan como enteros", async () => {
-    await GET(req("?priceMin=10000&priceMax=50000"));
+  it("priceMin/priceMax válidos pasan como enteros y exponen total exacto", async () => {
+    countCatalogProducts.mockResolvedValueOnce(42);
+    const res = await GET(req("?priceMin=10000&priceMax=50000"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { total: number; count: number };
+    expect(body.total).toBe(42);
+    expect(body.count).toBe(0);
     expect(lastFilters().priceMin).toBe(10000);
     expect(lastFilters().priceMax).toBe(50000);
   });
@@ -78,5 +88,6 @@ describe("GET /api/catalog/products — hardening de params", () => {
     const res = await GET(req());
     expect(res.status).toBe(429);
     expect(listCatalogProducts).not.toHaveBeenCalled();
+    expect(countCatalogProducts).not.toHaveBeenCalled();
   });
 });

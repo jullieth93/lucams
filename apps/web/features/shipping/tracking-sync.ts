@@ -105,12 +105,15 @@ async function syncSingleOrderGuide(order: {
   return result.status === "ok";
 }
 
-export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> {
+export async function syncActiveShipmentTracking(opts?: {
+  budgetMs?: number;
+}): Promise<TrackingSyncResult> {
   if (!process.env.AVEONLINE_USUARIO || !process.env.AVEONLINE_CLAVE) {
     return { checked: 0, transitioned: 0, failed: 0, skippedReason: "not_configured" };
   }
 
   const now = Date.now();
+  const budgetMs = opts?.budgetMs;
   const orders = await prisma.order.findMany({
     where: {
       deletedAt: null,
@@ -138,10 +141,13 @@ export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> 
     take: TRACKING_SYNC_BATCH,
   });
 
+  let checked = 0;
   let transitioned = 0;
   let failed = 0;
   for (const order of orders) {
+    if (budgetMs !== undefined && Date.now() - now >= budgetMs) break;
     if (!order.trackingNumber) continue;
+    checked += 1;
     try {
       const didTransition = await syncSingleOrderGuide({
         id: order.id,
@@ -165,9 +171,9 @@ export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> 
 
   logger.info({
     event: "shipping.tracking_sync.done",
-    checked: orders.length,
+    checked,
     transitioned,
     failed,
   });
-  return { checked: orders.length, transitioned, failed };
+  return { checked, transitioned, failed };
 }

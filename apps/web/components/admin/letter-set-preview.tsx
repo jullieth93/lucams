@@ -22,9 +22,9 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, Loader2, X } from "lucide-react";
 import { useDialogA11y } from "@/app/admin/(panel)/plantillas/use-dialog-a11y";
-import { drawLetterTile } from "@/app/estudio/[slug]/lib/letter-tile-textures";
-import { loadCanvasImage } from "@/app/estudio/[slug]/lib/canvas-image";
-import { NAME_TILE_THEMES } from "@/app/estudio/[slug]/letter-tile";
+import { drawLetterTile } from "@/features/personalization/letter-tile-draw";
+import { loadCanvasImage } from "@/lib/canvas-image";
+import { NAME_TILE_THEMES } from "@/features/personalization/letter-tile-themes";
 
 export type LetterSetPreviewTile = { imageUrl: string; label: string | null };
 

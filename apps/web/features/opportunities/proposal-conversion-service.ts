@@ -25,7 +25,7 @@ import { processPaidOrder } from "@/features/orders/saga";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { notify } from "@/features/notifications/service";
 import { renderB2bDirectPaymentReportedEmail } from "@/features/emails/registry";
-import { hasStockForSale } from "@/features/products/fulfillment";
+import { hasStockForSale, netAvailableStock } from "@/features/products/fulfillment";
 import {
   B2B_ARTWORK_MODE_LABELS,
   B2B_PACKAGING_TYPE_LABELS,
@@ -98,6 +98,7 @@ export async function convertApprovedProposalToOrder(input: {
               name: true,
               sku: true,
               stock: true,
+              safetyStock: true,
               isActive: true,
               deletedAt: true,
               attributes: true,
@@ -175,7 +176,18 @@ export async function convertApprovedProposalToOrder(input: {
     }
   }
 
-  // Validar disponibilidad de opciones físicas antes de abrir cobro.
+  // Validar disponibilidad de opciones físicas antes de abrir cobro (agregando por variantId
+  // para coincidir con aggregateByVariant en decrementStockForOrder).
+  const physicalTotals = new Map<
+    string,
+    {
+      needed: number;
+      available: number;
+      stock: number;
+      safetyStock: number;
+      title: string;
+    }
+  >();
   for (const it of proposal.items) {
     const v = it.variant;
     if (
@@ -188,13 +200,29 @@ export async function convertApprovedProposalToOrder(input: {
         `La referencia "${it.titleSnapshot}" ya no está activa. Escríbenos para actualizar tu propuesta.`,
       );
     }
-    const neededPhysical = it.qty * it.designUnits * piecesPerCommercialUnit(v.attributes);
+    if (v.product.fulfillmentMode === "PHYSICAL_STOCK") {
+      const neededPhysical = it.qty * it.designUnits * piecesPerCommercialUnit(v.attributes);
+      const prev = physicalTotals.get(v.id);
+      if (prev) {
+        prev.needed += neededPhysical;
+      } else {
+        physicalTotals.set(v.id, {
+          needed: neededPhysical,
+          available: netAvailableStock(v.stock, v.safetyStock),
+          stock: v.stock,
+          safetyStock: v.safetyStock,
+          title: it.titleSnapshot,
+        });
+      }
+    }
+  }
+  for (const entry of physicalTotals.values()) {
     if (
-      v.product.fulfillmentMode === "PHYSICAL_STOCK" &&
-      (!hasStockForSale(v.product.fulfillmentMode, v.stock) || v.stock < neededPhysical)
+      !hasStockForSale("PHYSICAL_STOCK", entry.stock, entry.safetyStock) ||
+      entry.available < entry.needed
     ) {
       throw new OpportunityValidationError(
-        `Stock insuficiente para "${it.titleSnapshot}". Contáctanos para ajustar tu propuesta.`,
+        `Stock insuficiente para "${entry.title}". Contáctanos para ajustar tu propuesta.`,
       );
     }
   }

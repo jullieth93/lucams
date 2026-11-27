@@ -29,7 +29,7 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, ContactShadows, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { FitCameraPolar } from "./fit-camera-polar";
-import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import { StudioEnvironment } from "./studio-3d-environment";
 import { getWoodTexture } from "./lib/procedural-textures";
 import { useStudioTexts } from "./studio-texts-provider";

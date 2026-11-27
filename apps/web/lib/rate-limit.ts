@@ -37,14 +37,40 @@ export async function rateLimit(
   key: string,
   limit: number,
   windowSeconds: number,
+  cost = 1,
 ): Promise<RateLimitResult> {
+  const safeCost = Number.isFinite(cost) && cost >= 1 ? Math.floor(cost) : 1;
   // Casts explícitos: Prisma serializa `number` JS como `bigint` (int8) por
   // defecto. La función rate_limit_check tiene firma (text, int, int) — sin
   // los ::int, Postgres no encuentra overload y tira 42883
   // "function rate_limit_check(text, bigint, bigint) does not exist".
-  const rows = await prisma.$queryRaw<
-    Array<{ allowed: boolean; count: number; reset_at: Date }>
-  >`SELECT * FROM rate_limit_check(${key}::text, ${limit}::int, ${windowSeconds}::int)`;
+  // Para lotes (cost > 1, ej. POST /api/vitals con N métricas — Fase 4 · #15)
+  // aplicamos el mismo UPSERT atómico ponderado por `safeCost` directamente
+  // sobre rate_limit_buckets para impedir amplificación N×.
+  const rows =
+    safeCost === 1
+      ? await prisma.$queryRaw<
+          Array<{ allowed: boolean; count: number; reset_at: Date }>
+        >`SELECT * FROM rate_limit_check(${key}::text, ${limit}::int, ${windowSeconds}::int)`
+      : await prisma.$queryRaw<Array<{ allowed: boolean; count: number; reset_at: Date }>>`
+          INSERT INTO rate_limit_buckets (key, count, window_start)
+          VALUES (${key}::text, ${safeCost}::int, NOW())
+          ON CONFLICT (key) DO UPDATE SET
+            count = CASE
+              WHEN rate_limit_buckets.window_start + (${windowSeconds}::int * INTERVAL '1 second') < NOW()
+                THEN ${safeCost}::int
+              ELSE rate_limit_buckets.count + ${safeCost}::int
+            END,
+            window_start = CASE
+              WHEN rate_limit_buckets.window_start + (${windowSeconds}::int * INTERVAL '1 second') < NOW()
+                THEN NOW()
+              ELSE rate_limit_buckets.window_start
+            END
+          RETURNING
+            (rate_limit_buckets.count <= ${limit}::int) AS allowed,
+            rate_limit_buckets.count AS count,
+            (rate_limit_buckets.window_start + (${windowSeconds}::int * INTERVAL '1 second')) AS reset_at
+        `;
 
   const row = rows[0];
   if (!row) {

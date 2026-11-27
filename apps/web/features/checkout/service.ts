@@ -25,6 +25,7 @@ import { resolveWompiPaymentReference } from "@/features/orders/payment-referenc
 import { emailsEqual } from "@/features/orders/order-customer";
 import { processPaidOrder } from "@/features/orders/saga";
 import { assertStockAvailable } from "@/features/orders/stock";
+import { netAvailableStock } from "@/features/products/fulfillment";
 import { notifyStockSaleLost } from "@/features/orders/stock-alerts";
 import {
   InsufficientStockError,
@@ -285,12 +286,17 @@ async function firstShortItemName(
   }
   const variants = await prisma.productVariant.findMany({
     where: { id: { in: [...totals.keys()] } },
-    select: { id: true, stock: true, product: { select: { fulfillmentMode: true } } },
+    select: {
+      id: true,
+      stock: true,
+      safetyStock: true,
+      product: { select: { fulfillmentMode: true } },
+    },
   });
   for (const v of variants) {
     if (v.product.fulfillmentMode === "MADE_TO_ORDER") continue;
     const acc = totals.get(v.id);
-    if (acc && v.stock < acc.qty) return acc.productName;
+    if (acc && netAvailableStock(v.stock, v.safetyStock) < acc.qty) return acc.productName;
   }
   return null;
 }
@@ -548,7 +554,13 @@ export async function quoteShipping(input: {
  */
 export async function finalizeCheckout(input: {
   redirectUrl: string;
-}): Promise<{ orderId: string; orderNumber: string; checkoutUrl: string }> {
+  deferExternalShipment?: boolean;
+}): Promise<{
+  orderId: string;
+  orderNumber: string;
+  checkoutUrl: string;
+  shipmentDeferred?: boolean;
+}> {
   const ctx = await loadCheckoutContext();
   const { state } = ctx;
 
@@ -871,12 +883,16 @@ export async function finalizeCheckout(input: {
       });
     }
 
-    const saga = await processPaidOrder({ orderId: order.id });
+    const saga = await processPaidOrder({
+      orderId: order.id,
+      deferExternalShipment: input.deferExternalShipment,
+    });
     logger.info({
       event: "checkout.finalize.cod_confirmed",
       orderId: order.id,
       orderNumber: order.number,
       sagaStatus: saga.status,
+      shipmentDeferred: Boolean(saga.shipmentDeferred),
       trackingNumber: saga.trackingNumber ?? null,
     });
 
@@ -928,6 +944,7 @@ export async function finalizeCheckout(input: {
     return {
       orderId: order.id,
       orderNumber: order.number,
+      shipmentDeferred: Boolean(saga.shipmentDeferred),
       // Vista pública por token (sin IDOR). Defensivo: si faltara el token (no debería,
       // createOrderFromCart siempre lo genera), mandamos a la cuenta.
       checkoutUrl: order.publicAccessToken

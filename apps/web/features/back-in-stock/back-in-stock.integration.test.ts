@@ -25,6 +25,7 @@ vi.mock("next/cache", () => ({
 }));
 
 import { prisma } from "@/lib/db";
+import { sendEmail } from "@/lib/resend";
 import { subscribeBackInStock, sendBackInStockNotifications } from "./service";
 
 const RUN = `bis${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
@@ -114,6 +115,23 @@ describe("subscribeBackInStock + sendBackInStockNotifications", () => {
       ok: false,
       reason: "in_stock",
     });
+
+    // 7) Si se vuelve a agotar y el usuario se resuscribe (con mayúsculas/espacios) dentro de <24h,
+    // normaliza el email a la misma fila pero renueva el ciclo para que Resend reciba un nuevo idempotencyKey.
+    const callsForEmail = () =>
+      vi.mocked(sendEmail).mock.calls.filter(([arg]) => arg?.to === email);
+    const firstKey = callsForEmail().at(-1)?.[0]?.idempotencyKey;
+    await prisma.productVariant.update({ where: { id: variantId }, data: { stock: 0 } });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(await subscribeBackInStock(productId, `  ${email.toUpperCase()}  `, null)).toEqual({
+      ok: true,
+    });
+    await prisma.productVariant.update({ where: { id: variantId }, data: { stock: 3 } });
+    const secondRun = await sendBackInStockNotifications(new Date());
+    expect(secondRun.sent).toBeGreaterThanOrEqual(1);
+    const secondKey = callsForEmail().at(-1)?.[0]?.idempotencyKey;
+    expect(secondKey).toBeDefined();
+    expect(secondKey).not.toBe(firstKey);
   }, 30_000);
 
   it("MADE_TO_ORDER no genera suscripciones aunque su stock legado sea 0", async () => {
@@ -128,5 +146,54 @@ describe("subscribeBackInStock + sendBackInStockNotifications", () => {
       reason: "in_stock",
     });
     expect(await prisma.backInStockSubscription.count({ where: { productId, email } })).toBe(0);
+    await prisma.product.update({
+      where: { id: productId },
+      data: { fulfillmentMode: "PHYSICAL_STOCK" },
+    });
   });
+
+  it("safetyStock agota el producto (stock=5, safetyStock=5) y limita avisos al disponible neto", async () => {
+    await prisma.product.update({
+      where: { id: productId },
+      data: { fulfillmentMode: "PHYSICAL_STOCK" },
+    });
+    await prisma.productVariant.update({
+      where: { id: variantId },
+      data: { stock: 5, safetyStock: 5 },
+    });
+
+    const email1 = `ss1-${RUN}@lucams.test`;
+    const email2 = `ss2-${RUN}@lucams.test`;
+    const email3 = `ss3-${RUN}@lucams.test`;
+
+    // Con stock=5, safetyStock=5 (disponible neto = 0), se permite suscripción.
+    expect(await subscribeBackInStock(productId, email1, null)).toEqual({ ok: true });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(await subscribeBackInStock(productId, email2, null)).toEqual({ ok: true });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(await subscribeBackInStock(productId, email3, null)).toEqual({ ok: true });
+
+    // Cron con disponible neto = 0 NO notifica a nadie.
+    await sendBackInStockNotifications(new Date());
+    const afterZero = await prisma.backInStockSubscription.findMany({
+      where: { productId, email: { in: [email1, email2, email3] } },
+      select: { email: true, notifiedAt: true },
+    });
+    expect(afterZero.every((s) => s.notifiedAt === null)).toBe(true);
+
+    // Reponer a stock=7 con safetyStock=5 → disponible neto = 2 → solo notifica los 2 primeros FIFO.
+    await prisma.productVariant.update({
+      where: { id: variantId },
+      data: { stock: 7, safetyStock: 5 },
+    });
+    await sendBackInStockNotifications(new Date());
+    const afterNetTwo = await prisma.backInStockSubscription.findMany({
+      where: { productId, email: { in: [email1, email2, email3] } },
+      select: { email: true, notifiedAt: true },
+    });
+    const byEmail = new Map(afterNetTwo.map((s) => [s.email, s.notifiedAt]));
+    expect(byEmail.get(email1)).not.toBeNull();
+    expect(byEmail.get(email2)).not.toBeNull();
+    expect(byEmail.get(email3)).toBeNull();
+  }, 30_000);
 });

@@ -21,6 +21,9 @@ describe("colombian-sla — calendario festivo CO (Ley Emiliani) y semáforos le
     // Reyes Magos 2026: 6 ene cae martes -> se traslada al lunes 12 ene 2026
     expect(holidays2026.has("2026-01-06")).toBe(false);
     expect(holidays2026.has("2026-01-12")).toBe(true);
+    // Ley 2578 de 2026 (9 de julio, Virgen de Chiquinquirá): cae jueves -> lunes 13 jul 2026
+    expect(holidays2026.has("2026-07-13")).toBe(true);
+    expect(holidays2026.size).toBe(19);
   });
 
   it("salta fines de semana y lunes festivo al sumar días hábiles en hora de Colombia (UTC-5)", () => {

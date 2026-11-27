@@ -45,7 +45,7 @@ import {
   ensureBrandCanvasFontsLoaded,
   ensureCalendarTitleFontLoaded,
 } from "./calendar-card-preview";
-import { loadCanvasImage } from "./canvas-image";
+import { loadCanvasImage } from "@/lib/canvas-image";
 import { canvasToPreviewDataUrl } from "./preview-encode";
 import { mapWithConcurrency } from "./upload-with-retry";
 

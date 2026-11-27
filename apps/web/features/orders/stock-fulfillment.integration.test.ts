@@ -1,15 +1,36 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+vi.mock("next/cache", () => ({
+  unstable_cache:
+    (fn: (...args: unknown[]) => unknown) =>
+    (...args: unknown[]) =>
+      fn(...args),
+  revalidateTag: vi.fn(),
+  revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
+}));
+
 import { prisma } from "@/lib/db";
+import { addProductToCart } from "@/features/cart/service";
+import {
+  getStorefrontProductBySlug,
+  listStorefrontProducts,
+} from "@/features/products/public-service";
+import { listVariantsAcrossProducts } from "@/features/products/inventory-service";
+import { listCatalogProducts } from "@/lib/catalog";
+import { buildGoogleMerchantFeed } from "@/lib/feeds/google-merchant";
 import { assertStockAvailable, decrementStockForOrder, revertStockForOrder } from "./stock";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
-const RUN = `itest-stock-${Date.now()}${Math.floor(Math.random() * 1e6)}`;
+const RUN = `itest-stock-${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
 
 let categoryId = "";
 let physicalProductId = "";
+let physicalProductSlug = "";
 let madeProductId = "";
 let physicalVariantId = "";
 let madeVariantId = "";
+const CART_SESSION = `${RUN}-cart-sess`;
 
 describe.skipIf(!hasDb)("stock por fulfillmentMode — PostgreSQL real", { timeout: 30_000 }, () => {
   beforeAll(async () => {
@@ -29,6 +50,7 @@ describe.skipIf(!hasDb)("stock por fulfillmentMode — PostgreSQL real", { timeo
       },
     });
     physicalProductId = physical.id;
+    physicalProductSlug = physical.slug;
     const made = await prisma.product.create({
       data: {
         slug: `${RUN}-made`,
@@ -67,6 +89,8 @@ describe.skipIf(!hasDb)("stock por fulfillmentMode — PostgreSQL real", { timeo
   });
 
   afterAll(async () => {
+    await prisma.cartItem.deleteMany({ where: { cart: { sessionId: CART_SESSION } } });
+    await prisma.cart.deleteMany({ where: { sessionId: CART_SESSION } });
     const variantIds = [physicalVariantId, madeVariantId].filter(Boolean);
     if (variantIds.length > 0) {
       await prisma.inventoryLog.deleteMany({ where: { variantId: { in: variantIds } } });
@@ -172,5 +196,207 @@ describe.skipIf(!hasDb)("stock por fulfillmentMode — PostgreSQL real", { timeo
         data: { safetyStock: -1 },
       }),
     ).rejects.toThrow();
+  });
+
+  it("paridad 1:1 de safetyStock con stock=5 y safetyStock=2 (máx. vendible = 3)", async () => {
+    await prisma.productVariant.update({
+      where: { id: physicalVariantId },
+      data: { stock: 5, safetyStock: 2 },
+    });
+    await prisma.cartItem.deleteMany({ where: { cart: { sessionId: CART_SESSION } } });
+
+    // PDP + listados storefront/catálogo
+    const pdp = await getStorefrontProductBySlug(physicalProductSlug);
+    expect(pdp?.inStock).toBe(true);
+    expect(pdp?.variants[0]?.stock).toBe(5);
+    expect(pdp?.variants[0]?.safetyStock).toBe(2);
+
+    const storefrontCards = await listStorefrontProducts({ categorySlug: `${RUN}-cat` });
+    expect(storefrontCards.find((p) => p.id === physicalProductId)?.inStock).toBe(true);
+
+    const catalogCards = await listCatalogProducts({ categorySlug: `${RUN}-cat` });
+    expect(catalogCards.find((p) => p.slug === physicalProductSlug)?.inStock).toBe(true);
+
+    // Carrito: pedir 5 clampea al disponible neto = 3 y expone stock=3
+    const cart = await addProductToCart({
+      sessionId: CART_SESSION,
+      customerId: null,
+      productSlug: physicalProductSlug,
+      variantId: physicalVariantId,
+      qty: 5,
+    });
+    expect(cart.items[0]?.qty).toBe(3);
+    expect(cart.items[0]?.maxQty).toBe(3);
+    expect(cart.items[0]?.stock).toBe(3);
+
+    // Checkout / assertStockAvailable: 3 pasa, 4 falla con available=3
+    await prisma.$transaction((tx) =>
+      assertStockAvailable(tx, [{ variantId: physicalVariantId, qty: 3 }]),
+    );
+    await expect(
+      prisma.$transaction((tx) =>
+        assertStockAvailable(tx, [{ variantId: physicalVariantId, qty: 4 }]),
+      ),
+    ).rejects.toMatchObject({ name: "InsufficientStockError", available: 3 });
+
+    // Decremento atómico: 4 falla y deja stock intacto en 5; 3 pasa y deja stock=2 (= safetyStock)
+    await expect(
+      prisma.$transaction((tx) =>
+        decrementStockForOrder(tx, {
+          id: `${RUN}-ss-over`,
+          number: "LCM-SS-OVER",
+          items: [{ variantId: physicalVariantId, qty: 4 }],
+        }),
+      ),
+    ).rejects.toMatchObject({ name: "InsufficientStockError", available: 3 });
+    expect(
+      (await prisma.productVariant.findUnique({ where: { id: physicalVariantId } }))?.stock,
+    ).toBe(5);
+
+    const decOrder = {
+      id: `${RUN}-ss-exact`,
+      number: "LCM-SS-EXACT",
+      items: [{ variantId: physicalVariantId, qty: 3 }],
+    };
+    const dec = await prisma.$transaction((tx) => decrementStockForOrder(tx, decOrder));
+    expect(dec.decrementedVariants).toEqual([physicalVariantId]);
+    expect(
+      (await prisma.productVariant.findUnique({ where: { id: physicalVariantId } }))?.stock,
+    ).toBe(2);
+
+    // Con stock=2 y safetyStock=2, el disponible neto es 0 → siguiente orden falla
+    await expect(
+      prisma.$transaction((tx) =>
+        decrementStockForOrder(tx, {
+          id: `${RUN}-ss-next`,
+          number: "LCM-SS-NEXT",
+          items: [{ variantId: physicalVariantId, qty: 1 }],
+        }),
+      ),
+    ).rejects.toMatchObject({ name: "InsufficientStockError", available: 0 });
+
+    // Revertir deja stock=5 nuevamente
+    await prisma.$transaction((tx) => revertStockForOrder(tx, decOrder, "ORDER_CANCELLED"));
+    expect(
+      (await prisma.productVariant.findUnique({ where: { id: physicalVariantId } }))?.stock,
+    ).toBe(5);
+
+    // /admin/inventario + Google Merchant
+    const inv = await listVariantsAcrossProducts({ q: `${RUN}-PHYSICAL-V`.toUpperCase() });
+    const invRow = inv.rows.find((r) => r.variantId === physicalVariantId);
+    expect(invRow?.availableStock).toBe(3);
+    expect(invRow?.status).toBe("low");
+
+    const xml = buildGoogleMerchantFeed(
+      [
+        {
+          slug: physicalProductSlug,
+          name: `Físico ${RUN}`,
+          description: "Producto físico",
+          basePrice: 10_000,
+          fulfillmentMode: "PHYSICAL_STOCK",
+          images: [],
+          variants: [
+            {
+              id: physicalVariantId,
+              sku: `${RUN}-PHYSICAL-V`.toUpperCase(),
+              name: "Única",
+              price: null,
+              stock: 5,
+              safetyStock: 2,
+              images: [],
+            },
+          ],
+        },
+      ],
+      { siteUrl: "https://lucamsshop.com" },
+    );
+    expect(xml).toContain("<g:availability>in stock</g:availability>");
+  });
+
+  it("paridad 1:1 de safetyStock con stock=5 y safetyStock=5 (agotado público en todos los canales)", async () => {
+    await prisma.productVariant.update({
+      where: { id: physicalVariantId },
+      data: { stock: 5, safetyStock: 5 },
+    });
+    await prisma.cartItem.deleteMany({ where: { cart: { sessionId: CART_SESSION } } });
+
+    const pdp = await getStorefrontProductBySlug(physicalProductSlug);
+    expect(pdp?.inStock).toBe(false);
+
+    const storefrontCards = await listStorefrontProducts({ categorySlug: `${RUN}-cat` });
+    expect(storefrontCards.find((p) => p.id === physicalProductId)?.inStock).toBe(false);
+
+    const catalogCards = await listCatalogProducts({ categorySlug: `${RUN}-cat` });
+    expect(catalogCards.find((p) => p.slug === physicalProductSlug)?.inStock).toBe(false);
+
+    await expect(
+      addProductToCart({
+        sessionId: CART_SESSION,
+        customerId: null,
+        productSlug: physicalProductSlug,
+        variantId: physicalVariantId,
+        qty: 1,
+      }),
+    ).rejects.toMatchObject({ name: "CartError", code: "STOCK_UNAVAILABLE" });
+
+    await expect(
+      prisma.$transaction((tx) =>
+        assertStockAvailable(tx, [{ variantId: physicalVariantId, qty: 1 }]),
+      ),
+    ).rejects.toMatchObject({ name: "InsufficientStockError", available: 0 });
+
+    await expect(
+      prisma.$transaction((tx) =>
+        decrementStockForOrder(tx, {
+          id: `${RUN}-ss-zero`,
+          number: "LCM-SS-ZERO",
+          items: [{ variantId: physicalVariantId, qty: 1 }],
+        }),
+      ),
+    ).rejects.toMatchObject({ name: "InsufficientStockError", available: 0 });
+    expect(
+      (await prisma.productVariant.findUnique({ where: { id: physicalVariantId } }))?.stock,
+    ).toBe(5);
+
+    const inv = await listVariantsAcrossProducts({ q: `${RUN}-PHYSICAL-V`.toUpperCase() });
+    const invRow = inv.rows.find((r) => r.variantId === physicalVariantId);
+    expect(invRow?.availableStock).toBe(0);
+    expect(invRow?.status).toBe("out");
+
+    const xml = buildGoogleMerchantFeed(
+      [
+        {
+          slug: physicalProductSlug,
+          name: `Físico ${RUN}`,
+          description: "Producto físico",
+          basePrice: 10_000,
+          fulfillmentMode: "PHYSICAL_STOCK",
+          images: [],
+          variants: [
+            {
+              id: physicalVariantId,
+              sku: `${RUN}-PHYSICAL-V`.toUpperCase(),
+              name: "Única",
+              price: null,
+              stock: 5,
+              safetyStock: 5,
+              images: [],
+            },
+          ],
+        },
+      ],
+      { siteUrl: "https://lucamsshop.com" },
+    );
+    expect(xml).toContain("<g:availability>out of stock</g:availability>");
+
+    // MADE_TO_ORDER sigue sin control de stock incluso con safetyStock > 0
+    await prisma.productVariant.update({
+      where: { id: madeVariantId },
+      data: { stock: 0, safetyStock: 5 },
+    });
+    await prisma.$transaction((tx) =>
+      assertStockAvailable(tx, [{ variantId: madeVariantId, qty: 10 }]),
+    );
   });
 });

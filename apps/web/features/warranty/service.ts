@@ -16,6 +16,8 @@ import {
   verifyTokenHashTimingSafe,
 } from "@/lib/token-hash";
 import { addMonthsClampedIsoCO } from "@/lib/datetime";
+import { fitsMoneyInt4 } from "@/lib/money";
+import { computeRetractRefundBreakdown } from "@/features/retract/service";
 
 /*
  * Garantía legal (Ley 1480 art. 7-15). Un cliente reporta un defecto de un producto comprado;
@@ -32,9 +34,90 @@ import { addMonthsClampedIsoCO } from "@/lib/datetime";
 
 export type WarrantyStatus = "PENDING" | "IN_REVIEW" | "APPROVED" | "RESOLVED" | "REJECTED";
 export type WarrantyResolution = "REPAIR" | "REPLACE" | "REFUND";
+export const WARRANTY_REFUND_METHODS = ["WOMPI_VOID", "BANK_TRANSFER"] as const;
+export type WarrantyRefundMethod = (typeof WARRANTY_REFUND_METHODS)[number];
 
 export const WARRANTY_RESOLUTIONS: WarrantyResolution[] = ["REPAIR", "REPLACE", "REFUND"];
 const ACTIVE_STATUSES: WarrantyStatus[] = ["PENDING", "IN_REVIEW", "APPROVED"];
+
+export function isWarrantyRefundMethod(raw: string | undefined): raw is WarrantyRefundMethod {
+  return raw === "WOMPI_VOID" || raw === "BANK_TRANSFER";
+}
+
+/**
+ * Convierte un monto ingresado en pesos COP (ej. "25000" o "25000.50") a centavos enteros
+ * usando aritmética BigInt sin floats y valida rango seguro Postgres INT4 (`fitsMoneyInt4`, > 0).
+ */
+export function parseCopPesosToCents(raw: string): number | null {
+  const clean = raw.trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(clean)) return null;
+  const [wholePart, fracPart = ""] = clean.split(".");
+  const centsBig = BigInt(wholePart) * BigInt(100) + BigInt(fracPart.padEnd(2, "0"));
+  if (centsBig <= BigInt(0) || centsBig > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+  const cents = Number(centsBig);
+  return fitsMoneyInt4(cents) ? cents : null;
+}
+
+export interface WarrantyRefundBoundsInput {
+  orderStatus: string;
+  lineTotalCents: number;
+  orderSubtotalCents: number;
+  orderTotalCents: number;
+  orderWithholdingCents?: number;
+  orderCouponDiscountCents: number;
+  orderCouponType?: string | null;
+  orderLoyaltyDiscountCents: number;
+  alreadyRefundedOnItemCents: number;
+  alreadyRefundedOnOrderCents: number;
+}
+
+export interface WarrantyRefundBounds {
+  /** Tope máximo reembolsable en centavos COP (acotado a la línea y al efectivo remanente de la orden). */
+  maxRefundCents: number;
+  /** Sugerencia por defecto prorrateando descuentos de mercancía sobre la línea. */
+  suggestedRefundCents: number;
+}
+
+/**
+ * Calcula los límites de reembolso en efectivo para una garantía `REFUND` en centavos COP:
+ *  - Si la orden completa ya está `REFUNDED`, el disponible remanente es 0 (anti-doble-reembolso).
+ *  - Acota al mínimo entre el remanente de la línea y el efectivo neto disponible de la orden
+ *    (descontando retenciones B2B y reembolsos previos de retractos y garantías).
+ */
+export function computeWarrantyRefundBounds(
+  input: WarrantyRefundBoundsInput,
+): WarrantyRefundBounds {
+  if (
+    input.orderStatus === "REFUNDED" ||
+    input.orderStatus === "CANCELLED" ||
+    input.orderStatus === "DRAFT" ||
+    input.orderStatus === "PENDING_PAYMENT"
+  ) {
+    return { maxRefundCents: 0, suggestedRefundCents: 0 };
+  }
+  const orderCashPaid = Math.max(
+    0,
+    Math.trunc(input.orderTotalCents) - Math.max(0, Math.trunc(input.orderWithholdingCents ?? 0)),
+  );
+  const alreadyOnOrder = Math.max(0, Math.trunc(input.alreadyRefundedOnOrderCents));
+  const remainingOrderCash = Math.max(0, orderCashPaid - alreadyOnOrder);
+  const alreadyOnItem = Math.max(0, Math.trunc(input.alreadyRefundedOnItemCents));
+  const remainingLineCash = Math.max(0, Math.trunc(input.lineTotalCents) - alreadyOnItem);
+  const maxRefundCents = Math.min(remainingLineCash, remainingOrderCash);
+
+  const prorated = computeRetractRefundBreakdown({
+    lineTotal: input.lineTotalCents,
+    orderSubtotal: input.orderSubtotalCents,
+    couponDiscount: input.orderCouponDiscountCents,
+    couponType: input.orderCouponType,
+    loyaltyDiscount: input.orderLoyaltyDiscountCents,
+    loyaltyPointsRedeemed: 0,
+    alreadyRefundedCents: alreadyOnOrder,
+  }).cashRefundCents;
+
+  const suggestedRefundCents = Math.min(maxRefundCents, prorated > 0 ? prorated : maxRefundCents);
+  return { maxRefundCents, suggestedRefundCents };
+}
 
 // ── Ventana de garantía ──
 export function warrantyWindowEnd(deliveredAt: Date, warrantyMonths: number): Date {
@@ -209,7 +292,11 @@ export class WarrantyError extends Error {
       | "OUT_OF_WARRANTY"
       | "ACTIVE_CLAIM"
       | "INVALID"
-      | "INVALID_ASSIGNEE",
+      | "INVALID_ASSIGNEE"
+      | "REFUND_AMOUNT_INVALID"
+      | "REFUND_METHOD_INVALID"
+      | "REFUND_UNCONFIRMED"
+      | "REFUND_EXCEEDS_AVAILABLE",
   ) {
     super(reason);
     this.name = "WarrantyError";
@@ -476,10 +563,18 @@ export class WarrantyTransitionError extends Error {
   }
 }
 
-async function loadClaim(id: string): Promise<{ status: WarrantyStatus }> {
-  const c = await prisma.warrantyClaim.findUnique({ where: { id }, select: { status: true } });
+async function loadClaim(
+  id: string,
+): Promise<{ status: WarrantyStatus; resolutionType: WarrantyResolution | null }> {
+  const c = await prisma.warrantyClaim.findUnique({
+    where: { id },
+    select: { status: true, resolutionType: true },
+  });
   if (!c) throw new WarrantyError("NOT_FOUND");
-  return { status: c.status as WarrantyStatus };
+  return {
+    status: c.status as WarrantyStatus,
+    resolutionType: (c.resolutionType as WarrantyResolution | null) ?? null,
+  };
 }
 
 /** PENDING → IN_REVIEW (empezar diagnóstico). */
@@ -508,22 +603,165 @@ export async function approveWarrantyClaim(
   });
 }
 
-/** APPROVED → RESOLVED (remedio ejecutado). */
+export interface ResolveWarrantyRefundInput {
+  /** Centavos COP efectivamente devueltos (> 0, entero, fitsMoneyInt4, <= disponible). */
+  refundAmount: number;
+  refundMethod: WarrantyRefundMethod;
+  /** Confirmación explícita de que el dinero ya fue emitido/devuelto al cliente. */
+  refundConfirmed: boolean;
+}
+
+/** APPROVED → RESOLVED (remedio ejecutado). Si es `REFUND`, exige monto válido, método y confirmación. */
 export async function resolveWarrantyClaim(
   id: string,
   adminId: string,
   note?: string,
+  refund?: ResolveWarrantyRefundInput,
 ): Promise<void> {
-  const { status } = await loadClaim(id);
+  const { status, resolutionType } = await loadClaim(id);
   if (status !== "APPROVED") throw new WarrantyTransitionError(status, "RESOLVED");
-  await prisma.warrantyClaim.update({
-    where: { id },
-    data: {
-      status: "RESOLVED",
-      resolvedAt: new Date(),
-      processedBy: adminId,
-      ...(note ? { resolutionNote: note.slice(0, 500) } : {}),
-    },
+
+  const cleanNote = note?.trim() ? note.trim().slice(0, 500) : undefined;
+
+  if (resolutionType !== "REFUND") {
+    await prisma.warrantyClaim.update({
+      where: { id },
+      data: {
+        status: "RESOLVED",
+        resolvedAt: new Date(),
+        processedBy: adminId,
+        ...(cleanNote ? { resolutionNote: cleanNote } : {}),
+      },
+    });
+    return;
+  }
+
+  if (!refund || refund.refundConfirmed !== true) {
+    throw new WarrantyError("REFUND_UNCONFIRMED");
+  }
+  if (!isWarrantyRefundMethod(refund.refundMethod)) {
+    throw new WarrantyError("REFUND_METHOD_INVALID");
+  }
+  if (
+    typeof refund.refundAmount !== "number" ||
+    !Number.isInteger(refund.refundAmount) ||
+    refund.refundAmount <= 0 ||
+    !fitsMoneyInt4(refund.refundAmount)
+  ) {
+    throw new WarrantyError("REFUND_AMOUNT_INVALID");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const claim = await tx.warrantyClaim.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        resolutionType: true,
+        orderItemId: true,
+        orderItem: {
+          select: {
+            id: true,
+            qty: true,
+            unitPrice: true,
+            orderId: true,
+            order: {
+              select: {
+                id: true,
+                status: true,
+                subtotal: true,
+                total: true,
+                discount: true,
+                loyaltyDiscount: true,
+                withholdingCents: true,
+                coupon: { select: { type: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!claim) throw new WarrantyError("NOT_FOUND");
+    if (claim.status !== "APPROVED" || claim.resolutionType !== "REFUND") {
+      throw new WarrantyTransitionError(claim.status, "RESOLVED");
+    }
+
+    // Bloqueo de fila sobre Order + lectura autoritativa post-lock para evitar TOCTOU
+    // si una transacción concurrente (p. ej. refundOrder) transicionó la orden a REFUNDED.
+    const lockedOrders = await tx.$queryRaw<
+      Array<{ status: string; total: number; withholdingCents: number }>
+    >`SELECT "status"::text AS "status", "total", "withholdingCents" FROM "Order" WHERE "id" = ${claim.orderItem.orderId} FOR UPDATE`;
+    const lockedOrder = lockedOrders[0];
+    if (!lockedOrder) throw new WarrantyError("NOT_FOUND");
+
+    const siblingItems = await tx.orderItem.findMany({
+      where: { orderId: claim.orderItem.orderId },
+      select: {
+        id: true,
+        retractRequest: { select: { status: true, refundAmount: true } },
+        warrantyClaims: {
+          where: {
+            id: { not: claim.id },
+            status: "RESOLVED",
+            resolutionType: "REFUND",
+            refundAmount: { gt: 0 },
+            refundedAt: { not: null },
+          },
+          select: { refundAmount: true },
+        },
+      },
+    });
+
+    let alreadyRefundedOnOrderCents = 0;
+    let alreadyRefundedOnItemCents = 0;
+    for (const sibling of siblingItems) {
+      const siblingRetract =
+        sibling.retractRequest?.status === "REFUNDED" ? sibling.retractRequest.refundAmount : 0;
+      const siblingWarranties = sibling.warrantyClaims.reduce(
+        (sum, w) => sum + (w.refundAmount ?? 0),
+        0,
+      );
+      const siblingTotal = siblingRetract + siblingWarranties;
+      alreadyRefundedOnOrderCents += siblingTotal;
+      if (sibling.id === claim.orderItemId) {
+        alreadyRefundedOnItemCents += siblingTotal;
+      }
+    }
+
+    const order = claim.orderItem.order;
+    const { maxRefundCents } = computeWarrantyRefundBounds({
+      orderStatus: lockedOrder.status,
+      lineTotalCents: claim.orderItem.unitPrice * claim.orderItem.qty,
+      orderSubtotalCents: order.subtotal,
+      orderTotalCents: lockedOrder.total,
+      orderWithholdingCents: lockedOrder.withholdingCents,
+      orderCouponDiscountCents: order.discount,
+      orderCouponType: order.coupon?.type ?? null,
+      orderLoyaltyDiscountCents: order.loyaltyDiscount,
+      alreadyRefundedOnItemCents,
+      alreadyRefundedOnOrderCents,
+    });
+
+    if (refund.refundAmount > maxRefundCents) {
+      throw new WarrantyError("REFUND_EXCEEDS_AVAILABLE");
+    }
+
+    const now = new Date();
+    const updated = await tx.warrantyClaim.updateMany({
+      where: { id: claim.id, status: "APPROVED", resolutionType: "REFUND" },
+      data: {
+        status: "RESOLVED",
+        resolvedAt: now,
+        refundAmount: refund.refundAmount,
+        refundMethod: refund.refundMethod,
+        refundedAt: now,
+        processedBy: adminId,
+        ...(cleanNote ? { resolutionNote: cleanNote } : {}),
+      },
+    });
+    if (updated.count !== 1) {
+      throw new WarrantyTransitionError("APPROVED", "RESOLVED");
+    }
   });
 }
 
@@ -602,6 +840,11 @@ export interface AdminWarrantyCaseRow {
   evidenceUrls: string[];
   resolutionType: WarrantyResolution | null;
   resolutionNote: string | null;
+  refundAmount: number | null;
+  refundMethod: WarrantyRefundMethod | null;
+  refundedAt: Date | null;
+  maxRefundCents: number;
+  suggestedRefundCents: number;
   requestedAt: Date;
   resolvedAt: Date | null;
   slaDueAt: Date | null;
@@ -746,6 +989,9 @@ export async function listWarrantyClaimsAdmin(opts: {
         evidenceUrls: true,
         resolutionType: true,
         resolutionNote: true,
+        refundAmount: true,
+        refundMethod: true,
+        refundedAt: true,
         requestedAt: true,
         resolvedAt: true,
         slaDueAt: true,
@@ -753,6 +999,7 @@ export async function listWarrantyClaimsAdmin(opts: {
         customer: { select: { email: true, firstName: true, lastName: true } },
         orderItem: {
           select: {
+            id: true,
             qty: true,
             designUnits: true,
             unitPrice: true,
@@ -762,12 +1009,35 @@ export async function listWarrantyClaimsAdmin(opts: {
             design: { select: { qualityAcknowledgedAt: true } },
             order: {
               select: {
+                id: true,
                 number: true,
+                status: true,
+                subtotal: true,
+                total: true,
+                discount: true,
+                loyaltyDiscount: true,
+                withholdingCents: true,
+                coupon: { select: { type: true } },
                 email: true,
                 contactId: true,
                 paymentMethod: true,
                 deliveredAt: true,
                 shippingAddress: true,
+                items: {
+                  select: {
+                    id: true,
+                    retractRequest: { select: { status: true, refundAmount: true } },
+                    warrantyClaims: {
+                      where: {
+                        status: "RESOLVED",
+                        resolutionType: "REFUND",
+                        refundAmount: { gt: 0 },
+                        refundedAt: { not: null },
+                      },
+                      select: { id: true, refundAmount: true },
+                    },
+                  },
+                },
               },
             },
             variant: {
@@ -809,6 +1079,7 @@ export async function listWarrantyClaimsAdmin(opts: {
       take: 500,
       select: {
         status: true,
+        refundAmount: true,
         orderItem: { select: { qty: true, unitPrice: true } },
       },
     }),
@@ -864,7 +1135,7 @@ export async function listWarrantyClaimsAdmin(opts: {
       approvedRefundCents += lineCents;
     } else if (rc.status === "RESOLVED") {
       resolvedRefundCount += 1;
-      resolvedRefundCents += lineCents;
+      resolvedRefundCents += rc.refundAmount ?? lineCents;
     }
   }
 
@@ -880,6 +1151,35 @@ export async function listWarrantyClaimsAdmin(opts: {
     const isClosed = r.status === "RESOLVED" || r.status === "REJECTED";
     const resolvedContactId = r.contactId ?? ord.contactId ?? null;
 
+    let alreadyRefundedOnOrderCents = 0;
+    let alreadyRefundedOnItemCents = 0;
+    for (const sibling of ord.items) {
+      const siblingRetract =
+        sibling.retractRequest?.status === "REFUNDED" ? sibling.retractRequest.refundAmount : 0;
+      const siblingWarranties = sibling.warrantyClaims.reduce(
+        (sum, w) => (w.id === r.id ? sum : sum + (w.refundAmount ?? 0)),
+        0,
+      );
+      const siblingTotal = siblingRetract + siblingWarranties;
+      alreadyRefundedOnOrderCents += siblingTotal;
+      if (sibling.id === r.orderItem.id) {
+        alreadyRefundedOnItemCents += siblingTotal;
+      }
+    }
+    const { maxRefundCents, suggestedRefundCents } = computeWarrantyRefundBounds({
+      orderStatus: ord.status,
+      lineTotalCents: r.orderItem.unitPrice * r.orderItem.qty,
+      orderSubtotalCents: ord.subtotal,
+      orderTotalCents: ord.total,
+      orderWithholdingCents: ord.withholdingCents,
+      orderCouponDiscountCents: ord.discount,
+      orderCouponType: ord.coupon?.type ?? null,
+      orderLoyaltyDiscountCents: ord.loyaltyDiscount,
+      alreadyRefundedOnItemCents,
+      alreadyRefundedOnOrderCents,
+    });
+
+    const rawRefundMethod = r.refundMethod ?? undefined;
     return {
       id: r.id,
       status: r.status as WarrantyStatus,
@@ -887,6 +1187,11 @@ export async function listWarrantyClaimsAdmin(opts: {
       evidenceUrls: showFullCustomerData ? sanitizeWarrantyEvidenceUrls(r.evidenceUrls) : [],
       resolutionType: (r.resolutionType as WarrantyResolution | null) ?? null,
       resolutionNote: showFullCustomerData ? r.resolutionNote : null,
+      refundAmount: r.refundAmount ?? null,
+      refundMethod: isWarrantyRefundMethod(rawRefundMethod) ? rawRefundMethod : null,
+      refundedAt: r.refundedAt ?? null,
+      maxRefundCents,
+      suggestedRefundCents,
       requestedAt: r.requestedAt,
       resolvedAt: r.resolvedAt,
       slaDueAt: r.slaDueAt,

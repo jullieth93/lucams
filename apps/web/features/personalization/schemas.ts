@@ -69,6 +69,7 @@ export type CanvasDataV1 = z.infer<typeof CanvasDataV1Schema>;
 // ──────────────────────────────────────────────────────────────────
 
 export const PhotoFilterPresetSchema = z.enum(["vintage", "vivid", "bw", "pastel", "polaroid"]);
+export type PhotoFilterPreset = z.infer<typeof PhotoFilterPresetSchema>;
 
 // Override de un TextLayer editable por el usuario (indexado por TextLayer.id).
 export const TextOverrideSchema = z.object({
