@@ -255,7 +255,7 @@ El endpoint `apps/web/app/feeds/google-merchant.xml/route.ts` y el builder puro 
   - `<g:description>`: `plainDescription(product.description)` elimina etiquetas HTML, colapsa espacios y trunca a `5000` caracteres, escapando los 5 caracteres XML (`&`, `<`, `>`, `"`, `'`).
   - `<link>`: deep-link absoluto `${siteUrl}/producto/${product.slug}?variant=${encodeURIComponent(variant.id)}` (preselecciona la variante exacta en la PDP para que precio y stock coincidan con lo rastreado por Google).
   - `<g:image_link>`: primera imagen de `variant.images` o fallback a `product.images[0]`, resuelta siempre como URL absoluta. Si no existe ninguna imagen, omite la etiqueta sin inventar URLs.
-  - `<g:availability>`: `"in stock"` cuando `variant.stock > 0`, `"out of stock"` cuando `variant.stock <= 0`.
+  - `<g:availability>`: `"in stock"` cuando `product.fulfillmentMode === "MADE_TO_ORDER"` o `netAvailableStock(variant.stock, variant.safetyStock) > 0`; `"out of stock"` en caso contrario (`ADR-208`).
   - `<g:price>`: convierte de centavos COP (`Int`) a pesos enteros con sufijo ISO: `((variant.price ?? product.basePrice) / 100).toFixed(0) + " COP"` (ej. `45000 COP`).
   - `<g:brand>`: `Lucams Shop` · `<g:condition>`: `new`.
   - `<g:identifier_exists>`: **`no`**. Al tratarse de productos personalizados y artesanales propios sin códigos GTIN/EAN ni MPN de fabricante externo, se declara honestamente `no` conforme a la especificación oficial de Google Merchant Center.
@@ -280,14 +280,14 @@ Lucams soporta simultáneamente los dos mecanismos oficiales de verificación en
 Generado dinámicamente (`force-dynamic`) sobre `getCanonicalSiteUrl()`:
 
 - **`Allow: /`** para `User-agent: *` — incluye explícitamente `/_next/` (indispensable para que Googlebot ejecute chunks JS/CSS y `Googlebot-Image` rastree las imágenes optimizadas por `/_next/image`), `/feeds/google-merchant.xml` y `/productos?categoria=*`.
-- **`Disallow`:** `/admin/`, `/api/`, `/auth/`, `/mi-cuenta/` y `/maintenance`. El contenido duplicado por filtros secundarios u ordenamientos se controla con etiquetas `<link rel="canonical">` en `generateMetadata` de [catálogo y CMS](../domains/catalog-and-cms.md).
+- **`Disallow`:** `/admin/`, `/api/`, `/auth/`, `/mi-cuenta/`, `/propuesta/` y `/maintenance`. El contenido duplicado por filtros secundarios u ordenamientos se controla con etiquetas `<link rel="canonical">` en `generateMetadata` de [catálogo y CMS](../domains/catalog-and-cms.md).
 - Declara `Sitemap: https://lucamsshop.com/sitemap.xml` y `Host: https://lucamsshop.com`.
 
 ### 6.3 `sitemap.xml` dinámico (`apps/web/app/sitemap.ts`)
 
 Ejecuta en paralelo (`Promise.all` con fallback seguro a rutas estáticas si la DB no está accesible durante un build aislado) e incluye 5 familias de URLs sobre `getCanonicalSiteUrl()`:
 
-1. **15 rutas estáticas (`STATIC_PATHS`, sin `lastModified` artificial):** `/`, `/productos`, `/ocasion`, `/recomendador`, `/rastrear`, `/ayuda`, `/contacto` y las 8 páginas legales (`/legal/{privacidad,terminos,cookies,devoluciones,garantias,habeas-data,subprocesadores,security}`). Omiten `lastModified` a propósito para no emitir un timestamp falso en cada request dinámico.
+1. **16 rutas estáticas (`STATIC_PATHS`, sin `lastModified` artificial):** `/`, `/productos`, `/ocasion`, `/empresas-y-eventos`, `/recomendador`, `/rastrear`, `/ayuda`, `/contacto` y las 8 páginas legales (`/legal/{privacidad,terminos,cookies,devoluciones,garantias,habeas-data,subprocesadores,security}`). Omiten `lastModified` a propósito para no emitir un timestamp falso en cada request dinámico.
 2. **Categorías raíz activas (`parentId: null`):** `${baseUrl}/productos?categoria=${slug}` con `lastModified: updatedAt`.
 3. **Subcategorías activas con padre activo:** ruta jerárquica `${baseUrl}/productos/${parent.slug}/${slug}` con `lastModified: updatedAt`.
 4. **Landings de ocasión activas (`OcasionTag`):** `${baseUrl}/ocasion/${slug}` con `lastModified: updatedAt`.

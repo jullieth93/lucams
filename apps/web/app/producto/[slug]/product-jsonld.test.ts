@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SITE_URL } from "@/lib/seo/structured-data";
+import { stripSiteNameSuffix } from "@/lib/site";
 import { buildProductJsonLd, type ProductJsonLdInput } from "./product-jsonld";
 
 const BASE: ProductJsonLdInput = {
@@ -66,5 +67,22 @@ describe("buildProductJsonLd", () => {
     expect(jsonLd.image).toEqual([`${SITE_URL}/brand/lucams-logo.png`]);
     expect((jsonLd.image as string[])[0]).toMatch(/^https?:\/\//);
     expect((jsonLd.image as string[])[0]).toMatch(/\/brand\/lucams-logo\.png$/);
+  });
+});
+
+describe("stripSiteNameSuffix", () => {
+  it("elimina sufijos de marca con |, ·, — y - para evitar duplicación con el template", () => {
+    expect(stripSiteNameSuffix("Bola Navideña Personalizada | Lucams Shop")).toBe(
+      "Bola Navideña Personalizada",
+    );
+    expect(stripSiteNameSuffix("Fotoimanes Polaroid · Lucams Shop")).toBe("Fotoimanes Polaroid");
+    expect(stripSiteNameSuffix("Calendario — lucams shop")).toBe("Calendario");
+    expect(stripSiteNameSuffix("Separadores - Lucams Shop | Lucams Shop")).toBe("Separadores");
+  });
+
+  it("conserva títulos sin sufijo y evita devolver vacío si el título es solo la marca", () => {
+    expect(stripSiteNameSuffix("Fotoimanes Cuadrados")).toBe("Fotoimanes Cuadrados");
+    expect(stripSiteNameSuffix("Lucams Shop")).toBe("Lucams Shop");
+    expect(stripSiteNameSuffix("   ")).toBe("");
   });
 });
