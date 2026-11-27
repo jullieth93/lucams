@@ -5,7 +5,7 @@
 ## Fotografía ejecutiva
 
 - **Tienda:** `lucamsshop.com` opera exclusivamente en modo **`full`** (`ADR-204`) con Wompi, contraentrega, Aveonline y Envío Lucams Bogotá. Las compras individuales cierran en el checkout y los proyectos corporativos/eventos usan el configurador multicategoría `/empresas-y-eventos` → propuesta formal `/propuesta/[token]` → `Order` real (`ADR-210`); no existe cotización individual por WhatsApp.
-- **Base técnica:** monorepo `pnpm` (`apps/web` Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui; `packages/db`: **77 modelos**, **32 enums**, **103 migraciones Prisma** + **61 SQL Supabase** en `_lucams_sql_migrations`, PG 17 local/CI/PRD). RLS global con `enforce_rls_on_new_table`.
+- **Base técnica:** monorepo `pnpm` (`apps/web` Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui; `packages/db`: **77 modelos**, **32 enums**, **104 migraciones Prisma** + **61 SQL Supabase** en `_lucams_sql_migrations`, PG 17 local/CI/PRD). RLS global con `enforce_rls_on_new_table`.
 - **Integraciones (`ADR-206`):** `/admin/integraciones` usa registro tipado y resolución viva para los 7 proveedores (configuración, conexión, activación y salud).
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) exigen PR y 5 checks: `Typecheck + Lint + Build`, `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`.
 - **Legal:** paquete **Versión 3** sincronizado en `packages/db/legal-content`, fallbacks, mapa y CMS de STG/PRD.
@@ -38,13 +38,13 @@
 
 - Konva multi-unidad (`ADR-167`/`173`/`209`), tope de `1..15` diseños por tanda (`1..6` packs, `1..4` calendarios, `1..10` sets de letras, `MAX_DESIGN_SLOTS = 60`) y «Copias iguales de esta tanda» hasta `100` uds. (`16` packs), sellando `OrderItem.designUnits`. Derivados WebP, auto-fill, galería, letras, IA, 10 escenas 3D, `-NOMAG` y reverso de marca (`ADR-190`).
 - Tiras photobooth compuestas, previews de packs en grilla y réplica entre unidades. Portada con popup tras consentimiento, logo estacional, nieve con movimiento reducido y CTA B2B (`/empresas-y-eventos` desde 25 uds.).
-- **Bola Navideña (`ADR-199`/`201`/`209`):** activa en los 3 ambientes; inserto dúplex de 8 cm, cara B obligatoria, hasta 15 diseños/tanda y 100 copias. Sin/con imán a $10.000/$11.000 COP; promos 3 × $27.000 y 5 × $40.000.
+- **Bola Navideña (`ADR-199`/`201`/`209`):** activa en los 3 ambientes; 8 cm dúplex, cara B obligatoria, 15 diseños/tanda y 100 copias. Sin/con imán: $10.000/$11.000 COP (3 × $27.000, 5 × $40.000).
 - **Mini Libros (`ADR-200`):** carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán; inactivos fuera de referencia. Plantilla «Reino de cristal» y visor 3D completo.
 - Auto-save serial (`clientRev`/`STALE_REVISION`), borradores, 3D diferido fuera del chunk 2D y fronteras `/estudio` con guardas AST, previews privados en streaming + `ETag`/`304`, `RenderJob` 300 DPI con fencing y ZIP de taller.
 
 ### Carrito, checkout, pagos y logística ([`domains/checkout-payments-shipping.md`](domains/checkout-payments-shipping.md))
 
-- Carrito auto-sanado (`ADR-171`), checkout de tres pasos (`ADR-155`), direcciones DANE + CP MinTIC (171 ciudades) y modo regalo sin precios en guía/correos.
+- Carrito auto-sanado (`ADR-171`), re-cotizado con aviso en checkout + snapshots `OrderItem` (`ADR-211`), checkout en 3 pasos (`ADR-155`), DANE/MinTIC (171 ciudades) y modo regalo sin precios.
 - Fletes HMAC por peso, ledger Wompi por intento, webhook con ventana de 25 h, COD con blocklist y conciliación, CSV contable DIAN con PII redactada y decremento atómico de stock post-pago.
 - Aveonline desacoplado vía `after()` + `tracking-sync` (`claimExternalShipmentSlot`), alerta `PAID` sin guía `> 30 min`, PDF, `ShipmentEvent` (`NOVEDAD`/`DEVOLUCIÓN`), etiquetas auditadas, segregación Taller/Despachos, costeo BOM y cupones.
 
