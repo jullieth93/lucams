@@ -37,7 +37,7 @@
  * ~1800px no deben dejar bitmaps gigantes vivos.
  */
 
-import { supportsWebpEncode } from "./client-image-compress";
+import { supportsWebpEncode } from "@/lib/client-image-compress";
 import {
   computeUpscalePlan,
   parseSizeCm,

@@ -1,12 +1,8 @@
 /*
  * Resolución ÚNICA del tipo de producto del Estudio (Paquete D, 2026-10-02).
  *
- * Antes cada consumidor leía `personalizationSchema.galleryTag` a su manera:
- * page.tsx caía al SLUG cuando no había tag explícito (ADR-057 B2, default-on)
- * pero studio-editor leía solo el tag explícito → un producto separador SIN
- * galleryTag en BD (datos de STG) no se detectaba como separador en el editor
- * y perdía su vista 3D de libro. De acá salen el tag efectivo y el flag
- * "es separador" para AMBOS lados (server y cliente — módulo puro, sin deps).
+ * Extraído a `features/personalization/product-kind.ts` (módulo puro compartido
+ * por server y cliente: Estudio, carrito, checkout, pedidos y mi-cuenta; Fase 5 · #19).
  */
 
 /**

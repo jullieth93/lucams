@@ -43,7 +43,7 @@ import { Suspense, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, ContactShadows, Center } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
-import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
 import {
   MagnetMesh,

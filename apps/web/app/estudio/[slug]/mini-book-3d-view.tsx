@@ -7,7 +7,7 @@ import { BookOpenText, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react
 import * as THREE from "three";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioBackdrop, StudioEnvironment } from "./studio-3d-environment";
-import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import { miniBookGeometry } from "@/features/personalization/product-experience";
 import { MAGNET_BACK_COLOR } from "./magnet-3d";
 import type { Magnet3D } from "./fridge-3d-view";

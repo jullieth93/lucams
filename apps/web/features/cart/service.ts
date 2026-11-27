@@ -46,7 +46,7 @@ import { netAvailableStock } from "@/features/products/fulfillment";
 import { logger } from "@/lib/logger";
 import { designIdentity, sameLineContent } from "./design-identity";
 import { describePieces, pieceKindFor, unitCountNounForLine, type UnitNoun } from "./line-preview";
-import { isBookmarkGalleryTag, resolveGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
+import { isBookmarkGalleryTag, resolveGalleryTag } from "@/features/personalization/product-kind";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { readProductExperience } from "@/features/personalization/product-experience";
 import {

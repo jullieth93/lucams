@@ -295,7 +295,9 @@ export type TextOverride = {
   fontWeight?: string;
 };
 
-export type PhotoFilterPreset = "vintage" | "vivid" | "bw" | "pastel" | "polaroid";
+import type { PhotoFilterPreset } from "@/features/personalization/schemas";
+
+export type { PhotoFilterPreset };
 
 export type GridLayout = {
   cols: number;

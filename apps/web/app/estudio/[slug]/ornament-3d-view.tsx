@@ -14,7 +14,7 @@ import { ContactShadows, OrbitControls, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { FitCameraPolar } from "./fit-camera-polar";
-import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import { StudioBackdrop, StudioEnvironment } from "./studio-3d-environment";
 import {
   advanceOrnamentFoamEnergy,
