@@ -5,7 +5,7 @@
 ## Fotografía ejecutiva
 
 - **Tienda:** `lucamsshop.com` opera exclusivamente en modo **`full`** (`ADR-204`) con Wompi, contraentrega, Aveonline y Envío Lucams Bogotá. Las compras individuales cierran en el checkout y los proyectos corporativos/eventos usan el configurador multicategoría `/empresas-y-eventos` → propuesta formal `/propuesta/[token]` → `Order` real (`ADR-210`); no existe cotización individual por WhatsApp.
-- **Base técnica:** monorepo `pnpm` (`apps/web` Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui; `packages/db`: **77 modelos**, **32 enums**, **104 migraciones Prisma** + **61 SQL Supabase** en `_lucams_sql_migrations`, PG 17 local/CI/PRD). RLS global con `enforce_rls_on_new_table`.
+- **Base técnica:** monorepo `pnpm` (`apps/web` Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui; `packages/db`: **77 modelos**, **32 enums**, **105 migraciones Prisma** + **61 SQL Supabase** en `_lucams_sql_migrations`, PG 17 local/CI/PRD). RLS global con `enforce_rls_on_new_table`.
 - **Integraciones (`ADR-206`):** `/admin/integraciones` usa registro tipado y resolución viva para los 7 proveedores (configuración, conexión, activación y salud).
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) exigen PR y 5 checks: `Typecheck + Lint + Build`, `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`.
 - **Legal:** paquete **Versión 3** sincronizado en `packages/db/legal-content`, fallbacks, mapa y CMS de STG/PRD.
@@ -32,7 +32,7 @@
 
 - Categorías padre/hija, facetas, insignia, 16 ocasiones, búsqueda difusa (incl. SKU de variante), filtro de precio SQL por variantes activas, PDP mayorista con zoom, 404 real, feed Merchant y `/api/catalog|cms`.
 - **CMS v2 (`ADR-187`):** 9 contenedores, 30 secciones y 168 campos (105 `BLOCK` + 63 `SETTING`), paridad AST en CI, versionado append-only, publicación programada y tokens legales dinámicos.
-- **Opciones base y `/admin/mayorista` (`ADR-209`):** `ProductVariant` modela solo atributos físicos de `1` unidad base (`1` pieza, `1` pack de `6` o `1` set; multi-pack históricos pausados). `WholesaleTier` centraliza descuentos por volumen (`minQty >= 2`) con sombra `opción > producto > global`.
+- **Opciones base y `/admin/mayorista` (`ADR-209`):** `ProductVariant` modela solo `1` unidad base (multi-pack históricos pausados); `WholesaleTier` aplica sombra `opción > producto > global`. Stock omnicanal (`ADR-208` 1A+1B): `MADE_TO_ORDER` en `stock = 0` y `PHYSICAL_STOCK` con `safetyStock` 1:1 y kardex.
 
 ### Estudio 2D/3D y producción 300 DPI ([`domains/studio-and-production.md`](domains/studio-and-production.md))
 
@@ -63,9 +63,8 @@
 
 1. **Facturación electrónica DIAN:** faltan NIT/RUT de facturador, acompañamiento contador/abogado y proveedor tecnológico; `BILLING_DOCUMENT_ENABLED = false`. La vigilancia de umbrales ya opera.
 2. **SEO post-indexación:** revisar Search Console y confirmar aprobación del feed en Merchant Center.
-3. **Núcleo omnicanal de stock (`ADR-208`):** activo (`MADE_TO_ORDER` vs `PHYSICAL_STOCK`, `publishedOnStorefront`, `safetyStock` con paridad 1:1 en tienda/checkout/canales y kardex); tras desplegar en STG/PRD resta normalizar a `0` el stock legado de `MADE_TO_ORDER` y retirar `MADE_TO_ORDER_STOCK` del seed.
-4. **Mercado Libre (`ADR-205`):** arquitectura en pausa en [`integrations/mercadolibre.md`](integrations/mercadolibre.md) (solo `PHYSICAL_STOCK`, `ChannelPack`/`ChannelOrder`, precios `FORMULA`/`MANUAL`, `ME2` + Flex Bogotá). Pendiente habilitación de App en DevCenter `MCO`.
-5. **Meta (`ADR-207`):** arquitectura en pausa en [`integrations/meta.md`](integrations/meta.md) (`Meta Catalog` `PHYSICAL_STOCK`, `System User` `v25.0`, Pixel + CAPI deduplicados con `MetaOrderAttribution` y ajuste previo Ley 1581). Pendiente Fase M0.
+3. **Mercado Libre (`ADR-205`):** arquitectura en pausa en [`integrations/mercadolibre.md`](integrations/mercadolibre.md) (solo `PHYSICAL_STOCK`, `ChannelPack`/`ChannelOrder`, precios `FORMULA`/`MANUAL`, `ME2` + Flex Bogotá). Pendiente habilitación de App en DevCenter `MCO`.
+4. **Meta (`ADR-207`):** arquitectura en pausa en [`integrations/meta.md`](integrations/meta.md) (`Meta Catalog` `PHYSICAL_STOCK`, `System User` `v25.0`, Pixel + CAPI deduplicados con `MetaOrderAttribution` y ajuste previo Ley 1581). Pendiente Fase M0.
 
 ### Higiene técnica diferida (no bloqueante)
 

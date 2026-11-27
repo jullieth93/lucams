@@ -46,6 +46,8 @@ const RFM_CHART_TONE: Record<RfmTierKey, ChartTone> = {
 
 function stockAlertBadge(alert: ProductIntentSignal["stockAlert"]) {
   switch (alert) {
+    case "MADE_TO_ORDER":
+      return <AdminBadge tone="purple">Bajo pedido</AdminBadge>;
     case "OUT_OF_STOCK_DEMAND":
       return <AdminBadge tone="rose">Agotado con demanda</AdminBadge>;
     case "RESTOCK_READY_TO_NOTIFY":
@@ -63,12 +65,14 @@ export function CrmIntelligencePanel({
   canAccessCarts,
   canAccessOpportunities,
   canAccessInventory = false,
+  canAccessProducts = false,
 }: {
   report: CrmBehavioralIntelligenceReport;
   canAccessSegments: boolean;
   canAccessCarts: boolean;
   canAccessOpportunities: boolean;
   canAccessInventory?: boolean;
+  canAccessProducts?: boolean;
 }) {
   const { dropOffs, intentSignals, rfm, channelAttribution, assistedRecovery } = report;
   const costPct = Math.round(rfm.productsWithCostConfiguredRatio * 100);
@@ -355,7 +359,18 @@ export function CrmIntelligencePanel({
               {intentSignals.map((sig) => (
                 <AdminTableRow key={sig.productId}>
                   <td className="px-3 py-2.5 text-xs font-semibold text-slate-900">
-                    {canAccessInventory ? (
+                    {sig.fulfillmentMode === "MADE_TO_ORDER" ? (
+                      canAccessProducts ? (
+                        <Link
+                          href={`/admin/productos/${sig.productId}`}
+                          className="text-brand-purple-dark hover:text-brand-purple hover:underline"
+                        >
+                          {sig.productName}
+                        </Link>
+                      ) : (
+                        sig.productName
+                      )
+                    ) : canAccessInventory ? (
                       <Link
                         href={`/admin/inventario?q=${encodeURIComponent(sig.productName)}`}
                         className="text-brand-purple-dark hover:text-brand-purple hover:underline"
@@ -373,7 +388,7 @@ export function CrmIntelligencePanel({
                     {sig.pendingBackInStockCount}
                   </td>
                   <td className="px-3 py-2.5 text-right text-xs font-semibold text-slate-900 tabular-nums">
-                    {sig.availableStock}
+                    {sig.availableStock === null ? "—" : sig.availableStock}
                   </td>
                   <td className="px-3 py-2.5">{stockAlertBadge(sig.stockAlert)}</td>
                 </AdminTableRow>

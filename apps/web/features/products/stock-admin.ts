@@ -24,7 +24,7 @@ import { MAX_STOCK_VALUE } from "./stock-constants";
 
 export class VariantStockError extends Error {
   constructor(
-    public code: "not_found" | "out_of_range" | "deleted" | "conflict",
+    public code: "not_found" | "out_of_range" | "deleted" | "conflict" | "made_to_order",
     message: string,
   ) {
     super(message);
@@ -82,7 +82,13 @@ export async function setVariantStockAdmin(input: {
   const result = await prisma.$transaction(async (tx) => {
     const current = await tx.productVariant.findUnique({
       where: { id: input.variantId },
-      select: { id: true, productId: true, stock: true, deletedAt: true },
+      select: {
+        id: true,
+        productId: true,
+        stock: true,
+        deletedAt: true,
+        product: { select: { fulfillmentMode: true } },
+      },
     });
     if (!current) {
       throw new VariantStockError("not_found", "Variante no encontrada");
@@ -91,6 +97,12 @@ export async function setVariantStockAdmin(input: {
       throw new VariantStockError(
         "deleted",
         "Esta variante está archivada — restáurala antes de ajustar el stock",
+      );
+    }
+    if (current.product.fulfillmentMode === "MADE_TO_ORDER") {
+      throw new VariantStockError(
+        "made_to_order",
+        "Este producto se fabrica bajo pedido y no usa inventario físico de producto terminado.",
       );
     }
 
