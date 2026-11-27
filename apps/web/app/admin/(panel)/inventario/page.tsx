@@ -220,7 +220,7 @@ export default async function InventarioPage({ searchParams }: { searchParams: S
                 />
                 <th className="px-4 py-3 text-right font-semibold">Reserva</th>
                 <th className="px-4 py-3 text-right font-semibold">
-                  <Hint content="Disponible externo = máx(0, stock físico − reserva) para canales externos y feeds. En lucamsshop.com se vende sobre el stock físico.">
+                  <Hint content="Disponible neto = máx(0, stock físico − reserva). Aplica con paridad 1:1 en lucamsshop.com, canales externos y feeds.">
                     <span className="cursor-help underline decoration-dotted underline-offset-4">
                       Disponible neto
                     </span>

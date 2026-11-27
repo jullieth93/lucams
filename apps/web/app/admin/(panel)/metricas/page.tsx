@@ -433,6 +433,7 @@ export default async function AdminMetricasPage({
             canAccessCarts={canAccessAdminPath(role, "/admin/carritos")}
             canAccessOpportunities={canAccessAdminPath(role, "/admin/oportunidades")}
             canAccessInventory={canSeeInventario}
+            canAccessProducts={canAccessAdminPath(role, "/admin/productos")}
           />
         )}
 

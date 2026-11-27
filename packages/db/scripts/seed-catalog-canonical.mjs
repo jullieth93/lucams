@@ -22,8 +22,9 @@
  *     --apply exige confirmación interactiva del destino).
  *   - --apply corre en UNA transacción (all-or-nothing), conteos antes/después.
  *
- * Mantiene del seed original las reglas de naming ADR-036 y la nota H11
- * (stock made-to-order de productos personalizables — ver más abajo).
+ * Mantiene del seed original las reglas de naming ADR-036. Las variantes
+ * nuevas entran con `stock: 0` (ADR-208 Paso 1B: los productos `MADE_TO_ORDER`
+ * gobiernan disponibilidad por `isActive` e insumos, nunca por `stock`).
  *
  * Uso (vía Makefile — el target ya pasa --apply):
  *   make seed-products
@@ -185,11 +186,6 @@ const sameValue = (a, b) => {
 function changedFields(existing, declared, fields) {
   return fields.filter((f) => !sameValue(existing[f], declared[f]));
 }
-
-// PR-1A conserva el buffer solo para que los contenedores anteriores sigan
-// viendo stock durante la conmutación. El código nuevo clasifica estos productos
-// como MADE_TO_ORDER y no lo usa para disponibilidad ni para la saga. PR-1B lo retira.
-const MADE_TO_ORDER_STOCK = 100_000;
 
 // ─────────── Categorías (9) ───────────
 // Slugs estables. Cambiar un slug significa archivar la categoría vieja
@@ -1309,7 +1305,7 @@ async function run(db, write) {
                 sku: v.sku,
                 price: v.price ?? null,
                 compareAtPrice: v.compareAtPrice ?? null,
-                stock: p.isPersonalizable ? MADE_TO_ORDER_STOCK : 0,
+                stock: 0,
                 attributes: v.attributes ?? {},
                 isActive: v.isActive ?? true,
               },
@@ -1330,14 +1326,6 @@ async function run(db, write) {
               });
             }
           }
-        }
-        // H11 — sube a made-to-order las variantes de personalizables que quedaron
-        // en stock 0 (nunca BAJA un stock deliberado > 0). Solo en --apply.
-        if (write && p.isPersonalizable) {
-          await db.productVariant.updateMany({
-            where: { sku: v.sku, stock: 0 },
-            data: { stock: MADE_TO_ORDER_STOCK },
-          });
         }
       }
 
@@ -1435,19 +1423,13 @@ async function run(db, write) {
               name: "Default",
               sku: variantSku,
               price: null,
-              stock: p.isPersonalizable ? MADE_TO_ORDER_STOCK : 0,
+              stock: 0,
               attributes: {},
             },
           });
         }
       } else {
         stats.variants.noop++;
-      }
-      if (write && p.isPersonalizable) {
-        await db.productVariant.updateMany({
-          where: { sku: variantSku, stock: 0 },
-          data: { stock: MADE_TO_ORDER_STOCK },
-        });
       }
     }
 
@@ -1651,7 +1633,6 @@ export async function main() {
     console.log(
       "\nDRY-RUN (sin cambios). Para ejecutar: node scripts/seed-catalog-canonical.mjs --apply",
     );
-    console.log("(En --apply también se normaliza el stock made-to-order H11 de personalizables.)");
   }
 }
 
