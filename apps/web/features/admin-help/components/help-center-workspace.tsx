@@ -18,11 +18,13 @@ import {
   Search,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   Workflow,
   X,
 } from "lucide-react";
 import { CountUp } from "@/components/admin/count-up";
 import { ADMIN_ASSIGNABLE_ROLES, adminRoleLabel } from "@/lib/admin-roles";
+import { markReleaseNotesSeenAction } from "../actions";
 import { getProceduresForRole, normalizeHelpText } from "../step-builders";
 import type {
   AdminDailyRoutine,
@@ -32,6 +34,8 @@ import type {
   AdminOnboardingGuide,
   AdminPlaybook,
   AdminQuickRule,
+  AdminReleaseNote,
+  AdminReleaseNoteCategory,
   AdminRoleMatrixRow,
   AdminShortcutEntry,
   HelpCenterTab,
@@ -84,6 +88,30 @@ function findGuideMatchReason(
   return "Diccionario de campos";
 }
 
+const RELEASE_NOTES_PROGRESS_ID = "platform-release-notes";
+
+const RELEASE_CATEGORY_STYLE: Record<
+  AdminReleaseNoteCategory,
+  { label: string; className: string }
+> = {
+  nuevo: {
+    label: "Nuevo",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  },
+  mejora: {
+    label: "Mejora",
+    className: "border-brand-purple/25 bg-brand-purple/10 text-brand-purple-dark",
+  },
+  correccion: {
+    label: "Corrección",
+    className: "border-sky-200 bg-sky-50 text-sky-900",
+  },
+  seguridad: {
+    label: "Seguridad y operación",
+    className: "border-amber-200 bg-amber-50 text-amber-950",
+  },
+};
+
 export function HelpCenterWorkspace({
   actualRole,
   effectiveRole,
@@ -99,6 +127,7 @@ export function HelpCenterWorkspace({
   roleMatrix,
   shortcuts,
   glossary,
+  releaseNotes = [],
   initialProgress,
 }: {
   actualRole: AdminRole;
@@ -115,6 +144,7 @@ export function HelpCenterWorkspace({
   roleMatrix: AdminRoleMatrixRow[];
   shortcuts: AdminShortcutEntry[];
   glossary: AdminGlossaryEntry[];
+  releaseNotes?: AdminReleaseNote[];
   initialProgress: AdminHelpProgress[];
 }) {
   const router = useRouter();
@@ -127,6 +157,8 @@ export function HelpCenterWorkspace({
   const [activeArea, setActiveArea] = useState<string | undefined>(initialArea);
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "completed">("all");
   const [progressList, setProgressList] = useState<AdminHelpProgress[]>(initialProgress);
+  const [markingReleases, setMarkingReleases] = useState(false);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
 
   function upsertProgress(next: AdminHelpProgress) {
     setProgressList((prev) => {
@@ -136,6 +168,34 @@ export function HelpCenterWorkspace({
       copy[idx] = next;
       return copy;
     });
+  }
+
+  const seenReleaseVersion =
+    progressList.find((item) => item.guideId === RELEASE_NOTES_PROGRESS_ID)?.version ?? 0;
+  const unreadReleaseItemsCount = useMemo(
+    () =>
+      releaseNotes
+        .filter((release) => release.version > seenReleaseVersion)
+        .reduce((acc, release) => acc + release.items.length, 0),
+    [releaseNotes, seenReleaseVersion],
+  );
+
+  async function handleMarkReleasesSeen() {
+    if (markingReleases || isSimulatingRole) return;
+    setMarkingReleases(true);
+    setReleaseError(null);
+    try {
+      const result = await markReleaseNotesSeenAction();
+      if (result.ok && result.progress) {
+        upsertProgress(result.progress);
+      } else if (!result.ok) {
+        setReleaseError(result.message);
+      }
+    } catch {
+      setReleaseError("No pudimos guardar el estado de lectura. Intenta de nuevo.");
+    } finally {
+      setMarkingReleases(false);
+    }
   }
 
   const completedIds = useMemo(
@@ -213,6 +273,20 @@ export function HelpCenterWorkspace({
       return terms.every((t) => hay.includes(t));
     });
   }, [quickRules, terms]);
+
+  const matchedReleaseItems = useMemo(() => {
+    if (terms.length === 0) return [];
+    return releaseNotes.flatMap((release) =>
+      release.items
+        .filter((item) => {
+          const hay = normalizeHelpText(
+            `${release.date} ${item.category} ${item.title} ${item.detail}`,
+          );
+          return terms.every((t) => hay.includes(t));
+        })
+        .map((item) => ({ release, item })),
+    );
+  }, [releaseNotes, terms]);
 
   const areas = useMemo(() => [...new Set(guides.map((g) => g.area))], [guides]);
   const filteredModuleCards = useMemo(() => {
@@ -392,10 +466,51 @@ export function HelpCenterWorkspace({
         </div>
       </header>
 
-      {/* Navegación de los 4 pilares operativos */}
+      {/* Aviso proactivo de novedades no leídas para el rol actual */}
+      {!isSimulatingRole && unreadReleaseItemsCount > 0 && activeTab !== "novedades" && (
+        <div
+          role="status"
+          className="border-brand-purple/25 bg-brand-purple/5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm text-slate-900"
+        >
+          <div className="flex items-start gap-2.5">
+            <Sparkles className="text-brand-purple-dark mt-0.5 h-5 w-5 shrink-0" aria-hidden />
+            <div>
+              <p className="text-brand-purple-dark font-bold">
+                Tienes {unreadReleaseItemsCount}{" "}
+                {unreadReleaseItemsCount === 1 ? "novedad reciente" : "novedades recientes"} en los
+                módulos de tu rol
+              </p>
+              {releaseNotes[0] && (
+                <p className="text-xs text-slate-700">
+                  {releaseNotes[0].date} — {releaseNotes[0].title}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => selectTab("novedades")}
+              className="bg-brand-purple-dark hover:bg-brand-purple inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-white"
+            >
+              Ver novedades <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </button>
+            <button
+              type="button"
+              disabled={markingReleases}
+              onClick={() => void handleMarkReleasesSeen()}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Marcar como leídas
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Navegación de los 5 pilares operativos */}
       <nav
         aria-label="Secciones del Centro de ayuda"
-        className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xs lg:grid-cols-4"
+        className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xs lg:grid-cols-5"
       >
         {(
           [
@@ -424,6 +539,17 @@ export function HelpCenterWorkspace({
               label: "4. Glosario, Reglas y Atajos",
               badge: `${matchedQuickRules.length + matchedGlossary.length}`,
               icon: Scale,
+            },
+            {
+              id: "novedades",
+              label: "5. Novedades",
+              badge:
+                !isSimulatingRole && unreadReleaseItemsCount > 0
+                  ? unreadReleaseItemsCount === 1
+                    ? "1 nueva"
+                    : `${unreadReleaseItemsCount} nuevas`
+                  : `${releaseNotes.length}`,
+              icon: Sparkles,
             },
           ] as const
         ).map((tab) => {
@@ -474,7 +600,7 @@ export function HelpCenterWorkspace({
               <p className="text-xs text-slate-600">
                 {matchedPlaybooks.length} flujos E2E · {matchedGuides.length} módulos ·{" "}
                 {matchedQuickRules.length} reglas rápidas · {matchedGlossary.length} términos del
-                glosario
+                glosario · {matchedReleaseItems.length} novedades
               </p>
             </div>
             <button
@@ -489,7 +615,8 @@ export function HelpCenterWorkspace({
           {matchedPlaybooks.length === 0 &&
           matchedGuides.length === 0 &&
           matchedQuickRules.length === 0 &&
-          matchedGlossary.length === 0 ? (
+          matchedGlossary.length === 0 &&
+          matchedReleaseItems.length === 0 ? (
             <div className="py-6 text-center">
               <p className="text-brand-purple-dark font-bold">
                 No encontramos coincidencias para «{query.trim()}» en los módulos de tu rol
@@ -596,6 +723,47 @@ export function HelpCenterWorkspace({
                         <p className="mt-1 text-xs text-slate-600">{entry.definition}</p>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {matchedReleaseItems.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold tracking-wider text-slate-600 uppercase">
+                    Novedades coincidentes
+                  </h3>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {matchedReleaseItems.map(({ release, item }) => {
+                      const style = RELEASE_CATEGORY_STYLE[item.category];
+                      return (
+                        <div
+                          key={`${release.id}:${item.id}`}
+                          className="rounded-xl border border-slate-200 bg-white p-4"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${style.className}`}
+                            >
+                              {style.label}
+                            </span>
+                            <span className="text-[11px] text-slate-500">{release.date}</span>
+                          </div>
+                          <h4 className="text-brand-purple-dark mt-1.5 text-sm font-bold">
+                            {item.title}
+                          </h4>
+                          <p className="mt-1 text-xs leading-5 text-slate-600">{item.detail}</p>
+                          {item.guideId && (
+                            <Link
+                              href={buildWorkspaceHref({ guia: item.guideId, rol: roleParam })}
+                              className="text-brand-purple-dark mt-2 inline-flex min-h-9 items-center gap-1 text-xs font-bold hover:underline"
+                            >
+                              Abrir guía actualizada{" "}
+                              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                            </Link>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1144,6 +1312,141 @@ export function HelpCenterWorkspace({
             </dl>
           </section>
         </div>
+      )}
+
+      {/* ────────────── PESTAÑA 5: NOVEDADES POR ROL ────────────── */}
+      {terms.length === 0 && activeTab === "novedades" && (
+        <section aria-labelledby="release-notes-heading" className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
+            <div>
+              <h2
+                id="release-notes-heading"
+                className="font-display text-brand-purple-dark text-xl font-bold"
+              >
+                Novedades y cambios recientes para {adminRoleLabel(effectiveRole)}
+              </h2>
+              <p className="mt-1 text-xs text-slate-600">
+                Cada cambio en módulos, reglas, reportes o flujos que puedes operar se publica aquí
+                junto con su guía actualizada.
+              </p>
+            </div>
+            {!isSimulatingRole &&
+              (unreadReleaseItemsCount > 0 ? (
+                <div className="flex flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    disabled={markingReleases}
+                    onClick={() => void handleMarkReleasesSeen()}
+                    className="bg-brand-purple-dark hover:bg-brand-purple inline-flex min-h-11 items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+                  >
+                    <CheckCircle2 className="h-4 w-4" aria-hidden />
+                    Marcar todo como leído
+                  </button>
+                  {releaseError && (
+                    <p role="alert" className="text-xs font-medium text-rose-800">
+                      {releaseError}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-900">
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                  Estás al día
+                </span>
+              ))}
+          </div>
+
+          {releaseNotes.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-600">
+              Aún no hay novedades registradas para los módulos de este rol.
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {releaseNotes.map((release) => {
+                const isUnread = !isSimulatingRole && release.version > seenReleaseVersion;
+                return (
+                  <article
+                    key={release.id}
+                    className={`rounded-2xl border bg-white p-5 shadow-2xs sm:p-6 ${
+                      isUnread ? "border-brand-purple/40" : "border-slate-200"
+                    }`}
+                  >
+                    <header className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                            {release.date}
+                          </span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                            Actualización #{release.version}
+                          </span>
+                          {isUnread && (
+                            <span className="bg-brand-purple-dark rounded-full px-2.5 py-0.5 text-xs font-bold text-white">
+                              Nueva
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="font-display text-brand-purple-dark mt-2 text-lg font-bold">
+                          {release.title}
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-600">{release.summary}</p>
+                      </div>
+                    </header>
+
+                    <ul className="mt-4 grid gap-3 md:grid-cols-2">
+                      {release.items.map((item) => {
+                        const style = RELEASE_CATEGORY_STYLE[item.category];
+                        return (
+                          <li
+                            key={item.id}
+                            className="flex flex-col justify-between rounded-xl border border-slate-200 bg-slate-50/60 p-4"
+                          >
+                            <div>
+                              <span
+                                className={`inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold ${style.className}`}
+                              >
+                                {style.label}
+                              </span>
+                              <h4 className="text-brand-purple-dark mt-2 text-sm font-bold">
+                                {item.title}
+                              </h4>
+                              <p className="mt-1 text-xs leading-5 text-slate-700">{item.detail}</p>
+                            </div>
+                            {(item.guideId || item.route) && (
+                              <div className="mt-3 flex flex-wrap items-center gap-3 pt-2 text-xs">
+                                {item.guideId && (
+                                  <Link
+                                    href={buildWorkspaceHref({
+                                      guia: item.guideId,
+                                      rol: roleParam,
+                                    })}
+                                    className="text-brand-purple-dark inline-flex min-h-9 items-center gap-1 font-bold hover:underline"
+                                  >
+                                    Ver guía actualizada
+                                    <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                                  </Link>
+                                )}
+                                {item.route && item.route !== "/admin/ayuda" && (
+                                  <Link
+                                    href={item.route}
+                                    className="inline-flex min-h-9 items-center gap-1 font-semibold text-slate-600 hover:text-slate-900 hover:underline"
+                                  >
+                                    Ir al módulo
+                                    <ExternalLink className="h-3 w-3" aria-hidden />
+                                  </Link>
+                                )}
+                              </div>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
       )}
     </div>
   );

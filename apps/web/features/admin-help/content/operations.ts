@@ -315,9 +315,9 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
     area: "Operación",
     route: "/admin/ayuda",
     summary:
-      "Manual operativo vivo: rutina Día 1 por rol, los 8 Flujos E2E, guías por pantalla/subruta, glosario y reglas clave.",
+      "Manual operativo vivo: rutina Día 1 por rol, los 8 Flujos E2E, guías por pantalla/subruta, glosario, reglas clave y Novedades.",
     purpose:
-      "Entrena desde cero a cualquier integrante nuevo según su rol y sirve como manual de consulta inmediata para operación compleja, plazos legales, fórmulas de margen y casos borde. Todo el contenido vive junto al código y se verifica automáticamente en pruebas.",
+      "Entrena desde cero a cualquier integrante nuevo según su rol, informa las novedades recientes de los módulos que puedes operar y sirve como manual de consulta inmediata para operación compleja, plazos legales, fórmulas de margen y casos borde. Todo el contenido vive junto al código y se verifica automáticamente en pruebas.",
     whenToUse: [
       "En tu primer día para completar la pestaña Día 1 y Rutina Diaria de tu rol.",
       "Cuando necesites ejecutar de punta a punta un proceso transversal en la pestaña Flujos E2E.",
@@ -344,8 +344,9 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
     sections: [
       {
         id: "pilares",
-        title: "Los 4 pilares del Centro de ayuda",
-        summary: "Diseñados para responder en segundos tanto en inducción como en incidentes.",
+        title: "Los 5 pilares del Centro de ayuda",
+        summary:
+          "Diseñados para responder en segundos tanto en inducción, cambios recientes e incidentes.",
         topics: [
           {
             id: "dia-1",
@@ -369,7 +370,15 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
             description:
               "Diccionario completo de cada pantalla y subruta, más tabla maestra de SLAs legales, topes numéricos, matriz de roles, glosario A–Z y atajos (`⌘K`, `?`).",
             interpretation:
-              "Usa el buscador superior instantáneo (sin tildes) para filtrar los 4 pilares al mismo tiempo.",
+              "Usa el buscador superior instantáneo (sin tildes) para filtrar todos los pilares al mismo tiempo.",
+          },
+          {
+            id: "novedades",
+            label: "5. Novedades de la plataforma por rol",
+            description:
+              "Publica cada cambio en módulos, reglas, reportes o flujos autorizado para tu rol con acceso directo a la guía actualizada y confirmación de lectura guardada.",
+            interpretation:
+              "Cuando haya cambios nuevos verás un indicador discreto en el botón `? Ayuda` y un aviso superior hasta que los marques como leídos.",
           },
         ],
       },
@@ -423,7 +432,9 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
       "playbook",
       "glosario",
       "atajos",
+      "novedades",
+      "cambios",
     ],
-    version: 2,
+    version: 3,
   },
 ];

@@ -13,6 +13,8 @@ import { ONBOARDING_GUIDES } from "./content/onboarding";
 import {
   ADMIN_MODULE_GUIDES,
   ADMIN_PLAYBOOKS,
+  ADMIN_RELEASE_NOTES,
+  RELEASE_NOTES_PROGRESS_GUIDE_ID,
   buildModuleSteps,
   getAvailableModuleGuides,
   getAvailablePlaybooks,
@@ -21,10 +23,13 @@ import {
   getGuideAndSubrouteForPath,
   getGuideForPath,
   getHelpRouteIndex,
+  getLatestReleaseVersionForRole,
   getModuleGuideById,
   getOnboardingForRole,
   getPlaybookById,
   getProceduresForRole,
+  getReleaseNotesForRole,
+  getUnreadReleaseSummary,
   searchGlossary,
   searchModuleGuides,
   searchPlaybooks,
@@ -75,6 +80,7 @@ describe("admin help registry & anti-drift contracts", () => {
       ...ADMIN_MODULE_GUIDES.map((g) => g.id),
       ...ONBOARDING_GUIDES.map((o) => o.id),
       ...ADMIN_PLAYBOOKS.map((p) => p.id),
+      RELEASE_NOTES_PROGRESS_GUIDE_ID,
     ];
     expect(new Set(allIds).size).toBe(allIds.length);
 
@@ -138,6 +144,7 @@ describe("admin help registry & anti-drift contracts", () => {
     const serialized = JSON.stringify({
       guides: ADMIN_MODULE_GUIDES,
       playbooks: ADMIN_PLAYBOOKS,
+      releaseNotes: ADMIN_RELEASE_NOTES,
       routines: DAILY_ROUTINES,
       onboarding: ONBOARDING_GUIDES,
       rules: ADMIN_QUICK_RULES,
@@ -145,6 +152,85 @@ describe("admin help registry & anti-drift contracts", () => {
     expect(serialized).not.toMatch(/modo cat[aá]logo/i);
     expect(serialized).not.toMatch(/lucam['’]s/i);
     expect(serialized).not.toMatch(/lucams_shop/i);
+  });
+
+  it("valida integridad, versionado monotónico y aislamiento RBAC de las Novedades por rol", () => {
+    expect(ADMIN_RELEASE_NOTES.length).toBeGreaterThan(0);
+    const guideIds = new Set(ADMIN_MODULE_GUIDES.map((g) => g.id));
+    const releaseIds = new Set<string>();
+    let prevVersion = Number.POSITIVE_INFINITY;
+
+    for (const release of ADMIN_RELEASE_NOTES) {
+      expect(releaseIds.has(release.id), `release duplicada: ${release.id}`).toBe(false);
+      releaseIds.add(release.id);
+      expect(release.version).toBeGreaterThan(0);
+      expect(release.version, "novedades ordenadas de mayor a menor versión").toBeLessThan(
+        prevVersion,
+      );
+      prevVersion = release.version;
+      expect(release.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(release.items.length).toBeGreaterThan(0);
+
+      const itemIds = new Set<string>();
+      for (const item of release.items) {
+        expect(itemIds.has(item.id), `item duplicado: ${release.id}/${item.id}`).toBe(false);
+        itemIds.add(item.id);
+        expect(
+          Boolean(item.roles || item.route || item.guideId),
+          `${item.id} debe declarar al menos un alcance RBAC (roles/route/guideId)`,
+        ).toBe(true);
+        if (item.guideId) {
+          expect(guideIds.has(item.guideId), `${item.id} → guía ${item.guideId}`).toBe(true);
+        }
+        if (item.route) {
+          expect(
+            getGuideForPath(item.route, "SUPERADMIN"),
+            `${item.id} → ${item.route}`,
+          ).not.toBeNull();
+        }
+      }
+    }
+
+    // Todo rol (incluyendo SUPERADMIN y CMS_EDITOR) recibe sus novedades válidas sin fugas RBAC
+    for (const role of ROLES) {
+      const visible = getReleaseNotesForRole(role);
+      expect(visible.length, `${role} debe recibir al menos una novedad`).toBeGreaterThan(0);
+      for (const release of visible) {
+        for (const item of release.items) {
+          if (item.route) {
+            expect(canAccessAdminPath(role, item.route), `${role} ruta ${item.route}`).toBe(true);
+          }
+          if (item.guideId) {
+            expect(
+              getModuleGuideById(item.guideId, role),
+              `${role} guía ${item.guideId}`,
+            ).not.toBeNull();
+          }
+        }
+      }
+      const latestVersion = getLatestReleaseVersionForRole(role);
+      expect(latestVersion).toBeGreaterThan(0);
+      const unreadBefore = getUnreadReleaseSummary(role, []);
+      expect(unreadBefore.unreadCount).toBeGreaterThan(0);
+      const unreadAfter = getUnreadReleaseSummary(role, [
+        {
+          guideId: RELEASE_NOTES_PROGRESS_GUIDE_ID,
+          version: latestVersion,
+          currentStep: 0,
+          completedAt: "2026-11-27T16:00:00.000Z",
+          dismissedAt: null,
+        },
+      ]);
+      expect(unreadAfter.unreadCount).toBe(0);
+    }
+
+    // CMS_EDITOR jamás ve novedades de Finanzas ni Inventario
+    const cmsItemIds = getReleaseNotesForRole("CMS_EDITOR").flatMap((r) =>
+      r.items.map((item) => item.guideId),
+    );
+    expect(cmsItemIds).toContain("ayuda");
+    expect(cmsItemIds).not.toContain("finanzas");
+    expect(cmsItemIds).not.toContain("inventario");
   });
 
   it("evita que los componentes cliente arrastren el corpus pesado de content/* al navegador", () => {

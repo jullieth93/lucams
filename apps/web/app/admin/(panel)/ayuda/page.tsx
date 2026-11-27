@@ -19,6 +19,7 @@ import {
   getOnboardingForRole,
   getPlaybookById,
   getQuickRulesForRole,
+  getReleaseNotesForRole,
   getRoleMatrixForRole,
 } from "@/features/admin-help/registry";
 import { getAdminHelpFeedbackForGuide, getAdminHelpProgress } from "@/features/admin-help/service";
@@ -32,7 +33,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const HelpCenterSearchSchema = z.object({
-  tab: z.enum(["dia-1", "flujos", "modulos", "referencia"]).optional(),
+  tab: z.enum(["dia-1", "flujos", "modulos", "referencia", "novedades"]).optional(),
   q: z.string().trim().max(200).optional().default(""),
   area: z.string().trim().max(80).optional(),
   guia: z
@@ -213,6 +214,7 @@ export default async function AdminHelpCenterPage({
   const quickRules = getQuickRulesForRole(effectiveRole);
   const roleMatrix = getRoleMatrixForRole(effectiveRole);
   const glossary = getConsolidatedGlossary(effectiveRole);
+  const releaseNotes = getReleaseNotesForRole(effectiveRole);
 
   const initialTab: HelpCenterTab = params.tab ?? (params.aprender === "1" ? "dia-1" : "modulos");
 
@@ -234,6 +236,7 @@ export default async function AdminHelpCenterPage({
         roleMatrix={roleMatrix}
         shortcuts={ADMIN_SHORTCUTS}
         glossary={glossary}
+        releaseNotes={releaseNotes}
         initialProgress={progress}
       />
     </div>

@@ -22,11 +22,13 @@ vi.mock("next/navigation", () => ({
 const getContextualHelpAction = vi.fn();
 const saveHelpProgressAction = vi.fn();
 const submitHelpFeedbackAction = vi.fn();
+const markReleaseNotesSeenAction = vi.fn();
 
 vi.mock("../actions", () => ({
   getContextualHelpAction: (...args: unknown[]) => getContextualHelpAction(...args),
   saveHelpProgressAction: (...args: unknown[]) => saveHelpProgressAction(...args),
   submitHelpFeedbackAction: (...args: unknown[]) => submitHelpFeedbackAction(...args),
+  markReleaseNotesSeenAction: (...args: unknown[]) => markReleaseNotesSeenAction(...args),
 }));
 
 beforeEach(() => {
@@ -44,6 +46,17 @@ beforeEach(() => {
     };
   });
   saveHelpProgressAction.mockResolvedValue({ ok: true, message: "Avance guardado." });
+  markReleaseNotesSeenAction.mockResolvedValue({
+    ok: true,
+    progress: {
+      guideId: "platform-release-notes",
+      version: 1,
+      currentStep: 0,
+      completedAt: "2026-11-27T16:00:00.000Z",
+      dismissedAt: null,
+    },
+    message: "Novedades marcadas como leídas.",
+  });
 });
 
 afterEach(() => {
@@ -134,5 +147,28 @@ describe("AdminHelpLauncher contextual reactivity", () => {
     expect(indexBtn).toBeInTheDocument();
     fireEvent.click(indexBtn);
     expect(screen.getByRole("heading", { name: "Índice rápido y buscador" })).toBeInTheDocument();
+  });
+
+  it("muestra aviso de novedades no leídas dentro del panel contextual y permite marcarlas como leídas", async () => {
+    render(
+      <AdminHelpLauncher
+        routeIndex={routeIndex}
+        playbookIndex={playbookIndex}
+        onboarding={onboarding}
+        role="SUPERADMIN"
+        initialProgress={dismissedProgress}
+        releaseSummary={{
+          latestVersion: 1,
+          unreadCount: 3,
+          latestTitle: "Cambios recientes de prueba",
+          latestDate: "2026-11-27",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir ayuda de Dashboard" }));
+    expect(await screen.findByText(/3 novedades recientes para tu rol/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Entendido" }));
+    expect(markReleaseNotesSeenAction).toHaveBeenCalledTimes(1);
   });
 });

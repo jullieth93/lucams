@@ -10,7 +10,35 @@ export type HelpArea =
   | "Contenido"
   | "Configuración y seguridad";
 
-export type HelpCenterTab = "dia-1" | "flujos" | "modulos" | "referencia";
+export type HelpCenterTab = "dia-1" | "flujos" | "modulos" | "referencia" | "novedades";
+
+export type AdminReleaseNoteCategory = "nuevo" | "mejora" | "correccion" | "seguridad";
+
+export type AdminReleaseNoteItem = {
+  id: string;
+  category: AdminReleaseNoteCategory;
+  title: string;
+  detail: string;
+  guideId?: string;
+  route?: string;
+  roles?: AdminRole[];
+};
+
+export type AdminReleaseNote = {
+  id: string;
+  version: number;
+  date: string;
+  title: string;
+  summary: string;
+  items: AdminReleaseNoteItem[];
+};
+
+export type AdminReleaseSummary = {
+  latestVersion: number;
+  unreadCount: number;
+  latestTitle: string | null;
+  latestDate: string | null;
+};
 
 export type HelpTopic = {
   id: string;
