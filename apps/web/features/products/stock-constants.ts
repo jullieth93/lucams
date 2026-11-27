@@ -92,7 +92,12 @@ export type StockSummary = {
  * Útil para mostrar badge global en el header del producto + alertas.
  */
 export function summarizeStock(
-  variants: Array<{ stock: number; deletedAt?: Date | null; isActive?: boolean }>,
+  variants: Array<{
+    stock: number;
+    safetyStock?: number;
+    deletedAt?: Date | null;
+    isActive?: boolean;
+  }>,
 ): StockSummary {
   const active = variants.filter((v) => !v.deletedAt && v.isActive !== false);
   let totalUnits = 0;
@@ -100,8 +105,9 @@ export function summarizeStock(
   let lowCount = 0;
   let okCount = 0;
   for (const v of active) {
-    totalUnits += Math.max(0, v.stock);
-    const status = getStockStatus(v.stock);
+    const net = Math.max(0, v.stock - Math.max(0, v.safetyStock ?? 0));
+    totalUnits += net;
+    const status = getStockStatus(net);
     if (status === "out") outCount++;
     else if (status === "low") lowCount++;
     else okCount++;

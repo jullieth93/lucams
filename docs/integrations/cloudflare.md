@@ -198,8 +198,8 @@ sequenceDiagram
     Note over GHA,App: Flujo Diario — .github/workflows/backup.yml (13 7 * * * UTC)
     GHA->>Supa: pg_dump v17 (--no-owner --no-privileges) vía BACKUP_DATABASE_URL
     Supa-->>GHA: Stream SQL plano
-    GHA->>GHA: gzip -9 + gpg AES256 (--passphrase-fd 3)
-    GHA->>R2: PutObject db/lucams-<UTC>.sql.gz.gpg + poda (BACKUP_KEEP=30)
+    GHA->>GHA: gzip -9 + gpg AES256 (--passphrase-fd 3) → temp 0600 en disco
+    GHA->>R2: PutObject streaming db/lucams-<UTC>.sql.gz.gpg + poda (BACKUP_KEEP=30)
     loop Cada uno de los 5 buckets de Storage
       GHA->>Supa: list (1000/pág, retry 5xx) + download streaming
       GHA->>GHA: ustar propio -> gzip -9 -> gpg AES256 (temp 0600)
@@ -216,9 +216,9 @@ sequenceDiagram
     GHA->>R2: GetObject último .sql.gz.gpg
     GHA->>GHA: gpg -d (fd 3) + gunzip en memoria
     GHA->>EphPG: psql -v ON_ERROR_STOP=0 (rol supabase_admin)
-    GHA->>EphPG: Clasifica errores SQL (allowlist fail-closed) + compara SELECT count(*) == filas COPY
-    GHA->>R2: GetObject último manifest.json + archivo .tar.gz.gpg de bucket con objetos > 0
-    GHA->>GHA: gpg -d + gunzip + countTarEntries en streaming (0 plaintext en disco)
+    GHA->>EphPG: Clasifica errores SQL (allowlist fail-closed) + cuadra COPY public + integridad auth.users/mfa_factors
+    GHA->>R2: Valida frescura <= 36h y cobertura de los 5 buckets en manifest.json + archivos .tar.gz.gpg
+    GHA->>GHA: Verifica los 5 buckets con gpg -d + gunzip + countTarEntries en streaming (0 plaintext en disco)
   end
 ```
 
@@ -232,9 +232,9 @@ sequenceDiagram
 #### A. Job `backup` — Base de datos PostgreSQL 17 (`apps/web/scripts/backup-db-to-r2.mjs` + `backup-lib.mjs`)
 
 1. **Cliente PostgreSQL 17 oficial:** el runner Ubuntu instala `postgresql-client-17` desde el repositorio oficial PGDG (`apt.postgresql.org.asc` armado) porque el servidor de Supabase corre PostgreSQL 17 y versiones inferiores de `pg_dump` abortan por incompatibilidad de versión.
-2. **Volcado y compresión en memoria:** ejecuta `pg_dump <BACKUP_DATABASE_URL> --no-owner --no-privileges` (formato SQL plano portable entre proyectos Supabase, sobre conexión directa sin pooler; localmente acepta fallback a `DIRECT_URL`) y canaliza `stdout` hacia `zlib.createGzip({ level: 9 })`.
-3. **Cifrado simétrico fail-closed (`BACKUP_GPG_PASSPHRASE`):** el dump contiene PII protegida por la Ley 1581 de 2012. Antes de tocar la red, se cifra con `gpg --symmetric --cipher-algo AES256 --batch --yes --passphrase-fd 3 -o -`. La frase de paso viaja por el descriptor de archivo `fd 3` (`stdio[3]`), nunca por argumentos CLI ni variables de entorno del proceso hijo donde sería visible en `/proc`. Si `BACKUP_GPG_PASSPHRASE` está vacía o ausente, el script **aborta de inmediato (fail-closed)**.
-4. **Subida S3 a R2 y diagnósticos endurecidos:** sube el objeto a `https://<accountId>.r2.cloudflarestorage.com` (`region: "auto"`, `ContentType: "application/pgp-encrypted"`) bajo la llave lexicográficamente ordenable `db/lucams-YYYY-MM-DDThhmmssZ.sql.gz.gpg` (`buildBackupKey`). El helper `normalizeR2AccountId` limpia errores humanos al copiar la URL completa del endpoint y `explainR2ConnectError` traduce fallos OpenSSL `SSL alert number 40 (handshake failure)` en causas accionables sin imprimir el ID secreto.
+2. **Volcado, compresión y cifrado en streaming a disco `0600`:** ejecuta `pg_dump <BACKUP_DATABASE_URL> --no-owner --no-privileges` (formato SQL plano portable entre proyectos Supabase, sobre conexión directa sin pooler; localmente acepta fallback a `DIRECT_URL`) y canaliza `stdout` en streaming `pg_dump → zlib.createGzip({ level: 9 }) → gpg AES256` hacia un archivo temporal con permisos `0600` dentro de `withTempBackupDir` (limpieza garantizada en `finally`). Solo el texto cifrado toca disco y el consumo de RAM permanece constante aunque el dump crezca.
+3. **Cifrado simétrico fail-closed (`BACKUP_GPG_PASSPHRASE`):** el dump contiene PII protegida por la Ley 1581 de 2012. Antes de tocar disco o red, se cifra con `gpg --symmetric --cipher-algo AES256 --batch --yes --passphrase-fd 3 -o -`. La frase de paso viaja por el descriptor de archivo `fd 3` (`stdio[3]`), nunca por argumentos CLI ni variables de entorno del proceso hijo donde sería visible en `/proc`. Si `BACKUP_GPG_PASSPHRASE` está vacía o ausente, el script **aborta de inmediato (fail-closed)**.
+4. **Subida S3 en streaming a R2 y diagnósticos endurecidos:** sube el archivo cifrado vía `createReadStream` con `ContentLength` exacto a `https://<accountId>.r2.cloudflarestorage.com` (`region: "auto"`, `ContentType: "application/pgp-encrypted"`) bajo la llave lexicográficamente ordenable `db/lucams-YYYY-MM-DDThhmmssZ.sql.gz.gpg` (`buildBackupKey`). El helper `normalizeR2AccountId` limpia errores humanos al copiar la URL completa del endpoint y `explainR2ConnectError` traduce fallos OpenSSL `SSL alert number 40 (handshake failure)` en causas accionables sin imprimir el ID secreto.
 5. **Retención rotativa de 30 copias (`BACKUP_KEEP="30"`):** `selectStaleKeys` filtra únicamente llaves que coinciden con `BACKUP_KEY_RE` (`/(^|\/)lucams-\d{4}-\d{2}-\d{2}T\d{6}Z\.sql\.gz(\.gpg)?$/`), conserva las **30 más recientes** (~1 mes de respaldos diarios; default `8` en ejecuciones locales sueltas) y elimina el excedente mediante `DeleteObjectsCommand` sin tocar ningún otro prefijo del bucket.
 
 #### B. Job `backup-storage` — Espejo completo de los 5 buckets (`apps/web/scripts/backup-storage-to-r2.mjs` + `backup-storage-lib.mjs`)
@@ -269,11 +269,12 @@ Un respaldo cuya restauración no se verifica periódicamente no certifica conti
    - Lista `db/` en R2 filtrando archivos `.sql.gz.gpg` y exige **frescura estricta (`backupFreshnessError`)**: el `LastModified` autoritativo en R2 del respaldo más reciente debe tener **≤ 36 horas** (`DRILL_MAX_BACKUP_AGE_HOURS`, default `36`). Si el backup diario lleva días roto, el simulacro falla aunque exista un volcado antiguo válido.
    - Descarga, descifra con `gpg -d --passphrase-fd 3` y descomprime en memoria; escribe el SQL temporal con modo `0600` y ejecuta `psql <DRILL_DATABASE_URL> -v ON_ERROR_STOP=0 -q -f dump.sql` con el rol `supabase_admin` sobre la base `postgres` (única donde `pg_cron` puede residir).
    - **Clasificación fail-closed de errores SQL (`summarizeRestoreErrors`):** `ON_ERROR_STOP=0` es deliberado porque tanto el contenedor como un proyecto Supabase gestionado traen pre-creados los esquemas internos (`auth`, `storage`, `vault`, `extensions`, `pgbouncer`, `realtime`, `graphql`). El parser extrae toda línea `ERROR:` (con o sin prefijo `psql:<archivo>:<línea>:`) y la contrasta contra las 13 reglas explícitas de `dr-drill-lib.mjs`; **cualquier error fuera de la allowlist tumba el simulacro**.
-   - **Cuadre exacto autocalibrado contra bloques `COPY` (`dumpCopyRowCounts`):** cuenta las filas presentes en los bloques `COPY` del propio SQL y verifica que `SELECT count(*) FROM "<Tabla>"` tras restaurar sea **idéntico** en las 6 tablas testigo (`Product`, `Category`, `OcasionTag`, `CmsField`, `Order`, `Customer`), además de validar `Product >= DRILL_MIN_PRODUCTS` (default `5`) como detector de volcados vacíos. Jamás imprime contenido de filas en los logs públicos de Actions.
-2. **Job `drill-storage` — Verificación criptográfica y estructural de Storage (`apps/web/scripts/dr-drill-storage.mjs`):**
-   - Descarga el manifiesto más reciente (`db-storage/lucams-<UTC>.manifest.json`) y selecciona el primer bucket con `objects > 0` (o el indicado en `DRILL_STORAGE_BUCKET`).
-   - Descarga su `.tar.gz.gpg`, lo canaliza por `gpg -d --passphrase-fd 3` → `gunzip` → `countTarEntries()` en streaming (**cero bytes en claro escritos en disco**), validando el checksum octal de cada cabecera `ustar` de 512 bytes y la presencia del bloque final de archivo.
-   - Falla si el archivo tiene 0 entradas o si el conteo de entradas o la suma de bytes difiere en 1 solo byte respecto al manifiesto.
+   - **Cuadre exacto autocalibrado contra bloques `COPY` (`dumpCopyRowCounts` + `inspectAuthDumpIntegrity`):** cuenta las filas presentes en los bloques `COPY` del propio SQL y verifica que `SELECT count(*) FROM "<Tabla>"` tras restaurar sea **idéntico** en las tablas testigo (`Product`, `Category`, `OcasionTag`, `CmsField`, `Order`, `Customer`), además de validar `Product >= DRILL_MIN_PRODUCTS` (default `5`). También valida sin PII la presencia e integridad estructural de los bloques `COPY auth.users` y `COPY auth.mfa_factors` (incluyendo cobertura de `AdminUser.supabaseUserId` sobre `auth.users` y verificación de conteo restaurado cuando no existe deriva `auth-column-drift`/`auth-data-fk` del contenedor GoTrue). Jamás imprime contenido de filas ni correos en logs.
+2. **Job `drill-storage` — Verificación criptográfica y estructural de los 5 buckets (`apps/web/scripts/dr-drill-storage.mjs`):**
+   - Lista `db-storage/` en R2 preservando `LastModified` y exige **frescura `≤ 36 h`** (`backupFreshnessError`) tanto sobre el manifiesto más reciente (`db-storage/lucams-<UTC>.manifest.json`) como sobre cada uno de los archivos `.tar.gz.gpg` referenciados.
+   - Valida **cobertura estricta de los 5 buckets** (`storageManifestCoverageError`: `customer-uploads`, `production-assets`, `design-previews`, `cms-media`, `product-images`, sin duplicados ni llaves cruzadas entre buckets).
+   - Descarga y verifica los **5 buckets** (o el indicado en `DRILL_STORAGE_BUCKET` si se acota manualmente) canalizando cada `.tar.gz.gpg` por `gpg -d --passphrase-fd 3` → `gunzip` → `countTarEntries()` en streaming (**cero bytes en claro escritos en disco**), validando el checksum octal de cada cabecera `ustar` de 512 bytes, el cierre EOF de gzip y el bloque final de archivo.
+   - Falla si el conteo de entradas o la suma de bytes difiere en 1 solo byte respecto al manifiesto (o si el respaldo global reporta 0 objetos en todos los buckets).
 
 ### 5.3. Comandos locales y restauración manual de emergencia
 

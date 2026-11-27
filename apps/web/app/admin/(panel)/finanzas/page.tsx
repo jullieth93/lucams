@@ -53,6 +53,7 @@ import { formatCOP } from "@/lib/format";
 import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation";
 import {
   COLLECTED_REVENUE_ORDER_WHERE,
+  COLLECTED_WARRANTY_REFUND_WHERE,
   computeNetCollectedRevenue,
   DEFAULT_PERIOD,
   FINANZAS_PERIODS,
@@ -101,7 +102,8 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
     codToCollect,
     totalRefunded,
     retractRefundSummary,
-    warrantyRefundResolvedCount,
+    warrantyRefundSummary,
+    legacyWarrantyRefundWithoutAmountCount,
     ordersThisMonth,
     dianPending,
   ] = await Promise.all([
@@ -166,10 +168,21 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
         totalCents: r._sum?.refundAmount ?? 0,
         count: r._count?._all ?? 0,
       })),
+    prisma.warrantyClaim
+      .aggregate({
+        where: COLLECTED_WARRANTY_REFUND_WHERE,
+        _sum: { refundAmount: true },
+        _count: { _all: true },
+      })
+      .then((r) => ({
+        totalCents: r._sum?.refundAmount ?? 0,
+        count: r._count?._all ?? 0,
+      })),
     prisma.warrantyClaim.count({
       where: {
         status: "RESOLVED",
         resolutionType: "REFUND",
+        refundAmount: null,
         orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
       },
     }),
@@ -191,14 +204,15 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
   // Serie del período seleccionado + comparativa.
   const periodoData = await getPeriodAggregates(periodo);
 
-  // [FIN-01] — ingreso neto real = cobrado bruto (Wompi + COD entregado)
-  // menos discrepancias COD confirmadas y retractos reembolsados en efectivo.
+  // [FIN-01] — ingreso neto real = cobrado bruto (Wompi + Pago Directo B2B + COD entregado)
+  // menos discrepancias COD confirmadas, retractos y garantías reembolsadas en efectivo.
   const netBreakdown = computeNetCollectedRevenue({
     wompiCollectedCents: wompiRevenue,
     directTransferCollectedCents: directTransferAgg.grossCents,
     codDeliveredCents: codDeliveredRevenue,
     codShortfallCents: codRecon.shortfallCop,
     retractRefundedCents: retractRefundSummary.totalCents,
+    warrantyRefundedCents: warrantyRefundSummary.totalCents,
     withholdingCents: directTransferAgg.withholdingCents,
   });
   const totalRevenue = netBreakdown.netCollectedCents;
@@ -237,7 +251,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
             value={hasRealData ? formatCOP(totalRevenue) : "—"}
             hint={
               hasRealData
-                ? "Caja real: Wompi + contra entrega entregado − devoluciones y faltantes"
+                ? "Caja real: Wompi + pago directo B2B + contra entrega entregado − devoluciones, retenciones y faltantes"
                 : "Disponible cuando haya ventas"
             }
             highlight={hasRealData}
@@ -317,7 +331,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="border-brand-purple/10 rounded-lg border bg-white p-3">
                 <span className="text-brand-muted block text-[11px] font-medium">
-                  Cobrado bruto (Wompi + COD entregado)
+                  Cobrado bruto (Wompi + Pago Directo B2B + COD entregado)
                 </span>
                 <span className="text-brand-purple-dark mt-0.5 block text-base font-bold tabular-nums">
                   {formatCOP(netBreakdown.grossCollectedCents)}
@@ -341,6 +355,19 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
                       {formatCOP(retractRefundSummary.totalCents)})
                     </Link>
                   )}
+                  {warrantyRefundSummary.count > 0 && (
+                    <Link
+                      href="/admin/garantias?status=RESOLVED&resolution=REFUND"
+                      className="hover:text-brand-purple underline"
+                    >
+                      {warrantyRefundSummary.count} garantía
+                      {warrantyRefundSummary.count === 1 ? "" : "s"} (
+                      {formatCOP(warrantyRefundSummary.totalCents)})
+                    </Link>
+                  )}
+                  {directTransferAgg.withholdingCents > 0 && (
+                    <span>Retenciones B2B ({formatCOP(directTransferAgg.withholdingCents)})</span>
+                  )}
                   {codRecon.shortfallCop > 0 && (
                     <Link
                       href="/admin/finanzas/conciliacion"
@@ -362,7 +389,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
             </div>
             <div className="mt-3 pt-1">
               <AdminSegmentedBar
-                ariaLabel="Composición del cobro bruto entre caja neta, retractos y faltante contra entrega"
+                ariaLabel="Composición del cobro bruto entre caja neta, retractos, garantías, retenciones B2B y faltante contra entrega"
                 items={[
                   {
                     key: "net",
@@ -380,6 +407,25 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
                     sublabel: formatCOP(retractRefundSummary.totalCents),
                   },
                   {
+                    key: "warranties",
+                    label: "Garantías reembolsadas",
+                    count: Math.round(warrantyRefundSummary.totalCents / 100),
+                    tone: "pink",
+                    href: "/admin/garantias?status=RESOLVED&resolution=REFUND",
+                    sublabel: formatCOP(warrantyRefundSummary.totalCents),
+                  },
+                  ...(directTransferAgg.withholdingCents > 0
+                    ? [
+                        {
+                          key: "withholding",
+                          label: "Retenciones B2B",
+                          count: Math.round(directTransferAgg.withholdingCents / 100),
+                          tone: "purple" as const,
+                          sublabel: formatCOP(directTransferAgg.withholdingCents),
+                        },
+                      ]
+                    : []),
+                  {
                     key: "cod_shortfall",
                     label: "Faltante COD",
                     count: Math.round(codRecon.shortfallCop / 100),
@@ -393,13 +439,14 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
           </AdminCard>
         )}
 
-        {warrantyRefundResolvedCount > 0 && (
+        {legacyWarrantyRefundWithoutAmountCount > 0 && (
           <AdminNotice tone="warning">
-            Hay <strong>{warrantyRefundResolvedCount}</strong> garantía
-            {warrantyRefundResolvedCount === 1 ? "" : "s"} resuelta
-            {warrantyRefundResolvedCount === 1 ? "" : "s"} con devolución de dinero cuyo pedido aún
-            figura como entregado. Si devolviste el total del pedido, márcalo como{" "}
-            <strong>Reembolsada</strong> en{" "}
+            Hay <strong>{legacyWarrantyRefundWithoutAmountCount}</strong> garantía
+            {legacyWarrantyRefundWithoutAmountCount === 1 ? "" : "s"} histórica
+            {legacyWarrantyRefundWithoutAmountCount === 1 ? "" : "s"} resuelta
+            {legacyWarrantyRefundWithoutAmountCount === 1 ? "" : "s"} con devolución de dinero sin
+            monto registrado cuyo pedido aún figura como entregado. Si devolviste el total del
+            pedido, márcalo como <strong>Reembolsada</strong> en{" "}
             <Link href="/admin/garantias?status=RESOLVED" className="font-semibold underline">
               /admin/garantias
             </Link>{" "}
@@ -460,11 +507,18 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
                       netos en{" "}
                       <strong className="text-brand-purple-dark">{periodoData.orderCount}</strong>{" "}
                       pedido{periodoData.orderCount === 1 ? "" : "s"}
-                      {periodoData.retractRefundedCents > 0 ? (
+                      {periodoData.retractRefundedCents > 0 ||
+                      periodoData.warrantyRefundedCents > 0 ? (
                         <>
                           {" "}
-                          ({formatCOP(periodoData.totalCents)} brutos −{" "}
-                          {formatCOP(periodoData.retractRefundedCents)} en retractos)
+                          ({formatCOP(periodoData.totalCents)} brutos
+                          {periodoData.retractRefundedCents > 0
+                            ? ` − ${formatCOP(periodoData.retractRefundedCents)} en retractos`
+                            : ""}
+                          {periodoData.warrantyRefundedCents > 0
+                            ? ` − ${formatCOP(periodoData.warrantyRefundedCents)} en garantías`
+                            : ""}
+                          )
                         </>
                       ) : null}{" "}
                       ·{" "}

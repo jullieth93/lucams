@@ -83,6 +83,7 @@ describe("GET /admin/finanzas/export — RBAC, step-up MFA y sanitización CSV",
         taxCents: 0,
         totalCents: 7_200_000,
         retractRefundedCents: 1_000_000,
+        warrantyRefundedCents: 0,
         wompiReference: "LCM-2026-0101",
         wompiTransactionId: "wompi_tx_1",
         codStatus: null,
@@ -153,8 +154,9 @@ describe("GET /admin/finanzas/export — RBAC, step-up MFA y sanitización CSV",
     // BOM UTF-8 en wire bytes (EF BB BF) + montos COP exactos + fórmula DIAN neutralizada + PII enmascarada
     expect(Array.from(rawBytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
     expect(csv.startsWith("numero_pedido,")).toBe(true);
+    expect(csv).toContain("reembolso_retracto_cop,reembolso_garantia_cop,total_neto_cop");
     expect(csv).toContain("LCM-2026-0101");
-    expect(csv).toContain(",65000,5000,0,12000,0,72000,0,10000,62000,");
+    expect(csv).toContain(",65000,5000,0,12000,0,72000,0,10000,0,62000,");
     expect(csv).toContain("1020304050");
     expect(csv).toContain("'=CMD|' /C calc'!A0");
     expect(csv).not.toContain(",=CMD|");

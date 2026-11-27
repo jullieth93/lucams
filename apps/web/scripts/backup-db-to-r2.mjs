@@ -6,12 +6,14 @@
  *   1. pg_dump (formato plano, --no-owner --no-privileges → restaurable en cualquier
  *      proyecto Supabase de testing para el DR drill #2) contra una conexión DIRECTA
  *      (no el pooler — pg_dump necesita una sesión larga).
- *   2. Comprime el dump con gzip.
- *   3. Lo cifra con gpg simétrico AES256 (A-3, auditoría 2026-08-24): el dump lleva
- *      PII (Ley 1581) y su confidencialidad no puede depender solo del ACL del
- *      bucket. La passphrase viaja por fd, NUNCA por argv/env del proceso gpg.
- *   4. Lo sube a R2 (S3-compatible) con una llave UTC ordenable (….sql.gz.gpg).
- *   5. Poda backups viejos según retención (conserva los N más nuevos).
+ *   2. Streaming directo pg_dump → gzip -9 → gpg simétrico AES256 (A-3, auditoría
+ *      2026-08-24; Fase 4 · #17: sin buffering en memoria para evitar OOM al crecer
+ *      el dump) → archivo temporal en disco con modo 0600 (solo texto cifrado toca
+ *      disco; limpieza garantizada en `finally`).
+ *      La passphrase viaja por fd 3, NUNCA por argv/env del proceso gpg.
+ *   3. Lo sube en streaming a R2 (S3-compatible) con `ContentLength` conocido y
+ *      una llave UTC ordenable (….sql.gz.gpg).
+ *   4. Poda backups viejos según retención (conserva los N más nuevos).
  *
  * Se corre desde un workflow programado de GitHub Actions (diario). Requiere pg_dump
  * 17 (el servidor Supabase es PG17; pg_dump < 17 rechaza el volcado) → el workflow
@@ -28,6 +30,11 @@
  */
 
 import { spawn } from "node:child_process";
+import { createReadStream, createWriteStream, mkdtempSync, rmSync } from "node:fs";
+import { stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import { pathToFileURL } from "node:url";
 import {
@@ -53,20 +60,71 @@ function requireEnv(name, ...fallbacks) {
   );
 }
 
-/** Corre pg_dump y comprime su salida con gzip, devolviendo el .sql.gz en un Buffer. */
-async function dumpAndGzip(connectionString) {
+/**
+ * Canaliza `sourceStream` → gzip (-9) → gpg AES256 (passphrase por fd 3, nunca
+ * argv/env) → archivo `outPath` (modo 0600). Solo el texto cifrado toca disco y
+ * el uso de RAM permanece plano sin importar el tamaño del dump (Fase 4 · #17).
+ */
+export async function streamGzipEncryptToFile(sourceStream, passphrase, outPath) {
+  const gpg = spawn(
+    "gpg",
+    [
+      "--symmetric",
+      "--cipher-algo",
+      "AES256",
+      "--batch",
+      "--yes",
+      "--passphrase-fd",
+      "3",
+      "-o",
+      "-",
+    ],
+    { stdio: ["pipe", "pipe", "pipe", "pipe"] },
+  );
+  let gpgStderr = "";
+  gpg.stderr.on("data", (d) => {
+    gpgStderr += d.toString();
+  });
+
+  const gpgDone = new Promise((resolve, reject) => {
+    gpg.on("error", (e) =>
+      reject(e.code === "ENOENT" ? new Error("gpg no está instalado en este ambiente") : e),
+    );
+    gpg.on("close", (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`gpg salió con código ${code}: ${gpgStderr.trim().slice(0, 500)}`)),
+    );
+  });
+
+  // Evita crash por EPIPE/EBADF no capturado en fd 3 o stdin si gpg sale antes
+  // de leerlos (garantiza que withTempBackupDir siempre ejecute su `finally`).
+  gpg.stdio[3].on("error", () => {});
+  gpg.stdin.on("error", () => {});
+  gpg.stdio[3].end(`${passphrase}\n`);
+
+  const inDone = pipeline(sourceStream, createGzip({ level: 9 }), gpg.stdin);
+  const outDone = pipeline(gpg.stdout, createWriteStream(outPath, { mode: 0o600 }));
+  try {
+    await Promise.all([gpgDone, inDone, outDone]);
+  } catch (err) {
+    if (gpg.exitCode === null) gpg.kill("SIGTERM");
+    throw err;
+  }
+}
+
+/**
+ * Ejecuta `pg_dump` y canaliza su stdout directamente por gzip → gpg → archivo
+ * temporal cifrado `outPath` (modo 0600), sin acumular el volcado en RAM.
+ */
+async function dumpGzipEncryptToFile(connectionString, passphrase, outPath) {
   const dump = spawn("pg_dump", [connectionString, "--no-owner", "--no-privileges"], {
     stdio: ["ignore", "pipe", "pipe"],
   });
-  const gzip = createGzip({ level: 9 });
-  const chunks = [];
-  let stderr = "";
-
+  let dumpStderr = "";
   dump.stderr.on("data", (d) => {
-    stderr += d.toString();
+    dumpStderr += d.toString();
   });
-  gzip.on("data", (c) => chunks.push(c));
-  dump.stdout.pipe(gzip);
 
   const dumpDone = new Promise((resolve, reject) => {
     dump.on("error", (e) =>
@@ -75,58 +133,29 @@ async function dumpAndGzip(connectionString) {
     dump.on("close", (code) =>
       code === 0
         ? resolve()
-        : reject(new Error(`pg_dump salió con código ${code}: ${stderr.trim().slice(0, 500)}`)),
+        : reject(new Error(`pg_dump salió con código ${code}: ${dumpStderr.trim().slice(0, 500)}`)),
     );
   });
-  const gzipDone = new Promise((resolve, reject) => {
-    gzip.on("end", resolve);
-    gzip.on("error", reject);
-  });
 
-  await Promise.all([dumpDone, gzipDone]);
-  return Buffer.concat(chunks);
+  try {
+    await Promise.all([dumpDone, streamGzipEncryptToFile(dump.stdout, passphrase, outPath)]);
+  } catch (err) {
+    if (dump.exitCode === null) dump.kill("SIGTERM");
+    throw err;
+  }
 }
 
 /**
- * Cifra `data` con gpg simétrico AES256 (streaming stdin → stdout).
- * La passphrase entra por el fd 3 (NO por argv ni por el entorno, donde sería
- * visible en /proc o en logs) y los datos por stdin — por eso NO se usa
- * `--passphrase-fd 0`: el fd 0 ya lo ocupa el stream de datos.
+ * Ejecuta una operación con un directorio temporal privado que siempre se
+ * limpia en `finally`, incluso ante errores o abortos (Fase 4 · #17).
  */
-function gpgEncrypt(data, passphrase) {
-  return new Promise((resolve, reject) => {
-    const gpg = spawn(
-      "gpg",
-      [
-        "--symmetric",
-        "--cipher-algo",
-        "AES256",
-        "--batch",
-        "--yes",
-        "--passphrase-fd",
-        "3",
-        "-o",
-        "-",
-      ],
-      { stdio: ["pipe", "pipe", "pipe", "pipe"] },
-    );
-    const chunks = [];
-    let stderr = "";
-    gpg.stdout.on("data", (c) => chunks.push(c));
-    gpg.stderr.on("data", (d) => {
-      stderr += d.toString();
-    });
-    gpg.on("error", (e) =>
-      reject(e.code === "ENOENT" ? new Error("gpg no está instalado en este ambiente") : e),
-    );
-    gpg.on("close", (code) =>
-      code === 0
-        ? resolve(Buffer.concat(chunks))
-        : reject(new Error(`gpg salió con código ${code}: ${stderr.trim().slice(0, 500)}`)),
-    );
-    gpg.stdio[3].end(`${passphrase}\n`);
-    gpg.stdin.end(data);
-  });
+export async function withTempBackupDir(prefix, fn) {
+  const tmpDir = mkdtempSync(join(tmpdir(), prefix));
+  try {
+    return await fn(tmpDir);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 async function main() {
@@ -153,32 +182,39 @@ async function main() {
     credentials: { accessKeyId, secretAccessKey },
   });
 
-  // 1-2. Dump + gzip.
-  console.log("→ pg_dump + gzip…");
-  const gzipped = await dumpAndGzip(conn);
+  const { key, mb } = await withTempBackupDir("db-backup-", async (tmpDir) => {
+    const tmpPath = join(tmpDir, "dump.sql.gz.gpg");
 
-  // 3. Cifrar (gpg simétrico AES256) antes de que el dump salga de esta máquina.
-  console.log("→ cifrando con gpg (AES256)…");
-  const body = await gpgEncrypt(gzipped, gpgPassphrase);
-  const mb = (body.length / (1024 * 1024)).toFixed(2);
-  const key = buildBackupKey(new Date(), prefix);
+    // 1-2. Streaming directo: pg_dump → gzip -9 → gpg AES256 → archivo cifrado 0600.
+    console.log("→ pg_dump + gzip + gpg (AES256) en streaming a disco temporal…");
+    await dumpGzipEncryptToFile(conn, gpgPassphrase, tmpPath);
 
-  // 4. Subir.
-  console.log(`→ subiendo ${key} (${mb} MB) a r2://${bucket}…`);
-  try {
-    await client.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Body: body,
-        ContentType: "application/pgp-encrypted",
-      }),
-    );
-  } catch (err) {
-    throw explainR2ConnectError(err, accountId);
-  }
+    const { size: encryptedBytes } = await stat(tmpPath);
+    if (encryptedBytes <= 0) {
+      throw new Error("El archivo cifrado del backup quedó vacío (0 bytes) — abortado.");
+    }
+    const sizeMb = (encryptedBytes / (1024 * 1024)).toFixed(2);
+    const objectKey = buildBackupKey(new Date(), prefix);
 
-  // 5. Podar backups viejos (retención).
+    // 3. Subir en streaming con ContentLength exacto.
+    console.log(`→ subiendo ${objectKey} (${sizeMb} MB) a r2://${bucket}…`);
+    try {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: objectKey,
+          Body: createReadStream(tmpPath),
+          ContentLength: encryptedBytes,
+          ContentType: "application/pgp-encrypted",
+        }),
+      );
+    } catch (err) {
+      throw explainR2ConnectError(err, accountId);
+    }
+    return { key: objectKey, mb: sizeMb };
+  });
+
+  // 4. Podar backups viejos (retención).
   const listed = await client.send(
     new ListObjectsV2Command({ Bucket: bucket, Prefix: `${prefix.replace(/\/+$/, "")}/` }),
   );

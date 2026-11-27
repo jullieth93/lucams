@@ -53,16 +53,34 @@
  * el que flapea es el pooler, no Postgres) se convertía directo en el 500
  * genérico del usuario.
  *   - OJO transacciones interactivas: en `$transaction(async (tx) => …)` un
- *     P1001 ya marca la transacción como muerta; el retry falla rápido y el
- *     error original se propaga — no empeora nada, pero tampoco la salva.
- *     Las operaciones SUELTAS (la gran mayoría del runtime) sí se salvan.
+ *     P1001/P1017 ya dejó muerta la transacción en el servidor; `runInInteractiveTxScope`
+ *     (`AsyncLocalStorage`) desactiva el retry dentro del callback para propagar el
+ *     error al instante sin dormir 300–900 ms sobre un `tx` abortado. Las operaciones
+ *     SUELTAS (la gran mayoría del runtime) sí reintentan normalmente.
  *
  * Referencias:
  *   - docs/integrations/supabase.md (DATABASE_URL vs DIRECT_URL)
  *   - https://www.prisma.io/docs/guides/database/supabase
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { PrismaClient, Prisma } from "@prisma/client";
+
+const interactiveTxScope = new AsyncLocalStorage<boolean>();
+
+/**
+ * Marca el alcance asíncrono como transacción interactiva activa (`$transaction(async (tx) => ...)`).
+ * Dentro de una transacción interactiva, un error de conexión (P1001/P1017/P2024) ya dejó inválido
+ * el `tx`: dormir y reintentar la query individual sobre la transacción abortada no puede salvarla
+ * y solo añade 300–900 ms de latencia reteniendo recursos.
+ */
+export function runInInteractiveTxScope<T>(fn: () => Promise<T>): Promise<T> {
+  return interactiveTxScope.run(true, fn);
+}
+
+export function isInsideInteractiveTx(): boolean {
+  return interactiveTxScope.getStore() === true;
+}
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -153,6 +171,9 @@ export async function runWithDbRetry<T>(
   fn: () => Promise<T>,
   opts?: { maxAttempts?: number; sleep?: (ms: number) => Promise<void> },
 ): Promise<T> {
+  if (isInsideInteractiveTx()) {
+    return fn();
+  }
   const maxAttempts = opts?.maxAttempts ?? 3;
   const sleep = opts?.sleep ?? defaultSleep;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -187,13 +208,33 @@ function buildClient(): PrismaClient {
       : {}),
   });
   // Tipada como PrismaClient: $extends preserva la superficie de modelos.
-  return base.$extends({
+  const extended = base.$extends({
     query: {
       $allOperations({ args, query }) {
         return runWithDbRetry(() => query(args));
       },
     },
   }) as PrismaClient;
+
+  const origTransaction = extended.$transaction.bind(extended);
+  const wrappedTransaction = ((arg0: unknown, ...rest: unknown[]) => {
+    if (typeof arg0 === "function") {
+      const fn = arg0 as (tx: Prisma.TransactionClient) => Promise<unknown>;
+      return (origTransaction as (...a: unknown[]) => Promise<unknown>)(
+        (tx: Prisma.TransactionClient) => runInInteractiveTxScope(() => fn(tx)),
+        ...rest,
+      );
+    }
+    return (origTransaction as (...a: unknown[]) => Promise<unknown>)(arg0, ...rest);
+  }) as PrismaClient["$transaction"];
+
+  return new Proxy(extended, {
+    get(target, prop) {
+      if (prop === "$transaction") return wrappedTransaction;
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 }
 
 const databaseUrl = process.env.DATABASE_URL;

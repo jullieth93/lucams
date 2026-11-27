@@ -134,14 +134,17 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     }),
     prisma.order.count({ where: { status: "PENDING_PAYMENT", deletedAt: null } }),
     prisma.order.count({ where: { status: { in: ["PAID", "FULFILLING"] }, deletedAt: null } }),
-    prisma.productVariant.count({
-      where: {
-        stock: { lte: 5 },
-        isActive: true,
-        deletedAt: null,
-        product: { isActive: true, deletedAt: null, fulfillmentMode: "PHYSICAL_STOCK" },
-      },
-    }),
+    prisma.$queryRaw<Array<{ cnt: number }>>`
+        SELECT COUNT(*)::int AS cnt
+        FROM "ProductVariant" pv
+        JOIN "Product" p ON p."id" = pv."productId"
+        WHERE pv."isActive" = true
+          AND pv."deletedAt" IS NULL
+          AND (pv."stock" - GREATEST(pv."safetyStock", 0)) <= 5
+          AND p."isActive" = true
+          AND p."deletedAt" IS NULL
+          AND p."fulfillmentMode" = 'PHYSICAL_STOCK'
+      `.then((rows) => rows[0]?.cnt ?? 0),
     prisma.review.count({ where: { isApproved: false, deletedAt: null } }),
     // H7 (auditoría v3) — retractos PENDING: el reembolso legal vence a los 15 días calendario.
     prisma.retractRequest.count({ where: { status: "PENDING" } }),

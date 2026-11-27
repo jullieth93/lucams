@@ -35,14 +35,20 @@ describe("stock por modalidad", () => {
     expect(hasStockForSale("MADE_TO_ORDER", 0)).toBe(true);
   });
 
-  it("PHYSICAL_STOCK conserva el control real", () => {
+  it("PHYSICAL_STOCK conserva el control real y descuenta safetyStock", () => {
     expect(tracksPhysicalStock("PHYSICAL_STOCK")).toBe(true);
     expect(hasStockForSale("PHYSICAL_STOCK", 0)).toBe(false);
     expect(hasStockForSale("PHYSICAL_STOCK", 1)).toBe(true);
+    expect(hasStockForSale("PHYSICAL_STOCK", 5, 2)).toBe(true);
+    expect(hasStockForSale("PHYSICAL_STOCK", 5, 5)).toBe(false);
+    expect(hasStockForSale("PHYSICAL_STOCK", 5, 8)).toBe(false);
+    expect(hasStockForSale("MADE_TO_ORDER", 5, 5)).toBe(true);
   });
 
   it("el disponible neto descuenta la reserva sin quedar negativo", () => {
     expect(netAvailableStock(10, 2)).toBe(8);
+    expect(netAvailableStock(5, 2)).toBe(3);
+    expect(netAvailableStock(5, 5)).toBe(0);
     expect(netAvailableStock(2, 5)).toBe(0);
   });
 });

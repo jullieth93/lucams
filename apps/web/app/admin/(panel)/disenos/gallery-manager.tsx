@@ -79,7 +79,7 @@ import {
   shrinkFilesToFitCombinedBudget,
   shrinkToFitUploadBudget,
   UPLOAD_PAYLOAD_BUDGET_BYTES,
-} from "@/app/estudio/[slug]/client-image-compress";
+} from "@/lib/client-image-compress";
 
 type Item = {
   id: string;

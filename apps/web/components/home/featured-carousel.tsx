@@ -16,7 +16,7 @@ import Autoplay from "embla-carousel-autoplay";
 import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import { ProductCard } from "@/components/product-card";
 import { useAutoplayWhenVisible } from "@/components/home/use-autoplay-when-visible";
-import { usePrefersReducedMotion } from "@/app/estudio/[slug]/use-prefers-reduced-motion";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import type { StorefrontProductCard } from "@/features/products/public-service";
 
 export function FeaturedCarousel({ products }: { products: StorefrontProductCard[] }) {

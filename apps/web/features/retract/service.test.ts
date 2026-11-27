@@ -28,22 +28,30 @@ function cot(d: Date) {
   };
 }
 
-// Lunes 2024-01-01, 10:00 COT (= 15:00 UTC). 2024-01-01 es lunes.
-const MON = new Date(Date.UTC(2024, 0, 1, 15, 0));
-// Viernes 2024-01-05, 10:00 COT.
-const FRI = new Date(Date.UTC(2024, 0, 5, 15, 0));
+// Lunes 2024-02-05, 10:00 COT (= 15:00 UTC) — semana limpia sin festivos en Colombia.
+const MON_CLEAN = new Date(Date.UTC(2024, 1, 5, 15, 0));
+// Viernes 2024-02-09, 10:00 COT — fin de semana ordinario sin puente festivo.
+const FRI_CLEAN = new Date(Date.UTC(2024, 1, 9, 15, 0));
+// Lunes 2024-01-01, 10:00 COT — el lunes siguiente (2024-01-08) es festivo Emiliani (Reyes Magos).
+const MON_WITH_HOLIDAY = new Date(Date.UTC(2024, 0, 1, 15, 0));
 
-describe("addBusinessDays (hora Colombia)", () => {
-  it("5 días hábiles desde lunes → lunes siguiente (en COT)", () => {
-    const r = cot(addBusinessDays(MON, 5));
-    expect(r.date).toBe(8); // 2024-01-08
+describe("addBusinessDays (hora Colombia, excluyendo festivos CO)", () => {
+  it("5 días hábiles desde lunes en semana sin festivos → lunes siguiente (en COT)", () => {
+    const r = cot(addBusinessDays(MON_CLEAN, 5));
+    expect(r.date).toBe(12); // 2024-02-12
     expect(r.day).toBe(1); // lunes
   });
 
   it("salta el fin de semana (viernes + 1 → lunes, en COT)", () => {
-    const r = cot(addBusinessDays(FRI, 1));
-    expect(r.date).toBe(8);
+    const r = cot(addBusinessDays(FRI_CLEAN, 1));
+    expect(r.date).toBe(12);
     expect(r.day).toBe(1);
+  });
+
+  it("salta lunes festivo Emiliani (entrega 2024-01-01 + 5 hábiles salta Reyes 2024-01-08 → martes 9)", () => {
+    const r = cot(addBusinessDays(MON_WITH_HOLIDAY, 5));
+    expect(r.date).toBe(9); // martes 2024-01-09
+    expect(r.day).toBe(2);
   });
 
   it("la ventana por defecto son 5 días hábiles", () => {
@@ -51,24 +59,45 @@ describe("addBusinessDays (hora Colombia)", () => {
   });
 });
 
-describe("isWithinRetractWindow (hora Colombia)", () => {
+describe("isWithinRetractWindow (hora Colombia + festivos CO)", () => {
   it("dentro el mismo día de entrega", () => {
-    expect(isWithinRetractWindow(MON, new Date(Date.UTC(2024, 0, 1, 17, 0)))).toBe(true);
+    expect(isWithinRetractWindow(MON_CLEAN, new Date(Date.UTC(2024, 1, 5, 17, 0)))).toBe(true);
   });
 
-  it("dentro en la noche del último día hábil (lunes 23:00 COT)", () => {
-    // Lunes 2024-01-08 23:00 COT = 2024-01-09 04:00 UTC.
-    expect(isWithinRetractWindow(MON, new Date(Date.UTC(2024, 0, 9, 4, 0)))).toBe(true);
+  it("dentro en la noche del último día hábil (lunes 23:00 COT en semana limpia)", () => {
+    // Lunes 2024-02-12 23:00 COT = 2024-02-13 04:00 UTC.
+    expect(isWithinRetractWindow(MON_CLEAN, new Date(Date.UTC(2024, 1, 13, 4, 0)))).toBe(true);
   });
 
-  it("fuera pasado el cierre (martes 00:30 COT)", () => {
-    // 2024-01-09 00:30 COT = 05:30 UTC — ya venció (cerró a las 23:59:59 del día 8 COT).
-    expect(isWithinRetractWindow(MON, new Date(Date.UTC(2024, 0, 9, 5, 30)))).toBe(false);
+  it("fuera pasado el cierre (martes 00:30 COT en semana limpia)", () => {
+    // 2024-02-13 00:30 COT = 05:30 UTC — ya venció (cerró a las 23:59:59 del día 12 COT).
+    expect(isWithinRetractWindow(MON_CLEAN, new Date(Date.UTC(2024, 1, 13, 5, 30)))).toBe(false);
+  });
+
+  it("extiende ventana cuando atraviesa puente Emiliani y Semana Santa", () => {
+    // Entrega 2024-01-01: lunes 8 ene es Reyes -> martes 9 ene 23:00 COT sigue DENTRO.
+    expect(isWithinRetractWindow(MON_WITH_HOLIDAY, new Date(Date.UTC(2024, 0, 10, 4, 0)))).toBe(
+      true,
+    );
+    expect(isWithinRetractWindow(MON_WITH_HOLIDAY, new Date(Date.UTC(2024, 0, 10, 5, 30)))).toBe(
+      false,
+    );
+
+    // Semana Santa 2026: entrega miércoles 2026-04-01 (Jue 2 y Vie 3 santos) ->
+    // 5 hábiles son Lun 6, Mar 7, Mié 8, Jue 9, Vie 10 abril (23:59:59.999 COT = 2026-04-11T04:59:59.999Z).
+    const wedHolyWeek = new Date("2026-04-01T15:00:00.000Z");
+    expect(retractWindowEnd(wedHolyWeek).toISOString()).toBe("2026-04-11T04:59:59.999Z");
+
+    // Franja nocturna 22:00 COT (= 03:00 UTC del día siguiente) cruzando Ley 2578 (lun 2026-07-13):
+    // Entrega vie 2026-07-10 22:00 COT (= 2026-07-11T03:00:00Z). Lun 13 jul es festivo Chiquinquirá ->
+    // 5 hábiles son Mar 14, Mié 15, Jue 16, Vie 17, Mar 21 jul (lun 20 jul es Independencia).
+    const friNightCot = new Date("2026-07-11T03:00:00.000Z");
+    expect(retractWindowEnd(friNightCot).toISOString()).toBe("2026-07-22T04:59:59.999Z");
   });
 
   it("retractWindowEnd cae a las 23:xx COT del último día hábil", () => {
-    const end = cot(retractWindowEnd(MON));
-    expect(end.date).toBe(8);
+    const end = cot(retractWindowEnd(MON_CLEAN));
+    expect(end.date).toBe(12);
     expect(end.hours).toBe(23);
   });
 });

@@ -14,6 +14,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { Prisma, type AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
+import { fitsMoneyInt4, MAX_MONEY_CENTS } from "@/lib/money";
 import { hasCapability, rolesWithCapability } from "@/lib/admin-rbac";
 import { capitalizeName } from "@/lib/colombia-validators";
 import { maskEmail, maskPersonName, maskPhone } from "@/lib/pii-mask";
@@ -147,7 +148,11 @@ export async function createPublicB2bOpportunity(
     }
 
     effectiveExpectedUnits = estimate.totalPhysicalPieces;
-    effectiveExpectedAmountCop = estimate.estimatedMaxCents;
+    // Acotar al techo INT4 de Opportunity.expectedAmountCop (el estimado real queda en requestedConfig).
+    effectiveExpectedAmountCop = Math.min(
+      MAX_MONEY_CENTS,
+      Math.max(0, Math.trunc(estimate.estimatedMaxCents)),
+    );
 
     for (const line of estimate.resolvedLines) {
       const prod = catalog.products.find((p) => p.id === line.productId);
@@ -740,8 +745,10 @@ export async function updateOpportunityByAdmin(input: {
   if (!isOpportunityStage(input.stage)) {
     throw new OpportunityValidationError("Etapa de oportunidad inválida.");
   }
-  if (!Number.isInteger(input.expectedAmountCop) || input.expectedAmountCop < 0) {
-    throw new OpportunityValidationError("El presupuesto estimado debe ser mayor o igual a $0.");
+  if (!fitsMoneyInt4(input.expectedAmountCop)) {
+    throw new OpportunityValidationError(
+      "El presupuesto estimado debe estar entre $0 y $21.474.836 COP.",
+    );
   }
   if (
     input.expectedUnits !== null &&

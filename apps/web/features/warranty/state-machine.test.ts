@@ -13,17 +13,21 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { prismaMock } = vi.hoisted(() => ({
-  prismaMock: {
+const { prismaMock } = vi.hoisted(() => {
+  const mock = {
     warrantyClaim: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       create: vi.fn(),
     },
-    orderItem: { findUnique: vi.fn() },
+    orderItem: { findUnique: vi.fn(), findMany: vi.fn() },
     order: { findFirst: vi.fn() },
-  },
-}));
+    $queryRaw: vi.fn(),
+    $transaction: vi.fn(),
+  };
+  return { prismaMock: mock };
+});
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
 
@@ -42,12 +46,22 @@ import {
 beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.warrantyClaim.update.mockResolvedValue({});
+  prismaMock.warrantyClaim.updateMany.mockResolvedValue({ count: 1 });
   prismaMock.warrantyClaim.create.mockResolvedValue({ id: "new-claim" });
+  prismaMock.$queryRaw.mockResolvedValue([
+    { status: "DELIVERED", total: 8_000_000, withholdingCents: 0 },
+  ]);
+  prismaMock.$transaction.mockImplementation(
+    async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
+  );
 });
 
-/** loadClaim() lee status vía warrantyClaim.findUnique. */
-function withClaimStatus(status: WarrantyStatus | null) {
-  prismaMock.warrantyClaim.findUnique.mockResolvedValue(status ? { status } : null);
+/** loadClaim() lee status y resolutionType vía warrantyClaim.findUnique. */
+function withClaimStatus(
+  status: WarrantyStatus | null,
+  resolutionType: "REPAIR" | "REPLACE" | "REFUND" | null = "REPLACE",
+) {
+  prismaMock.warrantyClaim.findUnique.mockResolvedValue(status ? { status, resolutionType } : null);
 }
 
 /** Asegura que la promesa rechaza con un WarrantyError (instancia real) del reason esperado. */
@@ -147,6 +161,113 @@ describe("resolveWarrantyClaim", () => {
       );
     },
   );
+
+  it("REFUND exige confirmación explícita, método válido y monto válido dentro de INT4", async () => {
+    withClaimStatus("APPROVED", "REFUND");
+    await expectWarrantyError(resolveWarrantyClaim("c1", "admin-1"), "REFUND_UNCONFIRMED");
+
+    withClaimStatus("APPROVED", "REFUND");
+    await expectWarrantyError(
+      resolveWarrantyClaim("c1", "admin-1", undefined, {
+        refundAmount: 1_000_000,
+        refundMethod: "WOMPI_VOID",
+        refundConfirmed: false,
+      }),
+      "REFUND_UNCONFIRMED",
+    );
+
+    withClaimStatus("APPROVED", "REFUND");
+    await expectWarrantyError(
+      resolveWarrantyClaim("c1", "admin-1", undefined, {
+        refundAmount: 1_000_000,
+        refundMethod: "CASH" as unknown as "WOMPI_VOID",
+        refundConfirmed: true,
+      }),
+      "REFUND_METHOD_INVALID",
+    );
+
+    withClaimStatus("APPROVED", "REFUND");
+    await expectWarrantyError(
+      resolveWarrantyClaim("c1", "admin-1", undefined, {
+        refundAmount: 0,
+        refundMethod: "BANK_TRANSFER",
+        refundConfirmed: true,
+      }),
+      "REFUND_AMOUNT_INVALID",
+    );
+
+    withClaimStatus("APPROVED", "REFUND");
+    await expectWarrantyError(
+      resolveWarrantyClaim("c1", "admin-1", undefined, {
+        refundAmount: 2_147_483_648,
+        refundMethod: "BANK_TRANSFER",
+        refundConfirmed: true,
+      }),
+      "REFUND_AMOUNT_INVALID",
+    );
+  });
+
+  it("REFUND rechaza si el monto supera el disponible de la línea/orden y persiste si es válido", async () => {
+    const claimForTx = {
+      id: "c1",
+      status: "APPROVED",
+      resolutionType: "REFUND",
+      orderItemId: "oi-1",
+      orderItem: {
+        id: "oi-1",
+        qty: 1,
+        unitPrice: 3_000_000,
+        orderId: "ord-1",
+        order: {
+          id: "ord-1",
+          status: "DELIVERED",
+          subtotal: 8_000_000,
+          total: 8_000_000,
+          discount: 0,
+          loyaltyDiscount: 0,
+          withholdingCents: 0,
+          coupon: null,
+        },
+      },
+    };
+    prismaMock.warrantyClaim.findUnique
+      .mockResolvedValueOnce({ status: "APPROVED", resolutionType: "REFUND" })
+      .mockResolvedValueOnce(claimForTx);
+    prismaMock.orderItem.findMany.mockResolvedValueOnce([
+      { id: "oi-1", retractRequest: null, warrantyClaims: [] },
+    ]);
+
+    await expectWarrantyError(
+      resolveWarrantyClaim("c1", "admin-1", "Ref 123", {
+        refundAmount: 3_500_000,
+        refundMethod: "BANK_TRANSFER",
+        refundConfirmed: true,
+      }),
+      "REFUND_EXCEEDS_AVAILABLE",
+    );
+    expect(prismaMock.warrantyClaim.updateMany).not.toHaveBeenCalled();
+
+    prismaMock.warrantyClaim.findUnique
+      .mockResolvedValueOnce({ status: "APPROVED", resolutionType: "REFUND" })
+      .mockResolvedValueOnce(claimForTx);
+    prismaMock.orderItem.findMany.mockResolvedValueOnce([
+      { id: "oi-1", retractRequest: null, warrantyClaims: [] },
+    ]);
+
+    await resolveWarrantyClaim("c1", "admin-1", "Comprobante #999", {
+      refundAmount: 2_000_000,
+      refundMethod: "BANK_TRANSFER",
+      refundConfirmed: true,
+    });
+    const call = prismaMock.warrantyClaim.updateMany.mock.calls[0][0];
+    expect(call.where).toEqual({ id: "c1", status: "APPROVED", resolutionType: "REFUND" });
+    expect(call.data.status).toBe("RESOLVED");
+    expect(call.data.refundAmount).toBe(2_000_000);
+    expect(call.data.refundMethod).toBe("BANK_TRANSFER");
+    expect(call.data.refundedAt).toBeInstanceOf(Date);
+    expect(call.data.resolvedAt).toBeInstanceOf(Date);
+    expect(call.data.resolutionNote).toBe("Comprobante #999");
+  });
 });
 
 // =============================================================================

@@ -35,10 +35,14 @@ export function tracksPhysicalStock(mode: FulfillmentMode | null | undefined): b
   return mode !== "MADE_TO_ORDER";
 }
 
-export function hasStockForSale(mode: FulfillmentMode | null | undefined, stock: number): boolean {
-  return !tracksPhysicalStock(mode) || stock > 0;
+export function netAvailableStock(stock: number, safetyStock: number = 0): number {
+  return Math.max(0, stock - Math.max(0, safetyStock));
 }
 
-export function netAvailableStock(stock: number, safetyStock: number): number {
-  return Math.max(0, stock - safetyStock);
+export function hasStockForSale(
+  mode: FulfillmentMode | null | undefined,
+  stock: number,
+  safetyStock: number = 0,
+): boolean {
+  return !tracksPhysicalStock(mode) || netAvailableStock(stock, safetyStock) > 0;
 }

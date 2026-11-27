@@ -41,6 +41,7 @@ import { parsePhysicalSpecs } from "@/features/products/shipping-schemas";
 import { readPersonalizationAdminConfig } from "@/features/products/personalization-schema";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
 import { getStockEmoji, summarizeStock } from "@/features/products/stock-constants";
+import { netAvailableStock } from "@/features/products/fulfillment";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { deleteProductAction, updateProductAction } from "../actions";
@@ -94,7 +95,8 @@ export default async function ProductoDetallePage({
     categoryDeletedAt: product.category.deletedAt,
     activeVariantCount: buyableVariants.length,
     inStockAny:
-      product.fulfillmentMode === "MADE_TO_ORDER" || buyableVariants.some((v) => v.stock > 0),
+      product.fulfillmentMode === "MADE_TO_ORDER" ||
+      buyableVariants.some((v) => netAvailableStock(v.stock, v.safetyStock) > 0),
     fulfillmentMode: product.fulfillmentMode,
   });
   const pendingReviewsCount = await prisma.review.count({
@@ -136,6 +138,7 @@ export default async function ProductoDetallePage({
     name: v.name,
     sku: v.sku,
     stock: v.stock,
+    safetyStock: v.safetyStock,
     isActive: v.isActive,
     deletedAt: v.deletedAt,
     attributes: v.attributes,
@@ -265,6 +268,8 @@ export default async function ProductoDetallePage({
                 options={activeForPrice.map((v) => ({
                   name: v.name === "Default" ? "Única" : v.name,
                   stock: v.stock,
+                  safetyStock: v.safetyStock,
+                  availableStock: netAvailableStock(v.stock, v.safetyStock),
                   price: v.price ?? product.basePrice,
                 }))}
               />
@@ -379,7 +384,13 @@ function ProductStockSummaryReadonly({
   productId: string;
   totalUnits: number;
   worstStatus: "out" | "low" | "ok";
-  options: Array<{ name: string; stock: number; price: number }>;
+  options: Array<{
+    name: string;
+    stock: number;
+    safetyStock: number;
+    availableStock: number;
+    price: number;
+  }>;
 }) {
   const toneClass =
     worstStatus === "out"
@@ -393,7 +404,7 @@ function ProductStockSummaryReadonly({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-brand-purple-dark flex items-center gap-2 text-sm font-semibold">
           <Boxes className="text-brand-muted h-5 w-5" />
-          {getStockEmoji(worstStatus)} {totalUnits.toLocaleString("es-CO")} unidades en total
+          {getStockEmoji(worstStatus)} {totalUnits.toLocaleString("es-CO")} unidades vendibles
           <span className="text-brand-muted font-normal">
             · {options.length} {options.length === 1 ? "opción" : "opciones"}
           </span>
@@ -419,7 +430,13 @@ function ProductStockSummaryReadonly({
                 {formatCOP(o.price)}
               </span>
               <span className="text-brand-purple-dark inline-flex items-center gap-1 text-xs font-semibold tabular-nums">
-                {dot(o.stock)} {o.stock.toLocaleString("es-CO")} u.
+                {dot(o.availableStock)} {o.availableStock.toLocaleString("es-CO")} u.
+                {o.safetyStock > 0 && (
+                  <span className="text-brand-muted font-normal">
+                    (físico {o.stock.toLocaleString("es-CO")} − reserva{" "}
+                    {o.safetyStock.toLocaleString("es-CO")})
+                  </span>
+                )}
               </span>
             </span>
           </li>

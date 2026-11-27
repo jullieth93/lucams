@@ -19,6 +19,9 @@ import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit
 
 // LUC-SEC-007 — techo de aplicación del body de ESTA ruta (plataforma = 2ª capa).
 const VITALS_MAX_BODY_BYTES = 16 * 1024;
+// Fase 4 (#15) — tope de métricas por lote (un pageview emite ≤7 métricas;
+// 15 cubre ráfagas SPA manteniendo el request y el INSERT estrictamente acotados).
+export const VITALS_MAX_BATCH_SIZE = 15;
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -58,7 +61,16 @@ const VitalSchema = z.object({
   target: z.string().max(200).optional(),
 });
 
-type VitalName = z.infer<typeof VitalSchema>["name"];
+const VitalBatchSchema = z
+  .object({
+    metrics: z.array(VitalSchema).min(1).max(VITALS_MAX_BATCH_SIZE),
+  })
+  .strict();
+
+const VitalsPayloadSchema = z.union([VitalSchema, VitalBatchSchema]);
+
+type VitalInput = z.infer<typeof VitalSchema>;
+type VitalName = VitalInput["name"];
 
 /* Techo de valor por métrica (auditoría RUM 2026-10-20): 120 filas INP con
    value=28680ms exactos (2026-10-02, sin sessionId ni target) distorsionaban
@@ -99,16 +111,11 @@ export async function POST(request: Request) {
     // sin límite era un vector de inflado de la tabla. 120/min es holgado para RUM real.
     // La key lleva la IP hasheada (auditoría 2026-08-24, C-8): la IP es dato personal
     // y no debe quedar en claro en rate_limit_buckets.
-    const { allowed } = await rateLimit(ipKey("vitals", getClientIp(request.headers)), 120, 60);
+    const clientIp = getClientIp(request.headers);
+    const { allowed } = await rateLimit(ipKey("vitals", clientIp), 120, 60);
     if (!allowed) return NextResponse.json({ ok: false }, { status: 429 });
 
-    // Backstop global (auditoría 2026-08-24, C-1): tope de filas nuevas sin importar la IP
-    // de origen (un botnet rota IPs y multiplica el límite por-IP). Mismo patrón que
-    // NEW_ROW_LIMIT de lib/error-capture.ts. 200 (no 429) para que el beacon no reintente.
-    const rlGlobal = await rateLimit("vitals:new-row:global", 3000, 5 * 60);
-    if (!rlGlobal.allowed) return NextResponse.json({ ok: false });
-
-    // LUC-SEC-007 — techo de aplicación: un beacon de vitals son <2 KB.
+    // LUC-SEC-007 — techo de aplicación: un beacon de vitals son <2 KB (lote ≤15 cabe en 16 KB).
     let body: unknown;
     try {
       body = JSON.parse(await readBodyWithLimit(request, VITALS_MAX_BODY_BYTES));
@@ -118,42 +125,83 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ error: "invalid" }, { status: 400 });
     }
-    const parsed = VitalSchema.safeParse(body);
+    const parsed = VitalsPayloadSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid" }, { status: 400 });
     }
+    const items: VitalInput[] = "metrics" in parsed.data ? parsed.data.metrics : [parsed.data];
+
     // Fail-closed ante valores absurdos (artefactos de reporte): no se
-    // persisten. 200 ok:false para que el beacon no reintente — mismo
-    // criterio que el backstop global de arriba.
-    const maxValue = MAX_VALUE_BY_METRIC[parsed.data.name];
-    if (parsed.data.value > maxValue) {
-      logger.warn(
-        {
-          event: "vitals.out_of_range",
-          name: parsed.data.name,
-          value: parsed.data.value,
-          max: maxValue,
-          route: parsed.data.route,
-        },
-        "Web vital descartada por valor fuera de rango",
-      );
+    // persisten. En lotes se descarta únicamente la métrica fuera de rango;
+    // si todas se descartan respondemos 200 ok:false para que el beacon no reintente.
+    const ua = request.headers.get("user-agent")?.slice(0, 500) ?? null;
+    const cookieSessionId = cartSessionFromCookies(request.headers.get("cookie"));
+    const rowsToPersist = [];
+    let dropped = 0;
+
+    for (const item of items) {
+      const maxValue = MAX_VALUE_BY_METRIC[item.name];
+      if (item.value > maxValue) {
+        dropped += 1;
+        logger.warn(
+          {
+            event: "vitals.out_of_range",
+            name: item.name,
+            value: item.value,
+            max: maxValue,
+            route: item.route,
+          },
+          "Web vital descartada por valor fuera de rango",
+        );
+        continue;
+      }
+      rowsToPersist.push({
+        name: item.name,
+        value: item.value,
+        rating: item.rating,
+        delta: item.delta,
+        navType: item.navType ?? null,
+        route: item.route,
+        sessionId: item.sessionId ?? cookieSessionId,
+        target: item.target ?? null,
+        userAgent: ua,
+      });
+    }
+
+    if (rowsToPersist.length === 0) {
       return NextResponse.json({ ok: false });
     }
-    const ua = request.headers.get("user-agent")?.slice(0, 500) ?? null;
-    await prisma.webVital.create({
-      data: {
-        name: parsed.data.name,
-        value: parsed.data.value,
-        rating: parsed.data.rating,
-        delta: parsed.data.delta,
-        navType: parsed.data.navType ?? null,
-        route: parsed.data.route,
-        sessionId: parsed.data.sessionId ?? cartSessionFromCookies(request.headers.get("cookie")),
-        target: parsed.data.target ?? null,
-        userAgent: ua,
-      },
+
+    // Anti-amplificación por lote (Fase 4 · #15 / H-1): en lotes (>1 fila)
+    // descontamos el costo REAL en filas tanto del presupuesto por IP (120 filas/min)
+    // como del backstop global C-1 (3000 filas/5 min), evitando multiplicar 15× la cuota.
+    if (rowsToPersist.length > 1) {
+      const rlIpRows = await rateLimit(
+        ipKey("vitals:rows", clientIp),
+        120,
+        60,
+        rowsToPersist.length,
+      );
+      if (!rlIpRows.allowed) return NextResponse.json({ ok: false }, { status: 429 });
+    }
+
+    // Backstop global (auditoría 2026-08-24, C-1): tope de filas nuevas sin importar la IP
+    // de origen (un botnet rota IPs y multiplica el límite por-IP). Mismo patrón que
+    // NEW_ROW_LIMIT de lib/error-capture.ts. 200 (no 429) para que el beacon no reintente.
+    const rlGlobal = await rateLimit("vitals:new-row:global", 3000, 5 * 60, rowsToPersist.length);
+    if (!rlGlobal.allowed) return NextResponse.json({ ok: false });
+
+    if (rowsToPersist.length === 1) {
+      await prisma.webVital.create({ data: rowsToPersist[0]! });
+    } else {
+      await prisma.webVital.createMany({ data: rowsToPersist });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      accepted: rowsToPersist.length,
+      ...(dropped > 0 ? { dropped } : {}),
     });
-    return NextResponse.json({ ok: true });
   } catch (err) {
     logger.warn(
       { event: "vitals.persist_fail", err: err instanceof Error ? err.message : String(err) },

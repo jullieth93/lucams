@@ -32,7 +32,7 @@ import {
   readProductExperience,
   supportsTwoFaceDesign,
 } from "@/features/personalization/product-experience";
-import { requiresMadeToOrder } from "./fulfillment";
+import { netAvailableStock, requiresMadeToOrder } from "./fulfillment";
 import { parseVariantAttributes } from "./variant-schemas";
 
 export type ProductListItem = {
@@ -159,7 +159,7 @@ export async function listProducts(opts: {
         // inStockAny = alguna con stock > 0 (misma regla que la PDP).
         variants: {
           where: { deletedAt: null, isActive: true },
-          select: { price: true, stock: true },
+          select: { price: true, stock: true, safetyStock: true },
         },
       },
     }),
@@ -190,7 +190,9 @@ export async function listProducts(opts: {
       categoryIsActive: p.category.isActive,
       categoryDeletedAt: p.category.deletedAt,
       activeVariantCount: p.variants.length,
-      inStockAny: p.fulfillmentMode === "MADE_TO_ORDER" || p.variants.some((v) => v.stock > 0),
+      inStockAny:
+        p.fulfillmentMode === "MADE_TO_ORDER" ||
+        p.variants.some((v) => netAvailableStock(v.stock, v.safetyStock) > 0),
       imagesCount: p.images.length,
       variantsCount: p._count.variants,
       createdAt: p.createdAt,
@@ -871,7 +873,7 @@ export async function createVariant(input: VariantCreateInput, createdBy: string
       stock: input.stock,
       safetyStock: input.safetyStock,
       isActive: input.isActive,
-      attributes: input.attributes,
+      attributes: input.attributes as Prisma.InputJsonValue,
       ...(createdBy ? { createdBy } : {}),
     },
   });
@@ -927,7 +929,7 @@ export async function updateVariant(input: VariantUpdateInput, updatedBy: string
     where: { id },
     data: {
       ...rest,
-      ...(attributes !== undefined && { attributes }),
+      ...(attributes !== undefined && { attributes: attributes as Prisma.InputJsonValue }),
       ...(updatedBy ? { updatedBy } : {}),
     },
   });

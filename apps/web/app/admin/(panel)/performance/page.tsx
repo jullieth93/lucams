@@ -420,10 +420,11 @@ export default async function AdminPerformancePage({
       prisma.webVital.count({ where: { createdAt: { gte: since } } }),
       // Valores crudos de la ventana: alimentan cards (p75), tabla por ruta,
       // tablas por elemento y las secciones LONGTASK/PAGEWEIGHT. Usa el índice
-      // (name, route, createdAt); tope documentado arriba. `delta` lleva la
-      // cantidad de long tasks / recursos en las métricas por pageview.
+      // WebVital_createdAt_idx con orden descendente acotado (tope documentado arriba).
+      // `delta` lleva la cantidad de long tasks / recursos en las métricas por pageview.
       prisma.webVital.findMany({
         where: { createdAt: { gte: since } },
+        orderBy: { createdAt: "desc" },
         select: {
           route: true,
           name: true,

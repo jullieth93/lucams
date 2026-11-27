@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { UPLOAD_PAYLOAD_BUDGET_BYTES } from "../client-image-compress";
+import { UPLOAD_PAYLOAD_BUDGET_BYTES } from "@/lib/client-image-compress";
 import {
   buildAssetFormData,
   DIRECT_UPLOAD_MAX_BYTES,

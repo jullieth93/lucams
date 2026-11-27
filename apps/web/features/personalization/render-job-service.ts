@@ -62,6 +62,19 @@ export const RENDER_JOB_CRON_BUDGET_MS = 45_000;
 export const RENDER_JOB_KICK_BUDGET_MS = 8_000;
 /** Máximo de jobs distintos que procesa una invocación del worker. */
 const RENDER_JOB_MAX_JOBS_PER_RUN = 3;
+/** Cota por contexto para caché en memoria de fotos maestras (evita re-descargas sin riesgo de OOM). */
+const MAX_ASSET_CACHE_ENTRIES = 8;
+const MAX_ASSET_CACHE_BYTES = 64 * 1024 * 1024;
+
+type RenderTelemetry = {
+  downloadCount: number;
+  cacheHits: number;
+  downloadBytes: number;
+  downloadMs: number;
+  renderMs: number;
+  uploadBytes: number;
+  uploadMs: number;
+};
 
 /** El motor declaró el diseño no reproducible server-side (marca estable, cross-module). */
 function isNeedsKonva(err: unknown): boolean {
@@ -248,6 +261,7 @@ type RenderContext = {
   borderWidthFactor: number;
   includeText: boolean;
   frameFullBleed: boolean;
+  telemetry: RenderTelemetry;
 };
 
 /**
@@ -281,14 +295,66 @@ async function buildRenderContext(designId: string): Promise<RenderContext> {
     select: { id: true, storageUrl: true },
   });
   const assetPaths = new Map(assets.map((a) => [a.id, a.storageUrl]));
+  const telemetry: RenderTelemetry = {
+    downloadCount: 0,
+    cacheHits: 0,
+    downloadBytes: 0,
+    downloadMs: 0,
+    renderMs: 0,
+    uploadBytes: 0,
+    uploadMs: 0,
+  };
+  const assetBufferCache = new Map<string, Buffer>();
+  const assetInFlight = new Map<string, Promise<Buffer | null>>();
+  let cachedBytes = 0;
+
   const loadAsset: LoadAssetBytes = async (assetId) => {
     const path = assetPaths.get(assetId);
     if (!path) return null;
-    const { data, error } = await supabaseService.storage
-      .from(BUCKET_CUSTOMER_UPLOADS)
-      .download(path);
-    if (error || !data) return null;
-    return Buffer.from(await data.arrayBuffer());
+    const hit = assetBufferCache.get(assetId);
+    if (hit) {
+      telemetry.cacheHits += 1;
+      // Refrescar orden LRU en Map.
+      assetBufferCache.delete(assetId);
+      assetBufferCache.set(assetId, hit);
+      return hit;
+    }
+    const pending = assetInFlight.get(assetId);
+    if (pending) {
+      telemetry.cacheHits += 1;
+      return pending;
+    }
+    const task = (async () => {
+      const tDownload = Date.now();
+      const { data, error } = await supabaseService.storage
+        .from(BUCKET_CUSTOMER_UPLOADS)
+        .download(path);
+      telemetry.downloadMs += Date.now() - tDownload;
+      if (error || !data) return null;
+      const buf = Buffer.from(await data.arrayBuffer());
+      telemetry.downloadCount += 1;
+      telemetry.downloadBytes += buf.byteLength;
+      if (buf.byteLength <= MAX_ASSET_CACHE_BYTES) {
+        while (
+          assetBufferCache.size > 0 &&
+          (assetBufferCache.size >= MAX_ASSET_CACHE_ENTRIES ||
+            cachedBytes + buf.byteLength > MAX_ASSET_CACHE_BYTES)
+        ) {
+          const oldestKey = assetBufferCache.keys().next().value;
+          if (oldestKey === undefined) break;
+          const evicted = assetBufferCache.get(oldestKey);
+          assetBufferCache.delete(oldestKey);
+          if (evicted) cachedBytes -= evicted.byteLength;
+        }
+        assetBufferCache.set(assetId, buf);
+        cachedBytes += buf.byteLength;
+      }
+      return buf;
+    })().finally(() => {
+      assetInFlight.delete(assetId);
+    });
+    assetInFlight.set(assetId, task);
+    return task;
   };
 
   let engines: RenderContext["engines"];
@@ -363,6 +429,7 @@ async function buildRenderContext(designId: string): Promise<RenderContext> {
     borderWidthFactor,
     includeText,
     frameFullBleed,
+    telemetry,
   };
 }
 
@@ -421,24 +488,40 @@ async function buildLettersetRenderContext(
   // Dibujos del tema: fetch bajo demanda con caché (setId|letra). Un set borrado
   // o una ficha sin imagen/ilegible degrada a «Solo letra» — MISMO fallback del
   // editor (loadCanvasImage devuelve null y la ficha sale con la letra en color).
+  const telemetry: RenderTelemetry = {
+    downloadCount: 0,
+    cacheHits: 0,
+    downloadBytes: 0,
+    downloadMs: 0,
+    renderMs: 0,
+    uploadBytes: 0,
+    uploadMs: 0,
+  };
   const tileCache = new Map<string, Promise<Buffer | null>>();
   const tileBytes = (styleSetId: string, char: string): Promise<Buffer | null> => {
     const key = `${styleSetId}|${char.toUpperCase()}`;
     let job = tileCache.get(key);
-    if (!job) {
-      job = (async () => {
-        const set = await prisma.letterTileSet.findFirst({
-          where: { id: styleSetId, deletedAt: null },
-          select: { tiles: { where: { char: char.toUpperCase() }, select: { imageUrl: true } } },
-        });
-        const url = set?.tiles[0]?.imageUrl;
-        if (!url) return null;
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        return Buffer.from(await res.arrayBuffer());
-      })().catch(() => null);
-      tileCache.set(key, job);
+    if (job) {
+      telemetry.cacheHits += 1;
+      return job;
     }
+    job = (async () => {
+      const set = await prisma.letterTileSet.findFirst({
+        where: { id: styleSetId, deletedAt: null },
+        select: { tiles: { where: { char: char.toUpperCase() }, select: { imageUrl: true } } },
+      });
+      const url = set?.tiles[0]?.imageUrl;
+      if (!url) return null;
+      const tDownload = Date.now();
+      const res = await fetch(url);
+      telemetry.downloadMs += Date.now() - tDownload;
+      if (!res.ok) return null;
+      const buf = Buffer.from(await res.arrayBuffer());
+      telemetry.downloadCount += 1;
+      telemetry.downloadBytes += buf.byteLength;
+      return buf;
+    })().catch(() => null);
+    tileCache.set(key, job);
     return job;
   };
 
@@ -461,6 +544,7 @@ async function buildLettersetRenderContext(
     borderWidthFactor: 1,
     includeText: true,
     frameFullBleed: false,
+    telemetry,
   };
 }
 
@@ -553,6 +637,8 @@ async function renderLettersetTile(ctx: RenderContext, unitIndex: number): Promi
 
 /** Renderiza y sube la unidad `unitIndex` (página de calendario, slot, tira photobooth, tira 2-caras o ficha). */
 async function renderAndUploadUnit(ctx: RenderContext, unitIndex: number): Promise<string> {
+  const tRender = Date.now();
+  const dlBefore = ctx.telemetry.downloadMs;
   let buffer: Buffer;
   let fileName: string;
   if (ctx.letterset) {
@@ -599,8 +685,11 @@ async function renderAndUploadUnit(ctx: RenderContext, unitIndex: number): Promi
     buffer = await renderOneSlot(ctx, slot);
     fileName = productionFileName(false, unitIndex);
   }
+  const dlDelta = ctx.telemetry.downloadMs - dlBefore;
+  ctx.telemetry.renderMs += Math.max(0, Date.now() - tRender - dlDelta);
 
   const path = `${ctx.designId}/${fileName}`;
+  const tUpload = Date.now();
   const { error } = await supabaseService.storage.from(BUCKET_PRODUCTION).upload(path, buffer, {
     contentType: "image/png",
     // Mismo cache-control que el upload del finalize: el bucket es privado y los signed URLs
@@ -608,6 +697,8 @@ async function renderAndUploadUnit(ctx: RenderContext, unitIndex: number): Promi
     cacheControl: "3600",
     upsert: true,
   });
+  ctx.telemetry.uploadMs += Date.now() - tUpload;
+  ctx.telemetry.uploadBytes += buffer.byteLength;
   if (error) throw new Error(`upload ${path}: ${error.message}`);
   return path;
 }
@@ -622,91 +713,204 @@ type ClaimedJob = {
   paths: string[];
   attempts: number;
   calendarYear: number | null;
+  startedAt: Date;
+  reclaimed: boolean;
 };
 
-/** Toma el siguiente job elegible y lo marca PROCESSING (claim atómico: updateMany condicional). */
-async function claimNextRenderJob(onlyDesignId?: string): Promise<ClaimedJob | null> {
-  const staleBefore = new Date(Date.now() - RENDER_JOB_STALE_LEASE_MS);
-  const eligible: import("@lucams/db").Prisma.RenderJobWhereInput = onlyDesignId
-    ? { designId: onlyDesignId, status: { in: ["PENDING", "PROCESSING"] } }
-    : {
-        OR: [
-          { status: "PENDING" },
-          // Lease vencido: el worker anterior murió a la mitad (timeout/OOM) — se retoma
-          // desde doneUnits. El reclamo SÍ cuenta como intento (algo mató la pasada previa).
-          { status: "PROCESSING", updatedAt: { lt: staleBefore } },
-        ],
-      };
-  const candidate = await prisma.renderJob.findFirst({
-    where: eligible,
-    orderBy: { createdAt: "asc" },
-    select: { id: true, status: true },
-  });
-  if (!candidate) return null;
-  const reclaimed = candidate.status === "PROCESSING";
-  const res = await prisma.renderJob.updateMany({
-    // Claim atómico: solo gana si el estado sigue siendo el que vimos al leerlo.
-    where: { id: candidate.id, status: candidate.status },
-    data: {
-      status: "PROCESSING",
-      startedAt: new Date(),
-      ...(reclaimed ? { attempts: { increment: 1 } } : {}),
-    },
-  });
-  if (res.count === 0) return null; // otro worker ganó el claim
-  return prisma.renderJob.findUnique({
-    where: { id: candidate.id },
-    select: {
-      id: true,
-      designId: true,
-      totalUnits: true,
-      doneUnits: true,
-      paths: true,
-      attempts: true,
-      calendarYear: true,
-    },
-  });
+function currentRssMb(): number {
+  return Math.round(process.memoryUsage().rss / (1024 * 1024));
+}
+
+/**
+ * Toma el siguiente job elegible y lo marca PROCESSING (claim atómico con CAS sobre
+ * `status` + `updatedAt` en leases vencidos, y cota estricta de `attempts` ante OOM/timeout).
+ */
+async function claimNextRenderJob(
+  onlyDesignId?: string,
+  onExpiredTerminalFailure?: () => void,
+): Promise<ClaimedJob | null> {
+  // Acotamos iteraciones por si hay varios leases vencidos que ya agotaron reintentos.
+  for (let guard = 0; guard < 10; guard++) {
+    const staleBefore = new Date(Date.now() - RENDER_JOB_STALE_LEASE_MS);
+    const statusOrExpiredLease: import("@lucams/db").Prisma.RenderJobWhereInput[] = [
+      { status: "PENDING" },
+      // Lease vencido: el worker anterior murió a la mitad (timeout/OOM) — se retoma
+      // desde doneUnits. El reclamo SÍ cuenta como intento (algo mató la pasada previa).
+      { status: "PROCESSING", updatedAt: { lt: staleBefore } },
+    ];
+    const eligible: import("@lucams/db").Prisma.RenderJobWhereInput = onlyDesignId
+      ? { designId: onlyDesignId, OR: statusOrExpiredLease }
+      : { OR: statusOrExpiredLease };
+
+    const candidate = await prisma.renderJob.findFirst({
+      where: eligible,
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        designId: true,
+        status: true,
+        attempts: true,
+        doneUnits: true,
+        totalUnits: true,
+        updatedAt: true,
+      },
+    });
+    if (!candidate) return null;
+
+    const reclaimed = candidate.status === "PROCESSING";
+    if (reclaimed && candidate.attempts + 1 >= RENDER_JOB_MAX_ATTEMPTS) {
+      const terminalAttempts = candidate.attempts + 1;
+      const errMsg = `RenderJob excedió ${RENDER_JOB_MAX_ATTEMPTS} intentos por lease vencido (timeout/OOM)`;
+      const closed = await prisma.renderJob.updateMany({
+        where: { id: candidate.id, status: "PROCESSING", updatedAt: candidate.updatedAt },
+        data: {
+          status: "FAILED",
+          attempts: terminalAttempts,
+          error: errMsg,
+          finishedAt: new Date(),
+        },
+      });
+      if (closed.count > 0) {
+        onExpiredTerminalFailure?.();
+        logger.error(
+          {
+            event: "design.render_job.failed",
+            designId: candidate.designId,
+            attempts: terminalAttempts,
+            doneUnits: candidate.doneUnits,
+            totalUnits: candidate.totalUnits,
+            reclaimed: true,
+            err: errMsg,
+          },
+          `RenderJob FAILED tras ${terminalAttempts} intentos (lease vencido)`,
+        );
+        await captureServerError({
+          message: `render-job ${candidate.designId}: ${errMsg}`,
+          routePath: "/api/cron/process-render-jobs",
+          routeType: "cron",
+        }).catch(() => undefined);
+      }
+      if (onlyDesignId) return null;
+      continue;
+    }
+
+    const leaseStartedAt = new Date();
+    const res = await prisma.renderJob.updateMany({
+      // Claim atómico: en PROCESSING vencido exige el updatedAt exacto observado, evitando que
+      // dos workers concurrentes reclamen el mismo lease vencido cuando status sigue en PROCESSING.
+      where: reclaimed
+        ? { id: candidate.id, status: "PROCESSING", updatedAt: candidate.updatedAt }
+        : { id: candidate.id, status: "PENDING" },
+      data: {
+        status: "PROCESSING",
+        startedAt: leaseStartedAt,
+        ...(reclaimed ? { attempts: { increment: 1 } } : {}),
+      },
+    });
+    if (res.count === 0) {
+      if (onlyDesignId) return null;
+      continue; // otro worker ganó el claim; intentar siguiente elegible en cola
+    }
+
+    const row = await prisma.renderJob.findUnique({
+      where: { id: candidate.id },
+      select: {
+        id: true,
+        designId: true,
+        totalUnits: true,
+        doneUnits: true,
+        paths: true,
+        attempts: true,
+        calendarYear: true,
+      },
+    });
+    if (!row) return null;
+    return { ...row, startedAt: leaseStartedAt, reclaimed };
+  }
+  return null;
 }
 
 type JobOutcome = "done" | "pending" | "failed";
 
 async function processOneJob(job: ClaimedJob, deadline: number): Promise<JobOutcome> {
   const t0 = Date.now();
+  // Fencing del lease: si otro worker retomó tras expirar el lease o un re-finalize reseteó
+  // el job (startedAt=null, status=PENDING), este worker pierde propiedad y aborta limpio.
   const close = (data: Record<string, unknown>) =>
-    prisma.renderJob.updateMany({ where: { id: job.id }, data });
+    prisma.renderJob.updateMany({
+      where: { id: job.id, status: "PROCESSING", startedAt: job.startedAt },
+      data,
+    });
+  let ctx: RenderContext | null = null;
+  let doneUnits = job.doneUnits;
   try {
-    const ctx = await buildRenderContext(job.designId);
+    ctx = await buildRenderContext(job.designId);
     ctx.calendarYear = job.calendarYear ?? undefined;
 
-    let doneUnits = job.doneUnits;
     const paths = [...job.paths];
     while (doneUnits < job.totalUnits) {
       if (Date.now() > deadline) {
         // Presupuesto agotado: vuelve a PENDING SIN quemar intento — el próximo tick continúa.
         await close({ status: "PENDING" });
+        logger.info(
+          {
+            event: "design.render_job.requeued_budget",
+            designId: job.designId,
+            doneUnits,
+            totalUnits: job.totalUnits,
+            reclaimed: job.reclaimed,
+            durationMs: Date.now() - t0,
+            rssMb: currentRssMb(),
+            ...ctx.telemetry,
+          },
+          "RenderJob re-encolado por presupuesto agotado",
+        );
         return "pending";
       }
       const path = await renderAndUploadUnit(ctx, doneUnits);
       doneUnits += 1;
       paths.push(path);
       const res = await close({ doneUnits, paths });
-      if (res.count === 0) return "pending"; // el job desapareció a la mitad (diseño purgado)
+      if (res.count === 0) return "pending"; // el job desapareció o perdió su lease
     }
 
-    // Terminal: el diseño recibe la lista COMPLETA de una vez — productionUrls parciales
-    // harían que el ZIP de producción bajara piezas a medias sin aviso.
-    await prisma.design.update({
-      where: { id: job.designId },
-      data: { productionUrls: paths },
+    // Cierre atómico con fencing: cierra RenderJob DONE y escribe Design.productionUrls en la
+    // misma transacción, evitando que un worker zombi pise productionUrls tras un reset/re-claim.
+    const finalized = await prisma.$transaction(async (tx) => {
+      const closedDone = await tx.renderJob.updateMany({
+        where: { id: job.id, status: "PROCESSING", startedAt: job.startedAt },
+        data: {
+          status: "DONE",
+          doneUnits,
+          paths,
+          error: null,
+          finishedAt: new Date(),
+        },
+      });
+      if (closedDone.count === 0) return false;
+      await tx.design.update({
+        where: { id: job.designId },
+        data: { productionUrls: paths },
+      });
+      return true;
     });
-    await close({ status: "DONE", doneUnits, paths, error: null, finishedAt: new Date() });
+    if (!finalized) {
+      logger.warn(
+        { event: "design.render_job.lease_lost", designId: job.designId, phase: "done" },
+        "RenderJob perdió el lease antes de cerrar DONE — descartado sin pisar productionUrls",
+      );
+      return "pending";
+    }
     logger.info(
       {
         event: "design.render_job.done",
         designId: job.designId,
         units: doneUnits,
         attempts: job.attempts,
+        reclaimed: job.reclaimed,
         durationMs: Date.now() - t0,
+        rssMb: currentRssMb(),
+        ...ctx.telemetry,
       },
       "RenderJob completado",
     );
@@ -721,11 +925,18 @@ async function processOneJob(job: ClaimedJob, deadline: number): Promise<JobOutc
         select: { productionUrls: true },
       });
       const hasClientFiles = (design?.productionUrls.length ?? 0) > 0;
-      await close({
+      const closedKonva = await close({
         status: hasClientFiles ? "DONE" : "FAILED",
         error: msg,
         finishedAt: new Date(),
       });
+      if (closedKonva.count === 0) {
+        logger.warn(
+          { event: "design.render_job.lease_lost", designId: job.designId, phase: "needs_konva" },
+          "RenderJob perdió el lease antes de cerrar NEEDS_KONVA",
+        );
+        return "pending";
+      }
       logger[hasClientFiles ? "info" : "warn"](
         { event: "design.render_job.needs_konva", designId: job.designId, err: msg },
         hasClientFiles
@@ -736,19 +947,30 @@ async function processOneJob(job: ClaimedJob, deadline: number): Promise<JobOutc
     }
     const attempts = job.attempts + 1;
     const terminal = attempts >= RENDER_JOB_MAX_ATTEMPTS;
-    await close({
+    const closedErr = await close({
       status: terminal ? "FAILED" : "PENDING",
       attempts,
       error: msg,
       ...(terminal ? { finishedAt: new Date() } : {}),
     });
+    if (closedErr.count === 0) {
+      logger.warn(
+        { event: "design.render_job.lease_lost", designId: job.designId, phase: "error", err: msg },
+        "RenderJob perdió el lease antes de registrar fallo — no se altera estado ni ErrorLog",
+      );
+      return "pending";
+    }
     logger[terminal ? "error" : "warn"](
       {
         event: terminal ? "design.render_job.failed" : "design.render_job.retry",
         designId: job.designId,
         attempts,
-        doneUnits: job.doneUnits,
+        doneUnits,
         totalUnits: job.totalUnits,
+        reclaimed: job.reclaimed,
+        durationMs: Date.now() - t0,
+        rssMb: currentRssMb(),
+        ...(ctx ? ctx.telemetry : {}),
         err: msg,
       },
       terminal
@@ -771,6 +993,7 @@ async function processOneJob(job: ClaimedJob, deadline: number): Promise<JobOutc
 
 export type ProcessRenderJobsResult = {
   claimed: number;
+  reclaimed: number;
   done: number;
   failed: number;
   /** Jobs devueltos a PENDING por agotar el presupuesto de esta invocación. */
@@ -790,15 +1013,24 @@ export async function processRenderJobs(opts?: {
   const budgetMs = opts?.budgetMs ?? RENDER_JOB_CRON_BUDGET_MS;
   const maxJobs = opts?.maxJobs ?? RENDER_JOB_MAX_JOBS_PER_RUN;
   const deadline = Date.now() + budgetMs;
-  const result: ProcessRenderJobsResult = { claimed: 0, done: 0, failed: 0, requeued: 0 };
+  const result: ProcessRenderJobsResult = {
+    claimed: 0,
+    reclaimed: 0,
+    done: 0,
+    failed: 0,
+    requeued: 0,
+  };
 
   // El presupuesto se controla DENTRO del job (antes de cada unidad), no antes del claim:
   // un presupuesto agotado reclama y re-encola sin quemar intento — y un job que cabe
   // justo no se queda sin reclamar por un milisegundo de diferencia al entrar.
   while (result.claimed < maxJobs) {
-    const job = await claimNextRenderJob(opts?.onlyDesignId);
+    const job = await claimNextRenderJob(opts?.onlyDesignId, () => {
+      result.failed += 1;
+    });
     if (!job) break;
     result.claimed += 1;
+    if (job.reclaimed) result.reclaimed += 1;
     const outcome = await processOneJob(job, deadline);
     if (outcome === "done") result.done += 1;
     else if (outcome === "failed") result.failed += 1;

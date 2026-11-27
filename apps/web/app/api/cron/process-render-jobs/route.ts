@@ -33,8 +33,17 @@ export async function GET(req: NextRequest) {
   if (!cronSecretOk(provided)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
+  const t0 = Date.now();
   try {
     const result = await processRenderJobs({ budgetMs: RENDER_JOB_CRON_BUDGET_MS });
+    if (result.claimed > 0 || result.failed > 0) {
+      logger.info({
+        event: "cron.process_render_jobs.tick",
+        durationMs: Date.now() - t0,
+        rssMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+        ...result,
+      });
+    }
     await recordCronHeartbeat("process-render-jobs"); // #15 dead-man switch (solo en éxito)
     return Response.json({ ok: true, ...result });
   } catch (err) {

@@ -14,11 +14,15 @@ import {
   approveWarrantyClaim,
   resolveWarrantyClaim,
   rejectWarrantyClaim,
+  isWarrantyRefundMethod,
+  parseCopPesosToCents,
   WARRANTY_RESOLUTIONS,
   WarrantyError,
   WarrantyTransitionError,
+  type ResolveWarrantyRefundInput,
   type WarrantyResolution,
 } from "@/features/warranty/service";
+import { formatCOP } from "@/lib/format";
 import { notifyWarrantyRejected, notifyWarrantyResolved } from "@/features/warranty/notify";
 
 type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
@@ -47,6 +51,14 @@ function safeWarrantyErrorMessage(err: unknown): string {
         return "El producto se encuentra fuera de la ventana de garantía.";
       case "ACTIVE_CLAIM":
         return "Ya existe un reclamo activo para este producto.";
+      case "REFUND_UNCONFIRMED":
+        return "Debes confirmar que el dinero ya fue devuelto al cliente antes de cerrar la garantía.";
+      case "REFUND_METHOD_INVALID":
+        return "Selecciona un método de reembolso válido (Reversa Wompi o Transferencia bancaria).";
+      case "REFUND_AMOUNT_INVALID":
+        return "Ingresa un monto de reembolso válido mayor a $0 COP.";
+      case "REFUND_EXCEEDS_AVAILABLE":
+        return "El monto supera el efectivo disponible de la línea o del pedido (o el pedido ya figura reembolsado).";
       case "INVALID":
         return "Revisa los datos ingresados e inténtalo de nuevo.";
     }
@@ -80,6 +92,8 @@ async function audit(
   revalidatePath("/admin/hoy");
   revalidatePath("/admin/dashboard");
   revalidatePath("/admin/finanzas");
+  revalidatePath("/admin/metricas");
+  revalidatePath("/admin/clientes");
   revalidatePath("/admin/pedidos");
 }
 
@@ -152,6 +166,7 @@ export async function resolveWarrantyAction(_p: St, fd: FormData): Promise<St> {
     where: { id },
     select: { resolutionType: true },
   });
+  let refundInput: ResolveWarrantyRefundInput | undefined;
   if (current?.resolutionType === "REFUND") {
     if (!hasCapability(g.role, "warranty:refund")) {
       return {
@@ -165,32 +180,49 @@ export async function resolveWarrantyAction(_p: St, fd: FormData): Promise<St> {
       if (isMfaReauthRequired(err)) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
       throw err;
     }
+
+    const rawAmountPesos = String(fd.get("refundAmountPesos") ?? "").trim();
+    const rawMethod = String(fd.get("refundMethod") ?? "").trim();
+    const rawConfirmed = String(fd.get("refundConfirmed") ?? "").trim();
+    const refundConfirmed = rawConfirmed === "true" || rawConfirmed === "on";
+    if (!refundConfirmed) {
+      return {
+        error:
+          "Debes confirmar que el dinero ya fue devuelto al cliente antes de cerrar la garantía.",
+      };
+    }
+    if (!isWarrantyRefundMethod(rawMethod)) {
+      return {
+        error: "Selecciona un método de reembolso válido (Reversa Wompi o Transferencia bancaria).",
+      };
+    }
+    const refundAmount = parseCopPesosToCents(rawAmountPesos);
+    if (refundAmount === null) {
+      return { error: "Ingresa un monto de reembolso válido en COP mayor a $0." };
+    }
+    refundInput = {
+      refundAmount,
+      refundMethod: rawMethod,
+      refundConfirmed: true,
+    };
   }
 
   try {
-    await resolveWarrantyClaim(id, g.adminId, note || undefined);
+    await resolveWarrantyClaim(id, g.adminId, note || undefined, refundInput);
     // Aviso al cliente con el remedio aplicado (best-effort).
     await notifyWarrantyResolved(id).catch((e) =>
       logger.warn({ event: "admin.warranty.notify_resolved_fail", id, err: String(e) }),
     );
     await audit(g.adminId, "warranty.resolve", id, {
       resolutionType: current?.resolutionType ?? null,
+      ...(refundInput
+        ? { refundAmount: refundInput.refundAmount, refundMethod: refundInput.refundMethod }
+        : {}),
     });
-    // Remedio REFUND: el dinero se emite MANUAL en Wompi/transferencia y queda
-    // fuera de todo tracking — el aviso en pantalla es el recordatorio operativo
-    // (además del aviso persistente junto al estado en la lista).
-    const closed = await prisma.warrantyClaim.findUnique({
-      where: { id },
-      select: {
-        resolutionType: true,
-        orderItem: { select: { order: { select: { number: true } } } },
-      },
-    });
-    const refundReminder =
-      closed?.resolutionType === "REFUND"
-        ? ` Recuerda emitir la devolución manual en Wompi o transferencia y dejar constancia en el pedido ${closed.orderItem.order.number}.`
-        : "";
-    return { success: `Garantía resuelta — cliente avisado.${refundReminder}` };
+    const refundSummary = refundInput
+      ? ` Reembolso de ${formatCOP(refundInput.refundAmount)} (${refundInput.refundMethod === "BANK_TRANSFER" ? "transferencia bancaria" : "reversa Wompi"}) registrado en Finanzas.`
+      : "";
+    return { success: `Garantía resuelta — cliente avisado.${refundSummary}` };
   } catch (err) {
     return fail("resolve", id, err);
   }

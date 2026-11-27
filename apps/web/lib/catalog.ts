@@ -24,6 +24,7 @@
  */
 
 import { revalidateTag, unstable_cache } from "next/cache";
+import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { filterTemplatesByAspectRatio } from "@/features/personalization/template-visibility";
@@ -31,6 +32,8 @@ import {
   STOREFRONT_CATEGORY_WHERE,
   STOREFRONT_PRODUCT_WHERE,
 } from "@/features/products/storefront-visibility";
+import { netAvailableStock } from "@/features/products/fulfillment";
+import { buildActiveVariantPriceWhere } from "@/features/products/price-filter";
 
 const CATALOG_TAG = "catalog";
 const CATALOG_TTL = 3600; // 1h
@@ -333,10 +336,9 @@ export type ProductListFilters = {
 };
 
 function summarizeProduct(p: ProductWithIncludes): CatalogProductSummary {
-  const variantPrices = p.variants
-    .filter((v) => v.isActive && !v.deletedAt && v.price !== null)
-    .map((v) => v.price as number);
-  const allPrices = variantPrices.length > 0 ? variantPrices : [p.basePrice];
+  const activeVariants = p.variants.filter((v) => v.isActive && !v.deletedAt);
+  const allPrices =
+    activeVariants.length > 0 ? activeVariants.map((v) => v.price ?? p.basePrice) : [p.basePrice];
   return {
     slug: p.slug,
     name: p.name,
@@ -361,7 +363,9 @@ function summarizeProduct(p: ProductWithIncludes): CatalogProductSummary {
     variantCount: p.variants.filter((v) => v.isActive && !v.deletedAt).length,
     inStock:
       p.fulfillmentMode === "MADE_TO_ORDER" ||
-      p.variants.some((v) => v.isActive && !v.deletedAt && v.stock > 0),
+      p.variants.some(
+        (v) => v.isActive && !v.deletedAt && netAvailableStock(v.stock, v.safetyStock ?? 0) > 0,
+      ),
     minPrice: Math.min(...allPrices),
     maxPrice: Math.max(...allPrices),
     ocasionSlugs: p.ocasionTags.map((t) => t.ocasionTag.slug),
@@ -373,50 +377,95 @@ type ProductWithIncludes = Awaited<ReturnType<typeof prisma.product.findFirst>> 
   variants: Array<{
     price: number | null;
     stock: number;
+    safetyStock?: number;
     isActive: boolean;
     deletedAt: Date | null;
   }>;
   ocasionTags: Array<{ ocasionTag: { slug: string } }>;
 };
 
+function buildCatalogProductWhere(filters: ProductListFilters): Prisma.ProductWhereInput {
+  const andClauses: Prisma.ProductWhereInput[] = [];
+
+  // Filtro por categoría/sub-categoría (siempre CON el gate de categoría).
+  if (filters.subCategorySlug) {
+    andClauses.push({
+      category: { ...STOREFRONT_CATEGORY_WHERE, slug: filters.subCategorySlug },
+    });
+  } else if (filters.categorySlug) {
+    // Match en categoría padre O cualquier sub-categoría hija
+    andClauses.push({
+      OR: [
+        { category: { ...STOREFRONT_CATEGORY_WHERE, slug: filters.categorySlug } },
+        { category: { ...STOREFRONT_CATEGORY_WHERE, parent: { slug: filters.categorySlug } } },
+      ],
+    });
+  }
+
+  // Filtro de precio en SQL sobre variantes activas ANTES de take/skip (Fase 5 · #10).
+  const priceWhere = buildActiveVariantPriceWhere(filters.priceMin, filters.priceMax);
+  if (priceWhere) {
+    andClauses.push(priceWhere);
+  }
+
+  const where: Prisma.ProductWhereInput = {
+    ...STOREFRONT_PRODUCT_WHERE,
+    ...(andClauses.length > 0 ? { AND: andClauses } : {}),
+  };
+
+  // Filtro personalización
+  if (filters.isPersonalizable === true) {
+    where.personalizationKind = { not: "NONE" };
+  } else if (filters.isPersonalizable === false) {
+    where.personalizationKind = "NONE";
+  }
+
+  // Filtro ocasión (misma regla que el stack SSR: solo ocasiones activas no archivadas).
+  if (filters.ocasionSlug) {
+    where.ocasionTags = {
+      some: { ocasionTag: { slug: filters.ocasionSlug, isActive: true, deletedAt: null } },
+    };
+  }
+
+  return where;
+}
+
+type ProductCountFilters = Pick<
+  ProductListFilters,
+  "categorySlug" | "subCategorySlug" | "ocasionSlug" | "priceMin" | "priceMax" | "isPersonalizable"
+>;
+
+const countCatalogProductsCached = unstable_cache(
+  async (filters: ProductCountFilters): Promise<number> => {
+    try {
+      return await prisma.product.count({ where: buildCatalogProductWhere(filters) });
+    } catch {
+      return 0;
+    }
+  },
+  ["catalog-count-products"],
+  { tags: [CATALOG_TAG], revalidate: 300 },
+);
+
+export function countCatalogProducts(filters: ProductListFilters): Promise<number> {
+  return countCatalogProductsCached({
+    categorySlug: filters.categorySlug,
+    subCategorySlug: filters.subCategorySlug,
+    ocasionSlug: filters.ocasionSlug,
+    priceMin: filters.priceMin,
+    priceMax: filters.priceMax,
+    isPersonalizable: filters.isPersonalizable,
+  });
+}
+
 export const listCatalogProducts = unstable_cache(
   async (filters: ProductListFilters): Promise<CatalogProductSummary[]> => {
     try {
-      // Gate storefront compartido (F-04): incluye el filtro de CATEGORÍA
-      // (isActive + deletedAt) — sin él una categoría pausada/archivada dejaba
-      // sus productos visibles acá mientras el stack SSR los escondía.
-      const where: Record<string, unknown> = { ...STOREFRONT_PRODUCT_WHERE };
-
-      // Filtro por categoría/sub-categoría (siempre CON el gate de categoría:
-      // el spread del where base ya lo aplica como AND, pero acá se reescribe
-      // la key `category`, así que hay que re-fusionarlo).
-      if (filters.subCategorySlug) {
-        where.category = { ...STOREFRONT_CATEGORY_WHERE, slug: filters.subCategorySlug };
-      } else if (filters.categorySlug) {
-        // Match en categoría padre O cualquier sub-categoría hija
-        where.OR = [
-          { category: { ...STOREFRONT_CATEGORY_WHERE, slug: filters.categorySlug } },
-          { category: { ...STOREFRONT_CATEGORY_WHERE, parent: { slug: filters.categorySlug } } },
-        ];
-      }
-
-      // Filtro personalización
-      if (filters.isPersonalizable === true) {
-        where.personalizationKind = { not: "NONE" };
-      } else if (filters.isPersonalizable === false) {
-        where.personalizationKind = "NONE";
-      }
-
-      // Filtro ocasión (misma regla que el stack SSR: solo ocasiones activas
-      // no archivadas matchean — una ocasión pausada no arrastra productos).
-      if (filters.ocasionSlug) {
-        where.ocasionTags = {
-          some: { ocasionTag: { slug: filters.ocasionSlug, isActive: true, deletedAt: null } },
-        };
-      }
+      const where = buildCatalogProductWhere(filters);
 
       // Sort
-      let orderBy: Record<string, "asc" | "desc"> | Array<Record<string, "asc" | "desc">> = {
+      let orderBy:
+        Prisma.ProductOrderByWithRelationInput | Prisma.ProductOrderByWithRelationInput[] = {
         createdAt: "desc",
       };
       if (filters.sort === "price_asc") orderBy = { basePrice: "asc" };
@@ -431,22 +480,20 @@ export const listCatalogProducts = unstable_cache(
         skip: filters.offset ?? 0,
         include: {
           category: { include: { parent: true } },
-          variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
+          variants: {
+            select: {
+              price: true,
+              stock: true,
+              safetyStock: true,
+              isActive: true,
+              deletedAt: true,
+            },
+          },
           ocasionTags: { include: { ocasionTag: { select: { slug: true } } } },
         },
       });
 
-      let summaries = products.map((p) => summarizeProduct(p as ProductWithIncludes));
-
-      // Price filter post-fetch (Prisma no soporta filter sobre min de relación cleanly)
-      if (filters.priceMin !== undefined) {
-        summaries = summaries.filter((s) => s.minPrice >= (filters.priceMin as number));
-      }
-      if (filters.priceMax !== undefined) {
-        summaries = summaries.filter((s) => s.minPrice <= (filters.priceMax as number));
-      }
-
-      return summaries;
+      return products.map((p) => summarizeProduct(p as ProductWithIncludes));
     } catch {
       return [];
     }
@@ -477,6 +524,7 @@ export const getCatalogProductDetail = unstable_cache(
               description: true,
               price: true,
               stock: true, // #5 — para inStock consistente en summarizeProduct
+              safetyStock: true,
               attributes: true,
               isActive: true,
             },
@@ -710,7 +758,9 @@ export async function recommendProducts(input: RecommendInput): Promise<Recommen
       where,
       include: {
         category: { include: { parent: true } },
-        variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
+        variants: {
+          select: { price: true, stock: true, safetyStock: true, isActive: true, deletedAt: true },
+        },
         ocasionTags: {
           include: { ocasionTag: { select: { slug: true, name: true } } },
         },
@@ -829,7 +879,15 @@ export const getCatalogFilters = unstable_cache(
         where,
         include: {
           category: { include: { parent: true } },
-          variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
+          variants: {
+            select: {
+              price: true,
+              stock: true,
+              safetyStock: true,
+              isActive: true,
+              deletedAt: true,
+            },
+          },
           ocasionTags: {
             include: { ocasionTag: { select: { slug: true, name: true } } },
           },
@@ -864,14 +922,12 @@ export const getCatalogFilters = unstable_cache(
         }
       }
 
-      // Rango de precios
+      // Rango de precios (paridad con buildActiveVariantPriceWhere y summarizeProduct)
       const allPrices: number[] = [];
       for (const p of products) {
-        const variantPrices = p.variants
-          .filter((v) => v.isActive && !v.deletedAt && v.price !== null)
-          .map((v) => v.price as number);
-        if (variantPrices.length > 0) {
-          allPrices.push(...variantPrices);
+        const activeVariants = p.variants.filter((v) => v.isActive && !v.deletedAt);
+        if (activeVariants.length > 0) {
+          allPrices.push(...activeVariants.map((v) => v.price ?? p.basePrice));
         } else {
           allPrices.push(p.basePrice);
         }
@@ -927,23 +983,22 @@ export async function searchCatalog(query: string, limit = 20): Promise<CatalogS
     // similarity() corre por fila contra name+richDescription; un string enorme amplifica
     // el coste de la query trigram.
     const q = query.trim().toLowerCase().slice(0, 120);
-    // pg_trgm + unaccent. Búsqueda en name + richDescription + description.
-    // Usamos $queryRaw para soporte de pg_trgm similarity().
-    // Se usa public.immutable_unaccent (wrapper IMMUTABLE de unaccent, migración
-    // 00000000000005) y NO unaccent() a secas (STABLE): solo así los predicados
-    // matchean estructuralmente los índices GIN de expresión de la migración
-    // 00000000000031 (F-13, auditoría 2026-09-04) y el planner puede usarlos.
-    // Semántica idéntica: el wrapper ejecuta el mismo unaccent por dentro.
-    // F-04 — gate de categoría: la query cruda no puede consumir
-    // STOREFRONT_PRODUCT_WHERE (es un fragmento Prisma), así que replica el
-    // mismo predicado con el JOIN a "Category" — idéntico al de
-    // searchStorefrontProducts (features/products/public-service.ts). El gate
-    // queda fijado por storefront-visibility.integration.test.ts (ambos stacks).
+    const safeSku = q.replace(/[%_'"\\]/g, " ").trim();
+    const skuPattern = safeSku.length >= 2 ? `%${safeSku}%` : null;
+    // pg_trgm + unaccent. Búsqueda en name + richDescription + description + SKU de producto/variante activa.
     const rows = await prisma.$queryRaw<Array<{ id: string; rank: number }>>`
       SELECT p.id,
              GREATEST(
                similarity(public.immutable_unaccent(lower(p.name)), public.immutable_unaccent(lower(${q}))),
-               similarity(public.immutable_unaccent(lower(COALESCE(p."richDescription", ''))), public.immutable_unaccent(lower(${q})))
+               similarity(public.immutable_unaccent(lower(COALESCE(p."richDescription", ''))), public.immutable_unaccent(lower(${q}))),
+               CASE WHEN ${skuPattern}::text IS NOT NULL AND lower(p.sku) LIKE ${skuPattern} THEN 0.85::real ELSE 0::real END,
+               CASE WHEN ${skuPattern}::text IS NOT NULL AND EXISTS (
+                 SELECT 1 FROM "ProductVariant" pv
+                 WHERE pv."productId" = p.id
+                   AND pv."isActive" = true
+                   AND pv."deletedAt" IS NULL
+                   AND lower(pv.sku) LIKE ${skuPattern}
+               ) THEN 0.85::real ELSE 0::real END
              ) as rank
       FROM "Product" p
       JOIN "Category" c ON c.id = p."categoryId"
@@ -956,6 +1011,14 @@ export async function searchCatalog(query: string, limit = 20): Promise<CatalogS
           public.immutable_unaccent(lower(p.name)) % public.immutable_unaccent(lower(${q}))
           OR public.immutable_unaccent(lower(COALESCE(p."richDescription", ''))) % public.immutable_unaccent(lower(${q}))
           OR public.immutable_unaccent(lower(COALESCE(p."description", ''))) % public.immutable_unaccent(lower(${q}))
+          OR (${skuPattern}::text IS NOT NULL AND lower(p.sku) LIKE ${skuPattern})
+          OR (${skuPattern}::text IS NOT NULL AND EXISTS (
+            SELECT 1 FROM "ProductVariant" pv
+            WHERE pv."productId" = p.id
+              AND pv."isActive" = true
+              AND pv."deletedAt" IS NULL
+              AND lower(pv.sku) LIKE ${skuPattern}
+          ))
         )
       ORDER BY rank DESC
       LIMIT ${limit}
@@ -969,7 +1032,9 @@ export async function searchCatalog(query: string, limit = 20): Promise<CatalogS
       where: { id: { in: rows.map((r) => r.id) }, ...STOREFRONT_PRODUCT_WHERE },
       include: {
         category: { include: { parent: true } },
-        variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
+        variants: {
+          select: { price: true, stock: true, safetyStock: true, isActive: true, deletedAt: true },
+        },
         ocasionTags: { include: { ocasionTag: { select: { slug: true } } } },
       },
     });
@@ -980,7 +1045,7 @@ export async function searchCatalog(query: string, limit = 20): Promise<CatalogS
         if (!p) return null;
         return {
           ...summarizeProduct(p as ProductWithIncludes),
-          rank: r.rank,
+          rank: Number(r.rank),
         };
       })
       .filter((x): x is CatalogSearchResult => x !== null);

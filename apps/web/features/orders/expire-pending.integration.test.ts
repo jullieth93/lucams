@@ -51,6 +51,7 @@ const wompiMocks = vi.hoisted(() => ({
   listTransactionsByReference: vi.fn(),
   getWompiConfig: vi.fn(),
   processPaidOrder: vi.fn(),
+  scheduleExternalShipmentAfterResponse: vi.fn(),
 }));
 
 vi.mock("@/lib/wompi", () => ({
@@ -60,6 +61,7 @@ vi.mock("@/lib/wompi", () => ({
 
 vi.mock("@/features/orders/saga", () => ({
   processPaidOrder: wompiMocks.processPaidOrder,
+  scheduleExternalShipmentAfterResponse: wompiMocks.scheduleExternalShipmentAfterResponse,
 }));
 
 import { prisma } from "@/lib/db";
@@ -338,7 +340,8 @@ describe.skipIf(!hasDb)(
         });
         wompiMocks.processPaidOrder.mockResolvedValue({
           status: "ok",
-          trackingNumber: "TRACK-X",
+          trackingNumber: null,
+          shipmentDeferred: true,
         });
       });
 
@@ -369,7 +372,9 @@ describe.skipIf(!hasDb)(
         expect(wompiMocks.processPaidOrder).toHaveBeenCalledWith({
           orderId: id,
           wompiTransactionId: TX,
+          deferExternalShipment: true,
         });
+        expect(wompiMocks.scheduleExternalShipmentAfterResponse).toHaveBeenCalledWith(id);
         // No se canceló: la saga (stub) no cambia el estado, queda PENDING_PAYMENT.
         expect((await orderState(id))?.status).toBe("PENDING_PAYMENT");
       });
@@ -391,7 +396,9 @@ describe.skipIf(!hasDb)(
         expect(wompiMocks.processPaidOrder).toHaveBeenCalledWith({
           orderId: id,
           wompiTransactionId: TX,
+          deferExternalShipment: true,
         });
+        expect(wompiMocks.scheduleExternalShipmentAfterResponse).toHaveBeenCalledWith(id);
         expect((await orderState(id))?.status).toBe("PENDING_PAYMENT");
       });
 
