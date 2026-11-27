@@ -559,17 +559,17 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
           },
           {
             id: "webhook",
-            label: "Webhooks y reconciliación",
+            label: "Webhooks, guías externas y reconciliación",
             description:
-              "Registra eventos entrantes de Wompi (con ventana anti-replay de 25 h), Aveonline y Resend.",
+              "Registra eventos entrantes de Wompi (ventana anti-replay de 25 h), Aveonline y Resend; dispara alerta de prioridad alta (`paid_without_shipment_stale`) si un pedido pagado lleva > 30 min sin guía externa mientras `tracking-sync` intenta recuperarla.",
             interpretation:
               "Si aumentan rechazos de firma, cruza de inmediato con la pestaña de seguridad en /admin/auditoria.",
           },
           {
             id: "cuotas-backups",
-            label: "Cuotas Supabase y backup diario R2",
+            label: "Cuotas Supabase, backup streaming R2 y DR mensual",
             description:
-              "Monitorea consumo de Postgres, los 5 buckets de Storage y el latido del respaldo cifrado GPG en Cloudflare R2.",
+              "Monitorea consumo de Postgres, los 5 buckets de Storage y el latido del respaldo cifrado GPG en streaming hacia Cloudflare R2; el simulacro DR verifica además frescura ≤ 36 h e integridad de `auth.users` y `auth.mfa_factors`.",
             caution:
               "Una alerta de respaldo atrasado exige revisar de inmediato el workflow `backup.yml` en GitHub Actions.",
           },
@@ -639,8 +639,9 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
       "R2",
       "Supabase",
       "salud",
+      "paid_without_shipment_stale",
     ],
-    version: 2,
+    version: 3,
   },
   {
     id: "seguridad",

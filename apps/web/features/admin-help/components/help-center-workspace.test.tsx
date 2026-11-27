@@ -12,6 +12,7 @@ import {
   getOnboardingForRole,
   getPlaybookById,
   getQuickRulesForRole,
+  getReleaseNotesForRole,
   getRoleMatrixForRole,
 } from "../registry";
 import { HelpCenterWorkspace } from "./help-center-workspace";
@@ -26,9 +27,22 @@ vi.mock("@/components/admin/count-up", () => ({
   CountUp: ({ value }: { value: number }) => <span>{value}</span>,
 }));
 
+const markReleaseNotesSeenActionMock = vi.fn().mockResolvedValue({
+  ok: true,
+  progress: {
+    guideId: "platform-release-notes",
+    version: 1,
+    currentStep: 0,
+    completedAt: "2026-11-27T16:00:00.000Z",
+    dismissedAt: null,
+  },
+  message: "Novedades marcadas como leídas.",
+});
+
 vi.mock("../actions", () => ({
   saveHelpProgressAction: vi.fn().mockResolvedValue({ ok: true, message: "OK" }),
   submitHelpFeedbackAction: vi.fn().mockResolvedValue({ ok: true, message: "OK" }),
+  markReleaseNotesSeenAction: (...args: unknown[]) => markReleaseNotesSeenActionMock(...args),
 }));
 
 afterEach(() => {
@@ -37,7 +51,7 @@ afterEach(() => {
 });
 
 describe("HelpCenterWorkspace & AdminPlaybookView", () => {
-  it("navega entre las 4 pestañas, filtra en vivo y expone selector de rol solo a SUPERADMIN", () => {
+  it("navega entre las 5 pestañas, filtra en vivo y expone selector de rol solo a SUPERADMIN", () => {
     const role = "SUPERADMIN" as const;
     render(
       <HelpCenterWorkspace
@@ -53,11 +67,23 @@ describe("HelpCenterWorkspace & AdminPlaybookView", () => {
         roleMatrix={getRoleMatrixForRole(role)}
         shortcuts={ADMIN_SHORTCUTS}
         glossary={getConsolidatedGlossary(role)}
+        releaseNotes={getReleaseNotesForRole(role)}
         initialProgress={[]}
       />,
     );
 
     expect(screen.getByLabelText("Ver ayuda como rol:")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Tienes \d+ novedades? recientes? en los módulos de tu rol/i),
+    ).toBeInTheDocument();
+
+    // Cambio a Novedades y confirmación de lectura
+    fireEvent.click(screen.getByRole("button", { name: /5\. Novedades/i }));
+    expect(
+      screen.getByRole("heading", { name: /Novedades y cambios recientes para/i }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Marcar todo como leído" }));
+    expect(markReleaseNotesSeenActionMock).toHaveBeenCalledTimes(1);
 
     // Cambio a Día 1 y Rutina Diaria
     fireEvent.click(screen.getByRole("button", { name: /1\. Día 1 y Rutina Diaria/i }));

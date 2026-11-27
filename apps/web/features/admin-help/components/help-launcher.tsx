@@ -7,10 +7,12 @@ import type { AdminRole } from "@lucams/db";
 import {
   ArrowRight,
   BookOpen,
+  Check,
   CircleHelp,
   GraduationCap,
   Loader2,
   Search,
+  Sparkles,
   Workflow,
 } from "lucide-react";
 import {
@@ -20,7 +22,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { getContextualHelpAction } from "../actions";
+import { getContextualHelpAction, markReleaseNotesSeenAction } from "../actions";
 import {
   cleanAdminPathname,
   resolveHelpEntryForPathname,
@@ -33,6 +35,7 @@ import type {
   AdminModuleGuide,
   AdminOnboardingGuide,
   AdminPlaybookIndexItem,
+  AdminReleaseSummary,
 } from "../types";
 import { AdminGuideView } from "./guide-view";
 import { AdminInteractiveGuide } from "./interactive-guide";
@@ -49,18 +52,22 @@ function isEditableElement(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
+const RELEASE_NOTES_PROGRESS_ID = "platform-release-notes";
+
 export function AdminHelpLauncher({
   routeIndex,
   playbookIndex,
   onboarding,
   role,
   initialProgress,
+  releaseSummary = { latestVersion: 0, unreadCount: 0, latestTitle: null, latestDate: null },
 }: {
   routeIndex: AdminHelpRouteEntry[];
   playbookIndex: AdminPlaybookIndexItem[];
   onboarding: AdminOnboardingGuide;
   role: AdminRole;
   initialProgress: AdminHelpProgress[];
+  releaseSummary?: AdminReleaseSummary;
 }) {
   const rawPathname = usePathname() ?? "/admin";
   const searchParams = useSearchParams();
@@ -93,6 +100,8 @@ export function AdminHelpLauncher({
   const guideCacheRef = useRef<Map<string, CachedContextualGuide>>(new Map());
 
   const [progressList, setProgressList] = useState<AdminHelpProgress[]>(initialProgress);
+  const [markingReleases, setMarkingReleases] = useState(false);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
   const [onboardingSnoozed, setOnboardingSnoozed] = useState(true);
   const onboardingStorageKey = `admin-help-onboarding-snoozed:${onboarding.id}`;
 
@@ -266,6 +275,32 @@ export function AdminHelpLauncher({
     ? (progressList.find((item) => item.guideId === currentEntry.id) ?? null)
     : null;
 
+  const seenInState =
+    progressList.find((item) => item.guideId === RELEASE_NOTES_PROGRESS_ID)?.version ?? 0;
+  const seenInProp =
+    initialProgress.find((item) => item.guideId === RELEASE_NOTES_PROGRESS_ID)?.version ?? 0;
+  const seenReleaseVersion = Math.max(seenInState, seenInProp);
+  const hasUnreadReleases =
+    releaseSummary.unreadCount > 0 && releaseSummary.latestVersion > seenReleaseVersion;
+
+  const handleMarkReleasesSeen = useCallback(async () => {
+    if (markingReleases) return;
+    setMarkingReleases(true);
+    setReleaseError(null);
+    try {
+      const result = await markReleaseNotesSeenAction();
+      if (result.ok && result.progress) {
+        upsertProgress(result.progress);
+      } else if (!result.ok) {
+        setReleaseError(result.message);
+      }
+    } catch {
+      setReleaseError("No pudimos guardar el estado de lectura. Intenta de nuevo.");
+    } finally {
+      setMarkingReleases(false);
+    }
+  }, [markingReleases, upsertProgress]);
+
   const buttonLabelTitle = currentSubrouteIndex
     ? `${currentEntry?.title}: ${currentSubrouteIndex.title}`
     : (currentEntry?.title ?? "Centro de ayuda");
@@ -390,14 +425,30 @@ export function AdminHelpLauncher({
             }
           }}
         >
+          {hasUnreadReleases && (
+            <span id="admin-help-unread-desc" className="sr-only">
+              Hay {releaseSummary.unreadCount}{" "}
+              {releaseSummary.unreadCount === 1 ? "novedad pendiente" : "novedades pendientes"} para
+              tu rol
+            </span>
+          )}
           <button
             type="button"
             data-admin-help="help"
             onClick={handleOpenContextual}
             className="bg-brand-purple-dark hover:bg-brand-purple focus:ring-brand-purple fixed right-4 bottom-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full px-4 py-3 text-sm font-bold text-white shadow-xl transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
             aria-label={`Abrir ayuda de ${buttonLabelTitle}`}
+            aria-describedby={hasUnreadReleases ? "admin-help-unread-desc" : undefined}
           >
-            <CircleHelp className="h-5 w-5" aria-hidden />
+            <span className="relative inline-flex">
+              <CircleHelp className="h-5 w-5" aria-hidden />
+              {hasUnreadReleases && (
+                <span
+                  aria-hidden
+                  className="bg-brand-coral ring-brand-purple-dark absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full ring-2"
+                />
+              )}
+            </span>
             <span className="hidden sm:inline">Ayuda</span>
             <kbd
               aria-hidden
@@ -434,7 +485,62 @@ export function AdminHelpLauncher({
                 >
                   Ver Flujos E2E
                 </Link>
+                <Link
+                  href="/admin/ayuda?tab=novedades"
+                  onClick={() => setOpen(false)}
+                  className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-slate-600 underline-offset-4 hover:underline"
+                >
+                  Novedades
+                </Link>
               </div>
+              {hasUnreadReleases && (
+                <div
+                  role="status"
+                  className="border-brand-purple/25 bg-brand-purple/5 mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs text-slate-800"
+                >
+                  <div className="flex items-start gap-2">
+                    <Sparkles
+                      className="text-brand-purple-dark mt-0.5 h-4 w-4 shrink-0"
+                      aria-hidden
+                    />
+                    <div>
+                      <p className="text-brand-purple-dark font-bold">
+                        {releaseSummary.unreadCount}{" "}
+                        {releaseSummary.unreadCount === 1
+                          ? "novedad reciente"
+                          : "novedades recientes"}{" "}
+                        para tu rol
+                      </p>
+                      {releaseSummary.latestTitle && (
+                        <p className="text-slate-600">{releaseSummary.latestTitle}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href="/admin/ayuda?tab=novedades"
+                      onClick={() => setOpen(false)}
+                      className="bg-brand-purple-dark hover:bg-brand-purple inline-flex min-h-9 items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-white"
+                    >
+                      Ver qué cambió
+                    </Link>
+                    <button
+                      type="button"
+                      disabled={markingReleases}
+                      onClick={() => void handleMarkReleasesSeen()}
+                      className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      <Check className="h-3.5 w-3.5" aria-hidden />
+                      Entendido
+                    </button>
+                  </div>
+                  {releaseError && (
+                    <p role="alert" className="w-full text-xs font-medium text-rose-800">
+                      {releaseError}
+                    </p>
+                  )}
+                </div>
+              )}
             </SheetHeader>
 
             <div className="px-4 pb-10">

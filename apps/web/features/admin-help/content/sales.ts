@@ -33,6 +33,11 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
         definition:
           "El servidor impide pasar a Enviado si algún diseño personalizado sigue sin aprobar en Moderación o si falta cargar arte maestro 300 DPI en un pedido B2B.",
       },
+      {
+        term: "Snapshot histórico de producto y SKU (`ADR-211`)",
+        definition:
+          "Cada `OrderItem` (tienda y B2B) sella el nombre y SKU vigentes al crearse la orden, de modo que editar o renombrar el catálogo nunca altera los recibos ni correos de pedidos anteriores.",
+      },
     ],
     sections: [
       {
@@ -82,7 +87,7 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
             id: "envio",
             label: "Guía Aveonline, Envío Lucams y etiqueta térmica",
             description:
-              "Permite consultar eventos de rastreo, reintentar guía fallida tras corregir causa e imprimir `/admin/pedidos/[number]/guia`. Las novedades operativas en ruta (`NOVEDAD`) generan aviso interno en Notificaciones sin abrir reconciliación ni alarmar al comprador; solo una devolución confirmada al remitente (`DEVUELTO`) o guía anulada activa reconciliación manual.",
+              "La creación de guías Aveonline corre desacoplada en segundo plano (con recuperación automática en `tracking-sync` y alerta si un pedido pagado supera 30 min sin guía externa). Permite consultar eventos de rastreo, reintentar guía fallida e imprimir `/admin/pedidos/[number]/guia`. Las novedades en ruta (`NOVEDAD`) generan aviso interno sin alarmar al comprador; solo `DEVUELTO` o guía anulada abre reconciliación manual.",
             caution:
               "Para roles sin permiso de PII o guía (`PRINT_WORKSHOP`, `FINANCE_ANALYST`), las URLs del rótulo PDF se redactan en servidor porque el PDF contiene dirección y teléfono.",
           },
@@ -231,8 +236,9 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
       "regalo",
       "novedad",
       "devolución",
+      "snapshot",
     ],
-    version: 5,
+    version: 6,
   },
   {
     id: "clientes",
