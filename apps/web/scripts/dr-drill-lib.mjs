@@ -534,3 +534,24 @@ export function hasAuthRestoreDrift(summary) {
     return kind === "auth-column-drift" || kind === "auth-data-fk";
   });
 }
+
+const SAFE_PG_IDENT_RE = /^[a-z_][a-z0-9_]*$/;
+
+/**
+ * Construye una consulta `EXISTS` sobre `pg_catalog.pg_class` + `pg_namespace`
+ * completamente inmune al `search_path` de la sesión (`to_regclass('auth.users')::text`
+ * omite el prefijo `auth.` cuando `auth` está en `search_path`, como ocurre en
+ * la imagen `supabase/postgres` del DR drill).
+ */
+export function buildSystemTableExistsSql(schema, table) {
+  if (!SAFE_PG_IDENT_RE.test(schema) || !SAFE_PG_IDENT_RE.test(table)) {
+    throw new Error(`Identificador SQL inválido para verificación de tabla: ${schema}.${table}`);
+  }
+  return (
+    `SELECT EXISTS (` +
+    `SELECT 1 FROM pg_catalog.pg_class c ` +
+    `JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace ` +
+    `WHERE n.nspname = '${schema}' AND c.relname = '${table}' AND c.relkind IN ('r', 'p')` +
+    `);`
+  );
+}
