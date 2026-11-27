@@ -54,7 +54,7 @@
 - Puntos Lucams (tope ≤25 %, retrocrédito y reversión; excluidos en B2B); referidos `/r/[codigo]`. Posventa invitado (token + correo), retractos (5 días hábiles CO con festivos) y garantías (`SUPERADMIN` + MFA; reembolsos `REFUND` con monto/método deducidos en Finanzas/CSV/LTV); soporte PQR con SLA e IA 0-PII.
 - Vigilancia fiscal diaria (`ADR-196`) sobre umbrales DIAN de 3.500 UVT (incluyendo Wompi y `DIRECT_TRANSFER`), proyección anual y alertas 70/90/100 %.
 - Panel con 8 roles × 38 capacidades, deny-by-default, MFA `aal2`, step-up en acciones sensibles, inactividad de 30 min, PII redactada en servidor, auditoría y confirmaciones destructivas.
-- Centro de ayuda v2 (`ADR-197`): launcher reactivo por ruta/subruta (`?`), 48 guías, 8 Playbooks E2E, rutinas por rol y vista `SUPERADMIN`; Lifecycle y Marketing respetan Ley 1581, rebote/queja y `DRY_RUN` en STG (`ADR-198`).
+- Centro de ayuda v2 (`ADR-197`): launcher reactivo (`?`), 48 guías, 8 Playbooks, rutinas y **5. Novedades por rol** (sincronía obligatoria en cada cambio `/admin/*`); Lifecycle y Marketing respetan Ley 1581, rebote/queja y `DRY_RUN` en STG (`ADR-198`).
 - 33 emails React + 2 Auth OTP; `America/Bogota`; `/api/vitals` en lotes (`WebVital_createdAt_idx`), GA4/UTM bajo consentimiento; backup streaming `0600` y DR mensual (5 buckets ≤ 36 h + `auth.users`/`auth.mfa_factors`).
 
 ## Pendientes abiertos reales
