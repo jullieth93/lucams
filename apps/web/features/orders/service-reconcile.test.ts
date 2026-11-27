@@ -76,7 +76,11 @@ vi.mock("@/features/coupons/redemption", () => ({
 vi.mock("@/features/orders/emails", () => ({ sendOrderRefunded: vi.fn() }));
 
 import { createOrderFromCart } from "./service";
-import { OrderAlreadyPaidError, OrderUnavailableItemsError } from "./errors";
+import {
+  OrderAlreadyPaidError,
+  OrderCartSnapshotMismatchError,
+  OrderUnavailableItemsError,
+} from "./errors";
 
 const INPUT = {
   cartId: "cart_1",
@@ -279,5 +283,67 @@ describe("createOrderFromCart — OrderUnavailableItemsError nombra el producto"
     const err = await createOrderFromCart(INPUT).catch((e) => e);
     expect(err).toBeInstanceOf(OrderUnavailableItemsError);
     expect(err.message).toContain("«Imán Nevera (Set 12 unidades)»");
+  });
+
+  it("persiste titleSnapshot y skuSnapshot en OrderItem al crear una orden (D-2 · ADR-211)", async () => {
+    seedCart([
+      cartItem({
+        variant: {
+          id: "v2",
+          sku: "IMN-SET12",
+          name: "Set 12 unidades",
+          isActive: true,
+          deletedAt: null,
+          product: {
+            category: { isActive: true, deletedAt: null },
+            isActive: true,
+            publishedOnStorefront: true,
+            deletedAt: null,
+            name: "Imán Nevera Vintage",
+            warrantyMonths: 3,
+          },
+        },
+      }),
+    ]);
+    tx.order.findFirst.mockResolvedValue(null);
+    tx.order.create.mockResolvedValue({
+      id: "ord_snap",
+      number: "LCM-2026-0099",
+      total: 25_000,
+      subtotal: 20_000,
+      shipping: 5_000,
+      discount: 0,
+      paymentMethod: "WOMPI",
+    });
+
+    await createOrderFromCart(INPUT);
+
+    expect(tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          items: {
+            create: [
+              expect.objectContaining({
+                titleSnapshot: "Imán Nevera Vintage",
+                skuSnapshot: "IMN-SET12",
+              }),
+            ],
+          },
+        }),
+      }),
+    );
+  });
+
+  it("aborta con OrderCartSnapshotMismatchError si expectedCartHash diverge en la tx (TOCTOU D-2)", async () => {
+    seedCart([cartItem({ unitPrice: 12_000 })]);
+    tx.order.findFirst.mockResolvedValue(null);
+
+    await expect(
+      createOrderFromCart({
+        ...INPUT,
+        expectedCartHash: "v1x2:2@10000",
+      }),
+    ).rejects.toBeInstanceOf(OrderCartSnapshotMismatchError);
+    expect(tx.order.create).not.toHaveBeenCalled();
   });
 });

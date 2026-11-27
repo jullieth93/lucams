@@ -14,12 +14,15 @@ import { AlertCircle, CreditCard, MapPin, User, Receipt } from "lucide-react";
 import { carrierLogo } from "@/lib/carrier-logos";
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
+import { PriceUpdatedBanner } from "../_components/price-updated-banner";
 import { PaymentMethodChooser } from "./pay-button";
+import { formatPriceChangesNotice, sanitizePriceNotice } from "@/features/cart/price-changes";
 import { CouponField } from "./coupon-field";
 import { LoyaltyField } from "./loyalty-field";
 import { TrackAddShippingInfo } from "@/components/analytics-trackers";
 import {
   CheckoutError,
+  fingerprintCartItems,
   getAppliedCoupon,
   getCheckoutLoyalty,
   getGuestLoyaltyIncentive,
@@ -45,7 +48,7 @@ export const metadata: Metadata = {
 // generación de guía a mitad. 60s cabe en el default de Vercel (300s). Ver ADR-049.
 export const maxDuration = 60;
 
-type SearchParams = Promise<{ error?: string; couponNotice?: string }>;
+type SearchParams = Promise<{ error?: string; couponNotice?: string; priceNotice?: string }>;
 
 export default async function CheckoutPagoPage({ searchParams }: { searchParams: SearchParams }) {
   let ctx;
@@ -73,19 +76,32 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
   // Aviso de cupón invalidado: NO es un fallo de pago (la tarjeta nunca se tocó). Se muestra como
   // aviso suave, con param propio, para no alarmar al cliente con "No pudimos procesar el pago".
   const couponNotice = sp.couponNotice;
+  const freshPriceNotice = formatPriceChangesNotice(ctx.priceChanges);
+  const priceNotice = freshPriceNotice ?? sanitizePriceNotice(sp.priceNotice);
 
   if (!ctx.state.contact || !ctx.state.address) redirect("/checkout/datos");
   if (!ctx.state.shippingSelection) redirect("/checkout/envio");
+  // D-2 (ADR-211): si el carrito cambió al entrar a /checkout/pago y la cotización
+  // de envío sellada quedó desactualizada (valor declarado o líneas), enviamos
+  // directo a /checkout/envio para re-cotizar sin rebote al pagar.
+  if (
+    ctx.state.shippingOffers &&
+    ctx.state.shippingOffers.cartHash !== fingerprintCartItems(ctx.cart.items)
+  ) {
+    redirect(
+      freshPriceNotice
+        ? `/checkout/envio?priceNotice=${encodeURIComponent(freshPriceNotice)}`
+        : "/checkout/envio",
+    );
+  }
 
   const { contact, address, billing, shippingSelection } = ctx.state;
 
-  // F1 — cupón aplicado (si hay): descuento vigente + posible aviso si dejó de valer.
-  const applied = await getAppliedCoupon();
+  // F1 — cupón aplicado (si hay): reutiliza `ctx` ya cargado (evita re-sincronizar precios).
+  const applied = await getAppliedCoupon(ctx);
 
-  // Puntos Lucams (2026-10-12) — redención: null si el programa está apagado o
-  // el checkout es de invitado. `applied` re-tarifado contra el carrito actual;
-  // `error` si la redención guardada dejó de valer (mismo patrón del cupón).
-  const loyalty = await getCheckoutLoyalty();
+  // Puntos Lucams (2026-10-12) — redención: reutiliza `ctx` ya cargado.
+  const loyalty = await getCheckoutLoyalty(ctx);
 
   // Incentivo "crea tu cuenta y gana puntos" para INVITADOS (2026-10-26 —
   // decisión owner): getCheckoutLoyalty devuelve null para el guest, así que
@@ -157,8 +173,9 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
         {/* #22 — en móvil: avisos full-width arriba, luego el resumen+total (order-1, sidebar) y por
             último las tarjetas de revisión + botón de pago (order-2). En lg+ se restaura el layout de
             dos columnas (lg:order-none). Así el total deja de aparecer DESPUÉS del botón de pago. */}
-        {(errorMsg || couponNotice) && (
+        {(errorMsg || couponNotice || priceNotice) && (
           <div className="space-y-4 lg:col-span-3">
+            {priceNotice && <PriceUpdatedBanner message={priceNotice} />}
             {errorMsg && (
               <div className="flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4">
                 <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-700" />
