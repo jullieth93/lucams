@@ -53,12 +53,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import nextDynamic from "next/dynamic";
-import { Loader2, X, ZoomIn } from "lucide-react";
-import { useProgress } from "@react-three/drei";
+import { X, ZoomIn } from "lucide-react";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { Scene3DErrorBoundary } from "./scene-3d-error-boundary";
-import { CALENDAR_CARD_THICKNESS_CM } from "./magnet-3d";
+import { CALENDAR_CARD_THICKNESS_CM } from "./lib/magnet-3d-constants";
 import type { Magnet3D } from "./fridge-3d-view";
 import { useIsTouch } from "./use-is-touch";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -82,28 +81,17 @@ function SceneLoading({
 }
 
 /**
- * 2026-11-10 (bug STG bola navideña en celular) — las escenas suspenden con
- * `Suspense fallback={null}` mientras `useTexture` decodifica los PNG del
- * diseño: el canvas quedaba EN BLANCO (sin bola ni piezas) varios segundos en
- * dispositivos lentos, leyéndose como "se perdió el diseño". Este overlay
- * escucha el LoadingManager global de three (useProgress) y anuncia la carga
- * de texturas. pointer-events-none: nunca bloquea la escena; si el indicador
- * quedara pegado por un loader colgado, la escena sigue usable debajo.
+ * Carga diferida del overlay de progreso de texturas 3D (`@react-three/drei`).
+ * Así el chunk inicial del Estudio 2D nunca importa `@react-three/drei` ni `three`
+ * hasta que el usuario abre una vista 3D real (Fase 5 · #19).
  */
-export function SceneTextureLoadingOverlay() {
-  const active = useProgress((s) => s.active);
-  const texts = useStudioTexts();
-  if (!active) return null;
-  return (
-    <div
-      role="status"
-      className="text-brand-purple-dark pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 text-sm font-semibold"
-    >
-      <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-      <span>{texts.escenas.armando}</span>
-    </div>
-  );
-}
+export const SceneTextureLoadingOverlay = nextDynamic(
+  () =>
+    import("./scene-texture-loading-overlay").then((m) => ({
+      default: m.SceneTextureLoadingOverlay,
+    })),
+  { ssr: false, loading: () => null },
+);
 
 const FridgeView3D = nextDynamic(() => import("./fridge-3d-view"), {
   ssr: false,
@@ -435,7 +423,7 @@ export function SceneGallery({
 
   // 2026-10-26 — TODAS las escenas son 3D (repisa/regalo eran los últimos flat-lays 2D):
   // is3DScene queda como punto único de verdad (pill de gestos, rótulo de cantidad).
-  const is3D = is3DScene(activeScene);
+  const is3D = scenes.length > 0 && is3DScene(activeScene);
 
   return (
     <div
