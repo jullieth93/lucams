@@ -30,7 +30,7 @@
 
 ### Catálogo, SEO y CMS v2 ([`domains/catalog-and-cms.md`](domains/catalog-and-cms.md))
 
-- Categorías padre/hija, facetas configurables, producto insignia, 16 ocasiones, búsqueda difusa, PDP con escalas mayoristas y zoom, 404 real sobre slugs cacheados, feed Google Merchant y APIs `/api/catalog|cms`.
+- Categorías padre/hija, facetas, insignia, 16 ocasiones, búsqueda difusa (incl. SKU de variante), filtro de precio SQL por variantes activas, PDP mayorista con zoom, 404 real, feed Merchant y `/api/catalog|cms`.
 - **CMS v2 (`ADR-187`):** 9 contenedores, 30 secciones y 168 campos (105 `BLOCK` + 63 `SETTING`), paridad AST en CI, versionado append-only, publicación programada y tokens legales dinámicos.
 - **Opciones base y `/admin/mayorista` (`ADR-209`):** `ProductVariant` modela solo atributos físicos de `1` unidad base (`1` pieza, `1` pack de `6` o `1` set; multi-pack históricos pausados). `WholesaleTier` centraliza descuentos por volumen (`minQty >= 2`) con sombra `opción > producto > global`.
 
@@ -40,7 +40,7 @@
 - Tiras photobooth compuestas, previews de packs en grilla y réplica entre unidades. Portada con popup tras consentimiento, logo estacional, nieve con movimiento reducido y CTA B2B (`/empresas-y-eventos` desde 25 uds.).
 - **Bola Navideña (`ADR-199`/`201`/`209`):** activa en los 3 ambientes; inserto dúplex de 8 cm, cara B obligatoria, hasta 15 diseños/tanda y 100 copias. Sin/con imán a $10.000/$11.000 COP; promos 3 × $27.000 y 5 × $40.000.
 - **Mini Libros (`ADR-200`):** carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán; inactivos fuera de referencia. Plantilla «Reino de cristal» y visor 3D completo.
-- Auto-save serial (`clientRev` / `STALE_REVISION`), recuperación de borradores, previews privados `/api/design-preview/*`, `RenderJob` 300 DPI con claim/fencing atómico y caché acotada de assets, y ZIP de taller.
+- Auto-save serial (`clientRev`/`STALE_REVISION`), borradores, 3D diferido fuera del chunk 2D y fronteras `/estudio` con guardas AST, previews privados en streaming + `ETag`/`304`, `RenderJob` 300 DPI con fencing y ZIP de taller.
 
 ### Carrito, checkout, pagos y logística ([`domains/checkout-payments-shipping.md`](domains/checkout-payments-shipping.md))
 
