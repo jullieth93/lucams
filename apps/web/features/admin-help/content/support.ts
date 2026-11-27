@@ -204,7 +204,7 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
             id: "reembolso",
             label: "Cierre con devolución de dinero (Superadmin + MFA)",
             description:
-              "Habilitado solo después de ejecutar la reversión real en Wompi o transferencia bancaria.",
+              "Exige registrar el monto real en COP y el método de devolución tras ejecutar la reversión en Wompi o banco; el desembolso se descuenta automáticamente en /admin/finanzas (`reembolso_garantia_cop`) y en el LTV sin duplicar descuento si la orden ya figura Reembolsada.",
             caution:
               "En vista Analista Financiero los nombres, fotos y relatos libres se ocultan en servidor por Ley 1581.",
           },
@@ -275,10 +275,11 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
       "reposición",
       "devolución",
       "reclamo",
+      "reembolso_garantia_cop",
       "Ley 1480",
       "SLA",
     ],
-    version: 3,
+    version: 4,
   },
   {
     id: "retractos",
@@ -311,8 +312,9 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
         topics: [
           {
             id: "solicitud",
-            label: `1. Elegibilidad (${HELP_LIVE_NUMBERS.retractWindowBusinessDays} días hábiles y producto estándar)`,
-            description: "Comprueba fecha de entrega y naturaleza no personalizada del ítem.",
+            label: `1. Elegibilidad (${HELP_LIVE_NUMBERS.retractWindowBusinessDays} días hábiles CO y producto estándar)`,
+            description:
+              "Comprueba fecha de entrega aplicando el calendario oficial de festivos de Colombia (Ley Emiliani y 9 de julio, Ley 2578) y valida que el ítem no sea personalizado.",
             interpretation:
               "Si el cliente en realidad reporta un producto roto o mal impreso sobre un personalizado, oriéntalo o conviértelo a Garantía legal.",
           },
@@ -408,9 +410,10 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
       "devolución",
       "reembolso",
       "15 días calendario",
+      "festivos Colombia",
       "MFA",
     ],
-    version: 3,
+    version: 4,
   },
   {
     id: "moderacion",

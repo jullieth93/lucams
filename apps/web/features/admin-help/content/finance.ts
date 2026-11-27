@@ -44,9 +44,9 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
           },
           {
             id: "ingresos",
-            label: "Wompi, Pago Directo B2B y Contraentrega",
+            label: "Wompi, Pago Directo B2B, Contraentrega y reembolsos de garantía",
             description:
-              "Descompone productos, fletes, descuentos, retenciones B2B y estado de remesas COD (conciliadas, pendientes o con discrepancia).",
+              "Descompone productos, fletes, descuentos, retenciones B2B, reembolsos de garantía (`REFUND`) sin doble descuento si la orden ya está en estado Reembolsado y estado de remesas COD (conciliadas, pendientes o con discrepancia).",
             interpretation:
               "Recuerda descontar aparte la tarifa financiera cobrada por Wompi al liquidar a tu cuenta bancaria.",
           },
@@ -54,7 +54,7 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
             id: "export",
             label: `Exportación CSV con MFA reciente (≤ ${HELP_LIVE_NUMBERS.recentMfaMinutes} min)`,
             description:
-              "Incluye blindaje contra inyección de fórmulas en Excel/Sheets y registro en Auditoría.",
+              "Incluye la columna `reembolso_garantia_cop`, blindaje contra inyección de fórmulas en Excel/Sheets y registro en Auditoría.",
             caution:
               "Comparte el CSV únicamente con contabilidad autorizada y elimina copias temporales.",
           },
@@ -113,9 +113,11 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
       "retenciones",
       "puente de caja",
       "fletes",
+      "reembolso_garantia_cop",
+      "garantías",
       "DIAN",
     ],
-    version: 4,
+    version: 5,
   },
   {
     id: "conciliacion",
@@ -336,10 +338,11 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
         topics: [
           {
             id: "rfm-ltv",
-            label: "Segmentación RFM y valor acumulado (LTV)",
-            description: "Identifica campeones, leales, en riesgo o dormidos.",
+            label: "Segmentación RFM, LTV neto e intención comercial vs. stock",
+            description:
+              "Identifica campeones, leales, en riesgo o dormidos (descontando reembolsos de garantía en el LTV) y cruza Favoritos + «Avísame cuando vuelva» contra inventario real.",
             interpretation:
-              "Conecta estos hallazgos con /admin/marketing/segmentos y /admin/lifecycle para activar recompra.",
+              "Los productos del Estudio (`MADE_TO_ORDER`) en Favoritos muestran estado propio «Bajo pedido» (`—` en Stock vivo) y enlazan a /admin/productos/[id]; solo los productos físicos (`PHYSICAL_STOCK`) alertan agotamiento.",
           },
         ],
       },
@@ -393,8 +396,18 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
     ],
     related: ["finanzas", "segmentos", "lifecycle", "dashboard", "hoy"],
     relatedPlaybooks: ["playbook-oportunidad-b2b-cierre", "playbook-incidentes-seguridad-dian"],
-    keywords: ["RFM", "LTV", "cohorte", "embudo", "UVT", "3500 UVT", "DIAN", "fiscal"],
-    version: 2,
+    keywords: [
+      "RFM",
+      "LTV",
+      "cohorte",
+      "embudo",
+      "UVT",
+      "3500 UVT",
+      "DIAN",
+      "fiscal",
+      "Bajo pedido",
+    ],
+    version: 3,
   },
   {
     id: "performance",

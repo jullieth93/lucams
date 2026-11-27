@@ -3,8 +3,10 @@ import "server-only";
 import type { AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import {
+  RELEASE_NOTES_PROGRESS_GUIDE_ID,
   getGuideAndSubrouteForPath,
   getHelpGuideById,
+  getLatestReleaseVersionForRole,
   resolveStepsForHelpTarget,
 } from "./registry";
 import type { AdminHelpProgress, AdminModuleGuide, AdminSubrouteFocus } from "./types";
@@ -160,4 +162,47 @@ export async function submitAdminHelpFeedback(input: {
     update: { isHelpful: input.isHelpful, comment: input.comment },
   });
   return true;
+}
+
+export async function markAdminReleaseNotesSeen(input: {
+  adminUserId: string;
+  role: AdminRole;
+}): Promise<AdminHelpProgress | null> {
+  const latestVersion = getLatestReleaseVersionForRole(input.role);
+  if (latestVersion <= 0) return null;
+  const now = new Date();
+  const row = await prisma.adminHelpProgress.upsert({
+    where: {
+      adminUserId_guideId: {
+        adminUserId: input.adminUserId,
+        guideId: RELEASE_NOTES_PROGRESS_GUIDE_ID,
+      },
+    },
+    create: {
+      adminUserId: input.adminUserId,
+      guideId: RELEASE_NOTES_PROGRESS_GUIDE_ID,
+      version: latestVersion,
+      currentStep: 0,
+      completedAt: now,
+      dismissedAt: null,
+    },
+    update: {
+      version: latestVersion,
+      currentStep: 0,
+      completedAt: now,
+      dismissedAt: null,
+    },
+    select: {
+      guideId: true,
+      version: true,
+      currentStep: true,
+      completedAt: true,
+      dismissedAt: true,
+    },
+  });
+  return {
+    ...row,
+    completedAt: row.completedAt?.toISOString() ?? null,
+    dismissedAt: row.dismissedAt?.toISOString() ?? null,
+  };
 }

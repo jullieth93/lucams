@@ -23,6 +23,7 @@ import {
   getHelpRouteIndex,
   getOnboardingForRole,
   getPlaybookIndex,
+  getUnreadReleaseSummary,
 } from "@/features/admin-help/registry";
 import { getAdminHelpProgress } from "@/features/admin-help/service";
 
@@ -89,6 +90,7 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
   const routeIndex = getHelpRouteIndex(session.admin.role);
   const playbookIndex = getPlaybookIndex(session.admin.role);
   const onboarding = getOnboardingForRole(session.admin.role);
+  const releaseSummary = getUnreadReleaseSummary(session.admin.role, helpProgress);
 
   return (
     <AdminShell
@@ -104,6 +106,7 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
           onboarding={onboarding}
           role={session.admin.role}
           initialProgress={helpProgress}
+          releaseSummary={releaseSummary}
         />
       </Suspense>
     </AdminShell>

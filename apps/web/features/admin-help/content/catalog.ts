@@ -77,9 +77,9 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
         topics: [
           {
             id: "sku-precio",
-            label: "SKU único y precio base en COP",
+            label: "SKU único, precio base en COP y atributos técnicos",
             description:
-              "Cada opción exige SKU irrepetible y precio unitario entero (almacenado internamente en centavos COP).",
+              "Cada opción exige SKU irrepetible y precio unitario entero (en centavos COP); al editar una opción el servidor preserva intactos sus atributos técnicos internos (`_shipping`, `noFold`, `facesPerUnit`).",
             interpretation:
               "No crees variantes de «pack x3» o «pack x10» para dar descuento: crea la opción base de 1 unidad y configura los tramos en /admin/mayorista.",
           },
@@ -210,7 +210,7 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
       "bajo pedido",
       "stock físico",
     ],
-    version: 3,
+    version: 4,
   },
   {
     id: "categorias",
