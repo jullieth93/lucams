@@ -50,6 +50,7 @@ import {
   backupFreshnessError,
   inspectAuthDumpIntegrity,
   hasAuthRestoreDrift,
+  buildSystemTableExistsSql,
   DEFAULT_MAX_BACKUP_AGE_HOURS,
 } from "./dr-drill-lib.mjs";
 
@@ -307,17 +308,21 @@ async function main() {
       `Integridad de Auth fallida en el dump (${latest}):\n  - ${authIntegrity.errors.join("\n  - ")}`,
     );
   }
-  for (const authTable of ["auth.users", "auth.mfa_factors"]) {
+  for (const [schema, table] of [
+    ["auth", "users"],
+    ["auth", "mfa_factors"],
+  ]) {
+    const authTable = `${schema}.${table}`;
     const reg = await run("psql", [
       drillUrl,
       "-A",
       "-t",
       "-c",
-      `SELECT to_regclass('${authTable}');`,
+      buildSystemTableExistsSql(schema, table),
     ]);
-    if (reg.code !== 0 || reg.stdout.trim() !== authTable) {
+    if (reg.code !== 0 || reg.stdout.trim() !== "t") {
       throw new Error(
-        `Tabla de sistema "${authTable}" ausente tras el restore (to_regclass="${reg.stdout.trim()}").`,
+        `Tabla de sistema "${authTable}" ausente tras el restore (exists="${reg.stdout.trim()}").`,
       );
     }
   }

@@ -16,6 +16,7 @@ import {
   backupFreshnessError,
   inspectAuthDumpIntegrity,
   hasAuthRestoreDrift,
+  buildSystemTableExistsSql,
   DEFAULT_MAX_BACKUP_AGE_HOURS,
 } from "./dr-drill-lib.mjs";
 
@@ -399,5 +400,14 @@ describe("inspectAuthDumpIntegrity — presencia e integridad de auth.users y au
         'psql:/tmp/x/dump.sql:2: ERROR:  column "is_sso_user" of relation "auth.users" does not exist\n',
     );
     expect(hasAuthRestoreDrift(realColumnDrift)).toBe(true);
+  });
+
+  it("buildSystemTableExistsSql consulta pg_class/pg_namespace sin depender de search_path y rechaza identificadores inválidos", () => {
+    const sql = buildSystemTableExistsSql("auth", "users");
+    expect(sql).toContain("pg_catalog.pg_class");
+    expect(sql).toContain("n.nspname = 'auth'");
+    expect(sql).toContain("c.relname = 'users'");
+    expect(sql).toContain("c.relkind IN ('r', 'p')");
+    expect(() => buildSystemTableExistsSql("auth'; DROP TABLE x;--", "users")).toThrow();
   });
 });
