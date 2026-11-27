@@ -95,7 +95,10 @@ vi.mock("@/lib/checkout-session", () => ({
   openShippingOffersPayload: vi.fn(() => null),
 }));
 vi.mock("@/features/checkout/cod-risk", () => ({ assessCodRisk: vi.fn() }));
-vi.mock("@/features/cart/service", () => ({ getCartDetail: vi.fn(async () => null) }));
+vi.mock("@/features/cart/service", () => ({
+  getCartDetail: vi.fn(async () => null),
+  syncCartPrices: vi.fn(async () => null),
+}));
 
 import { getGuestLoyaltyIncentive, type CheckoutContext } from "./service";
 
@@ -114,6 +117,7 @@ function guestCtx(over?: {
     } as unknown as CheckoutContext["cart"],
     customerId: over?.customerId ?? null,
     customerEmail: null,
+    priceChanges: [],
     state: {
       step: 1,
       updatedAt: Date.now(),

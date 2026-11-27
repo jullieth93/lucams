@@ -118,6 +118,7 @@ vi.mock("@/lib/checkout-session", () => ({
 vi.mock("@/features/checkout/cod-risk", () => ({ assessCodRisk: vi.fn() }));
 vi.mock("@/features/cart/service", () => ({
   getCartDetail: vi.fn(async () => cartFixture),
+  syncCartPrices: vi.fn(async () => ({ cart: cartFixture, priceChanges: priceChangesFixture })),
 }));
 
 import {
@@ -133,6 +134,15 @@ import { getPaymentProvider } from "@/features/payments/provider";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
 
 const CART_ITEMS = [{ variantId: "v1", qty: 2, unitPrice: 10_000, productName: "Imán Nevera" }];
+
+let priceChangesFixture: Array<{
+  itemId: string;
+  productName: string;
+  variantName: string;
+  previousUnitPrice: number;
+  currentUnitPrice: number;
+  qty: number;
+}> = [];
 
 const cartFixture = {
   cartId: "cart_1",
@@ -183,6 +193,7 @@ function seedState() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  priceChangesFixture = [];
   // clearAllMocks NO resetea implementaciones: re-anclar los defaults de
   // sesión para que un test "logueado" no contamine al siguiente.
   vi.mocked(getCurrentUser).mockResolvedValue(null);
@@ -593,5 +604,28 @@ describe("finalizeCheckout — stock agotado al crear la orden (order_create)", 
     expect(err.message).toBe(
       "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
     );
+  });
+});
+
+describe("finalizeCheckout — cambio de tarifa en carrera (D-2 · ADR-211)", () => {
+  it("aborta con CART_PRICES_UPDATED y copy claro sin crear la orden si una tarifa cambió", async () => {
+    priceChangesFixture = [
+      {
+        itemId: "ci_1",
+        productName: "Imán Nevera",
+        variantName: "Default",
+        previousUnitPrice: 10_000,
+        currentUnitPrice: 12_000,
+        qty: 2,
+      },
+    ];
+
+    const err = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(CheckoutError);
+    expect(err.code).toBe("CART_PRICES_UPDATED");
+    expect(err.message).toContain("Imán Nevera");
+    expect(err.message).toContain("Revisa el nuevo total");
+    expect(createOrderFromCart).not.toHaveBeenCalled();
   });
 });

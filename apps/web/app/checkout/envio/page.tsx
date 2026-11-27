@@ -12,7 +12,9 @@ import Link from "next/link";
 import { Truck, AlertCircle } from "lucide-react";
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
+import { PriceUpdatedBanner } from "../_components/price-updated-banner";
 import { EnvioStep } from "./envio-step";
+import { formatPriceChangesNotice, sanitizePriceNotice } from "@/features/cart/price-changes";
 import {
   CheckoutError,
   loadCheckoutContext,
@@ -42,13 +44,13 @@ export const maxDuration = 45;
 export default async function CheckoutEnvioPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; priceNotice?: string }>;
 }) {
   // Error de la selección de transportadora (selectShippingAction redirige acá con
   // ?error=... cuando la opción elegida no valida). Sin leerlo, el usuario volvía a
   // esta página con la MISMA lista y sin mensaje → callejón sin salida invisible
   // (revisión adversarial #4).
-  const { error: selectionError } = await searchParams;
+  const { error: selectionError, priceNotice: priceNoticeParam } = await searchParams;
 
   let ctx;
   try {
@@ -116,10 +118,13 @@ export default async function CheckoutEnvioPage({
   // Hora límite del envío propio para el copy de la lista (token {{cutoff}}):
   // sale de settings (LUCAMS_SHIPPING_CUTOFF_HOUR), nunca hardcodeada.
   const lucamsSettings = await getLucamsShippingSettings();
+  const priceNotice =
+    formatPriceChangesNotice(ctx.priceChanges) ?? sanitizePriceNotice(priceNoticeParam);
 
   return (
     <div className="mx-auto max-w-6xl">
       <CheckoutStepper current={2} />
+      {priceNotice && <PriceUpdatedBanner message={priceNotice} />}
 
       {selectionError && (
         <div

@@ -67,6 +67,10 @@ import { designHasMeaningfulProgress } from "@/features/personalization/design-p
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
 import { resolveFunnelEditorKind, type FunnelEditorKind } from "@/features/analytics/funnel-schema";
 import { applyVolumePricing, type VolumeTierInput } from "./volume-pricing";
+import type { CartPriceChange } from "./price-changes";
+
+export type { CartPriceChange } from "./price-changes";
+export { formatPriceChangesNotice } from "./price-changes";
 
 export type CartLineItem = {
   itemId: string;
@@ -228,6 +232,79 @@ async function loadActiveVolumeTiers(productId: string): Promise<VolumeTierInput
       deletedAt: true,
     },
   });
+}
+
+async function loadActiveVolumeTiersForProducts(
+  db: Pick<typeof prisma, "wholesaleTier">,
+  productIds: ReadonlyArray<string>,
+): Promise<VolumeTierInput[]> {
+  const unique = [...new Set(productIds.filter(Boolean))];
+  if (unique.length === 0) return [];
+  return db.wholesaleTier.findMany({
+    where: {
+      isActive: true,
+      deletedAt: null,
+      OR: [{ productId: { in: unique } }, { productId: null }],
+    },
+    select: {
+      productId: true,
+      variantId: true,
+      minQty: true,
+      unitPrice: true,
+      isActive: true,
+      deletedAt: true,
+    },
+  });
+}
+
+/**
+ * Refresca `Cart.updatedAt` explícitamente cuando cambian sus `CartItem`s o al
+ * fusionar carritos (D-2 · ADR-211). Prisma solo actualiza `updatedAt` de un
+ * modelo al mutar esa fila; sin esto un carrito activo con ediciones o merges
+ * conservaba un `updatedAt` viejo para retención/abandono.
+ */
+async function touchCartUpdatedAt(
+  db: Partial<Pick<typeof prisma, "cart">>,
+  cartId: string,
+): Promise<void> {
+  if (!db.cart || typeof db.cart.update !== "function") return;
+  await db.cart.update({
+    where: { id: cartId },
+    data: { updatedAt: new Date() },
+  });
+}
+
+/**
+ * Calcula el `unitPrice` vigente (tarifa actual + multiplicadores de diseño +
+ * escala `WholesaleTier`) para una línea cruda de carrito. Si el fixture/mock
+ * no trae `variant.product` o el diseño por-ficha es inconsistente, conserva
+ * `fallbackUnitPrice` sin inventar precios.
+ */
+function computeCurrentLineUnitPrice(
+  item: RawCart["items"][number],
+  qty: number,
+  tiers: ReadonlyArray<VolumeTierInput>,
+  fallbackUnitPrice: number,
+): number {
+  if (!item.variant?.product) return fallbackUnitPrice;
+  const base = currentLineBaseUnitPrice(item);
+  if (base === null) return fallbackUnitPrice;
+  const volumeUnitMultiplier = item.design
+    ? volumeUnitMultiplierForDesign(
+        item.variant.product.personalizationSchema,
+        item.design.canvasData,
+        item.variant.attributes,
+        item.design.metadata,
+      )
+    : 1;
+  return applyVolumePricing(
+    base,
+    tiers,
+    item.variant.product.id,
+    qty,
+    volumeUnitMultiplier,
+    item.variantId,
+  );
 }
 
 /**
@@ -656,6 +733,91 @@ export async function getCartDetail(
   return toDetail(cart);
 }
 
+/**
+ * D-2 (ADR-211) — Re-cotiza las líneas vendibles del carrito contra las tarifas
+ * y escalas mayoristas VIGENTES al entrar al checkout o antes de crear la orden.
+ *
+ * Si alguna línea cambió de precio (subida/bajada de catálogo, fin de promo o
+ * cambio de `WholesaleTier`), persiste el nuevo `CartItem.unitPrice`, refresca
+ * `Cart.updatedAt` en una sola transacción y devuelve el listado estructurado
+ * `priceChanges` para que el checkout exhiba un aviso visible al comprador
+ * (transparencia Ley 1480 — nunca cobrar en silencio un monto distinto al visto).
+ */
+export async function syncCartPrices(
+  sessionId: string,
+  customerId: string | null = null,
+): Promise<{ cart: CartDetail; priceChanges: CartPriceChange[] } | null> {
+  const cart = await findCartBySession(sessionId);
+  if (!cart || !cartIdentityMatches(cart, customerId)) return null;
+
+  const purchasable = cart.items.filter((i) =>
+    isPurchasableVariant({
+      variantIsActive: i.variant.isActive,
+      variantDeletedAt: i.variant.deletedAt,
+      productIsActive: i.variant.product.isActive,
+      productPublishedOnStorefront: i.variant.product.publishedOnStorefront,
+      productDeletedAt: i.variant.product.deletedAt,
+      categoryIsActive: i.variant.product.category.isActive,
+      categoryDeletedAt: i.variant.product.category.deletedAt,
+    }),
+  );
+
+  const productIds = purchasable.map((i) => i.variant.product.id);
+  const tiers = await loadActiveVolumeTiersForProducts(prisma, productIds);
+
+  const candidates: Array<{
+    item: RawCart["items"][number];
+    change: CartPriceChange;
+    expectedQty: number;
+    freshUnitPrice: number;
+  }> = [];
+
+  for (const item of purchasable) {
+    const freshUnitPrice = computeCurrentLineUnitPrice(item, item.qty, tiers, item.unitPrice);
+    if (freshUnitPrice !== item.unitPrice) {
+      candidates.push({
+        item,
+        expectedQty: item.qty,
+        freshUnitPrice,
+        change: {
+          itemId: item.id,
+          productName: item.variant.product.name,
+          variantName: item.variant.name,
+          previousUnitPrice: item.unitPrice,
+          currentUnitPrice: freshUnitPrice,
+          qty: item.qty,
+        },
+      });
+    }
+  }
+
+  const priceChanges: CartPriceChange[] = [];
+
+  if (candidates.length > 0) {
+    await prisma.$transaction(async (tx) => {
+      let appliedAny = false;
+      for (const c of candidates) {
+        // CAS sobre (id, cartId, qty): evita P2025 si la línea se borró en otra pestaña
+        // y evita pisar un cambio concurrente de qty/WholesaleTier.
+        const updated = await tx.cartItem.updateMany({
+          where: { id: c.item.id, cartId: cart.id, qty: c.expectedQty },
+          data: { unitPrice: c.freshUnitPrice },
+        });
+        if (updated.count > 0) {
+          c.item.unitPrice = c.freshUnitPrice;
+          priceChanges.push(c.change);
+          appliedAny = true;
+        }
+      }
+      if (appliedAny) {
+        await touchCartUpdatedAt(tx, cart.id);
+      }
+    });
+  }
+
+  return { cart: toDetail(cart), priceChanges };
+}
+
 export async function getCartItemCount(
   sessionId: string,
   customerId: string | null = null,
@@ -780,6 +942,7 @@ export async function addProductToCart(opts: {
       },
     });
   }
+  await touchCartUpdatedAt(prisma, cart.id);
 
   const reloaded = await findCartBySession(opts.sessionId);
   return toDetail(reloaded!);
@@ -1089,6 +1252,7 @@ export async function addPersonalizedToCart(opts: {
       });
     }
   }
+  await touchCartUpdatedAt(prisma, cart.id);
 
   const reloaded = await findCartBySession(opts.sessionId);
   return toDetail(reloaded!);
@@ -1175,6 +1339,7 @@ export async function updateCartItemQty(
       data: { qty: newQty, unitPrice },
     });
   }
+  await touchCartUpdatedAt(prisma, cart.id);
   const reloaded = await findCartBySession(sessionId);
   return toDetail(reloaded!);
 }
@@ -1376,33 +1541,71 @@ export async function mergeAnonCartIntoCustomer(
   }
 
   await prisma.$transaction(async (tx) => {
+    const mergeProductIds = [...customerCart.items, ...anonCart.items]
+      .map((i) => i.variant?.product?.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const mergeTiers =
+      "wholesaleTier" in tx && tx.wholesaleTier && mergeProductIds.length > 0
+        ? await loadActiveVolumeTiersForProducts(tx, mergeProductIds)
+        : [];
+    const canReprice = "wholesaleTier" in tx && Boolean(tx.wholesaleTier);
+
     for (const anonItem of anonCart.items) {
       const dup = customerCart.items.find((i) => sameLineContent(i, anonItem));
       if (dup) {
         const lineCap = maxCopiesForRawItem(dup);
         const mergedQty = dup.qty + anonItem.qty;
         if (mergedQty <= lineCap) {
-          await tx.cartItem.update({ where: { id: dup.id }, data: { qty: mergedQty } });
+          const nextUnitPrice = canReprice
+            ? computeCurrentLineUnitPrice(dup, mergedQty, mergeTiers, dup.unitPrice)
+            : dup.unitPrice;
+          await tx.cartItem.update({
+            where: { id: dup.id },
+            data: {
+              qty: mergedQty,
+              ...(nextUnitPrice !== dup.unitPrice ? { unitPrice: nextUnitPrice } : {}),
+            },
+          });
+          dup.qty = mergedQty;
+          dup.unitPrice = nextUnitPrice;
         } else {
-          await tx.cartItem.update({ where: { id: dup.id }, data: { qty: lineCap } });
+          const cappedUnitPrice = canReprice
+            ? computeCurrentLineUnitPrice(dup, lineCap, mergeTiers, dup.unitPrice)
+            : dup.unitPrice;
+          await tx.cartItem.update({
+            where: { id: dup.id },
+            data: {
+              qty: lineCap,
+              ...(cappedUnitPrice !== dup.unitPrice ? { unitPrice: cappedUnitPrice } : {}),
+            },
+          });
+          dup.qty = lineCap;
+          dup.unitPrice = cappedUnitPrice;
+          const overflowQty = Math.min(lineCap, mergedQty - lineCap);
+          const overflowUnitPrice = canReprice
+            ? computeCurrentLineUnitPrice(anonItem, overflowQty, mergeTiers, anonItem.unitPrice)
+            : anonItem.unitPrice;
           await tx.cartItem.create({
             data: {
               cartId: customerCart.id,
               variantId: anonItem.variantId,
-              qty: Math.min(lineCap, mergedQty - lineCap),
-              unitPrice: anonItem.unitPrice,
+              qty: overflowQty,
+              unitPrice: overflowUnitPrice,
               customDesign: anonItem.customDesign ?? undefined,
               designId: anonItem.designId ?? undefined,
             },
           });
         }
       } else {
+        const movedUnitPrice = canReprice
+          ? computeCurrentLineUnitPrice(anonItem, anonItem.qty, mergeTiers, anonItem.unitPrice)
+          : anonItem.unitPrice;
         await tx.cartItem.create({
           data: {
             cartId: customerCart.id,
             variantId: anonItem.variantId,
             qty: anonItem.qty,
-            unitPrice: anonItem.unitPrice,
+            unitPrice: movedUnitPrice,
             customDesign: anonItem.customDesign ?? undefined,
             designId: anonItem.designId ?? undefined,
           },
@@ -1426,6 +1629,7 @@ export async function mergeAnonCartIntoCustomer(
         });
       }
     }
+    await touchCartUpdatedAt(tx, customerCart.id);
     await tx.cartItem.deleteMany({ where: { cartId: anonCart.id } });
     await tx.cart.delete({ where: { id: anonCart.id } });
   });
@@ -1475,33 +1679,71 @@ export async function mergeCartsAdopt(
     throw new CartError("CART_IDENTITY_MISMATCH");
   }
   await prisma.$transaction(async (tx) => {
+    const mergeProductIds = [...target.items, ...source.items]
+      .map((i) => i.variant?.product?.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const mergeTiers =
+      "wholesaleTier" in tx && tx.wholesaleTier && mergeProductIds.length > 0
+        ? await loadActiveVolumeTiersForProducts(tx, mergeProductIds)
+        : [];
+    const canReprice = "wholesaleTier" in tx && Boolean(tx.wholesaleTier);
+
     for (const it of source.items) {
       const dup = target.items.find((t) => sameLineContent(t, it));
       if (dup) {
         const lineCap = maxCopiesForRawItem(dup);
         const mergedQty = dup.qty + it.qty;
         if (mergedQty <= lineCap) {
-          await tx.cartItem.update({ where: { id: dup.id }, data: { qty: mergedQty } });
+          const nextUnitPrice = canReprice
+            ? computeCurrentLineUnitPrice(dup, mergedQty, mergeTiers, dup.unitPrice)
+            : dup.unitPrice;
+          await tx.cartItem.update({
+            where: { id: dup.id },
+            data: {
+              qty: mergedQty,
+              ...(nextUnitPrice !== dup.unitPrice ? { unitPrice: nextUnitPrice } : {}),
+            },
+          });
+          dup.qty = mergedQty;
+          dup.unitPrice = nextUnitPrice;
         } else {
-          await tx.cartItem.update({ where: { id: dup.id }, data: { qty: lineCap } });
+          const cappedUnitPrice = canReprice
+            ? computeCurrentLineUnitPrice(dup, lineCap, mergeTiers, dup.unitPrice)
+            : dup.unitPrice;
+          await tx.cartItem.update({
+            where: { id: dup.id },
+            data: {
+              qty: lineCap,
+              ...(cappedUnitPrice !== dup.unitPrice ? { unitPrice: cappedUnitPrice } : {}),
+            },
+          });
+          dup.qty = lineCap;
+          dup.unitPrice = cappedUnitPrice;
+          const overflowQty = Math.min(lineCap, mergedQty - lineCap);
+          const overflowUnitPrice = canReprice
+            ? computeCurrentLineUnitPrice(it, overflowQty, mergeTiers, it.unitPrice)
+            : it.unitPrice;
           await tx.cartItem.create({
             data: {
               cartId: target.id,
               variantId: it.variantId,
-              qty: Math.min(lineCap, mergedQty - lineCap),
-              unitPrice: it.unitPrice,
+              qty: overflowQty,
+              unitPrice: overflowUnitPrice,
               customDesign: it.customDesign ?? undefined,
               designId: it.designId ?? undefined,
             },
           });
         }
       } else {
+        const movedUnitPrice = canReprice
+          ? computeCurrentLineUnitPrice(it, it.qty, mergeTiers, it.unitPrice)
+          : it.unitPrice;
         await tx.cartItem.create({
           data: {
             cartId: target.id,
             variantId: it.variantId,
             qty: it.qty,
-            unitPrice: it.unitPrice,
+            unitPrice: movedUnitPrice,
             customDesign: it.customDesign ?? undefined,
             designId: it.designId ?? undefined,
           },
@@ -1515,6 +1757,7 @@ export async function mergeCartsAdopt(
       fromSessionId: sourceSessionId,
       toSessionId: targetSessionId,
     });
+    await touchCartUpdatedAt(tx, target.id);
     await tx.cartItem.deleteMany({ where: { cartId: source.id } });
     await tx.cart.delete({ where: { id: source.id } });
   });
