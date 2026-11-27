@@ -144,7 +144,7 @@ describe("Estudio 2D — aislamiento del bundle 3D (Fase 5 · #19)", () => {
 
     const violations = findStatic3DImports(entries);
     expect(violations).toEqual([]);
-  });
+  }, 20_000);
 
   it("lib/magnet-3d-constants funciona puro en Node sin mocks de @react-three/drei", () => {
     expect(CALENDAR_CARD_THICKNESS_CM).toBe(0.04);

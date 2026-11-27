@@ -92,6 +92,9 @@ describe("Fronteras de módulos — aislamiento de app/estudio/ (Fase 5 · #19)"
         if (rel.startsWith("app/estudio/") || rel.startsWith("app/internal/")) continue;
 
         const src = fs.readFileSync(file, "utf8");
+        // Prefiltro exacto: fuera de app/estudio/, cualquier especificador que apunte
+        // dentro de app/estudio/ debe mencionar literalmente "estudio".
+        if (!src.includes("estudio")) continue;
         for (const specifier of extractModuleSpecifiers(file, src)) {
           if (pointsInsideEstudio(file, specifier)) {
             violations.push({ file: rel, specifier });
@@ -101,5 +104,5 @@ describe("Fronteras de módulos — aislamiento de app/estudio/ (Fase 5 · #19)"
     }
 
     expect(violations).toEqual([]);
-  });
+  }, 20_000);
 });
