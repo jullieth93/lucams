@@ -891,8 +891,13 @@ export function VariantSelector({
           <span className="text-brand-purple-dark/70 text-xs font-bold tracking-wider uppercase">
             Precio
           </span>
-          <span className="text-brand-purple-dark text-xl font-bold tabular-nums">
-            {formatCOP(currentPrice)}
+          <span className="inline-flex items-baseline gap-1.5">
+            <span className="text-brand-purple-dark text-xl font-bold tabular-nums">
+              {formatCOP(currentPrice)}
+            </span>
+            <span className="text-brand-purple-dark/70 text-xs font-semibold tracking-wide uppercase">
+              COP
+            </span>
           </span>
         </div>
       )}

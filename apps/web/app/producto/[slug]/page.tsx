@@ -98,6 +98,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     title.toLowerCase() === SITE_NAME.toLowerCase() ? SITE_NAME : `${title} · ${SITE_NAME}`;
   const description = product.seoDescription ?? product.description.slice(0, 160);
   const image = product.images[0] ?? "/brand/lucams-logo.png";
+  const activePrices = product.variants.map((v) => v.price ?? product.basePrice);
+  const minPriceCents = activePrices.length > 0 ? Math.min(...activePrices) : product.basePrice;
   return {
     title,
     description,
@@ -117,6 +119,10 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     },
     alternates: {
       canonical: `/producto/${product.slug}`,
+    },
+    other: {
+      "product:price:amount": (minPriceCents / 100).toFixed(0),
+      "product:price:currency": "COP",
     },
   };
 }
@@ -521,6 +527,9 @@ export default async function ProductoDetallePage({
                     <span className="text-brand-purple-dark text-3xl font-bold tabular-nums">
                       {formatCOP(displayPrice * nameMin)}
                     </span>
+                    <span className="text-brand-muted text-sm font-semibold tracking-wide uppercase">
+                      COP
+                    </span>
                     <span className="text-brand-muted text-sm">
                       · {formatCOP(displayPrice)} por ficha
                     </span>
@@ -547,6 +556,9 @@ export default async function ProductoDetallePage({
                     )}
                     <span className="text-brand-purple-dark text-3xl font-bold tabular-nums">
                       {formatCOP(displayPrice)}
+                    </span>
+                    <span className="text-brand-muted text-sm font-semibold tracking-wide uppercase">
+                      COP
                     </span>
                     {/* A1 (2026-09-15) — paridad con la card del listado: tachado
                         + badge -% de la variante elegida (o del "Desde"). */}
