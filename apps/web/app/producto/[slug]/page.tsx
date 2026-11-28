@@ -37,6 +37,7 @@ import {
   EstudioCtaLink,
   CartVariantIdInput,
   CartSubmitButton,
+  ExpandableDescription,
 } from "./variant-actions";
 import { computeDiscountPct, formatCOP } from "@/lib/format";
 import {
@@ -598,9 +599,7 @@ export default async function ProductoDetallePage({
                   maxQty={maxDesignUnits}
                 />
 
-                <p className="text-brand-purple-dark/80 order-4 text-base leading-relaxed whitespace-pre-line md:order-3">
-                  {product.description}
-                </p>
+                <ExpandableDescription text={product.description} className="order-4 md:order-3" />
 
                 {/* #16 — wrapper flex para mover el buy-box como una unidad (order-3 md:order-4): en
                   móvil sube por encima de la descripción; en md+ vuelve a su sitio.
