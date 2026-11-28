@@ -45,7 +45,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { VariantSelector } from "./variant-selector";
-import { SelectedVariantProvider } from "./variant-actions";
+import { ExpandableDescription, SelectedVariantProvider } from "./variant-actions";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // formatCOP usa NBSP (U+00A0) tras el "$"; el DOM lo colapsa a espacio normal al
@@ -1184,6 +1184,35 @@ describe("VariantSelector — ¿Con imán? default Con imán (regla 2026-09-08b)
     fireEvent.click(within(screen.getByRole("group", { name: "Tamaño" })).getByText("7×10 cm"));
     expect(decodeURIComponent(String(replace.mock.calls[1]?.[0]))).toContain(
       "variant=v-clas-nomag",
+    );
+  });
+});
+
+describe("ExpandableDescription", () => {
+  it("renderiza directo sin botón cuando la descripción es corta", () => {
+    render(<ExpandableDescription text="Separador magnético doble cara." />);
+    expect(screen.getByText("Separador magnético doble cara.")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("conserva el 100 % del texto en el DOM cuando está colapsada y alterna Ver más / Ver menos", () => {
+    const longDesc =
+      "Primer párrafo visible con detalles clave.\n\nEspecificaciones: 300 DPI con protección UV.\n\nEnvíos a más de 1.100 destinos en Colombia.";
+    render(<ExpandableDescription text={longDesc} />);
+    expect(screen.getByText(/1\.100 destinos en Colombia/)).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: /Ver más detalles/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: /Ver menos/i })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Ver menos/i }));
+    expect(screen.getByRole("button", { name: /Ver más detalles/i })).toHaveAttribute(
+      "aria-expanded",
+      "false",
     );
   });
 });
