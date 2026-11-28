@@ -749,7 +749,7 @@ export const SITE_MAP = {
               label: "¿Hacen pedidos al por mayor o para eventos corporativos?",
               helpText: "FAQ visible en /ayuda.",
               category: "FAQ",
-              body: "¡Sí! Bodas, baby showers, eventos corporativos, recordatorios para regalos. Escríbenos por WhatsApp con tu idea y volumen y te pasamos cotización personalizada.",
+              body: "¡Sí! Bodas, baby showers, grados y eventos corporativos desde 25 unidades con tarifas escalonadas y muestra digital previa. Configura tu proyecto y recibe una propuesta formal en [Empresas y eventos](/empresas-y-eventos).",
               sortOrder: 100,
             },
             {
