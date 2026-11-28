@@ -14,8 +14,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Sparkles } from "lucide-react";
-import { createContext, useCallback, useContext, useState, useTransition } from "react";
+import { ChevronDown, Sparkles } from "lucide-react";
+import { createContext, useCallback, useContext, useId, useState, useTransition } from "react";
 import { SubmitButton } from "@/components/admin/submit-button";
 
 type SelectedVariantCtx = {
@@ -206,5 +206,69 @@ export function CartSubmitButton({
       disabled={noSelection || soldOut}
       className={className}
     />
+  );
+}
+
+const COLLAPSE_CHAR_THRESHOLD = 220;
+
+/**
+ * Descripción desplegable SEO-safe para la ficha de producto.
+ *
+ * Mantiene SIEMPRE el 100 % del texto en el DOM SSR (indexable por Googlebot y AI Overviews)
+ * pero muestra ~3 líneas (~1/4 del bloque) por defecto con degradado suave y botón «Ver más
+ * detalles» para no desplazar el selector de variantes ni el CTA fuera de pantalla en móvil
+ * o escritorio. Descripciones cortas se muestran completas sin botón.
+ */
+export function ExpandableDescription({
+  text,
+  className = "",
+}: {
+  text: string;
+  className?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const contentId = useId();
+  const isCollapsible = text.length > COLLAPSE_CHAR_THRESHOLD || text.includes("\n\n");
+
+  if (!isCollapsible) {
+    return (
+      <p
+        className={`text-brand-purple-dark/80 text-base leading-relaxed whitespace-pre-line ${className}`}
+      >
+        {text}
+      </p>
+    );
+  }
+
+  return (
+    <div className={className}>
+      <div className={expanded ? "relative" : "relative max-h-[5.25rem] overflow-hidden"}>
+        <p
+          id={contentId}
+          className="text-brand-purple-dark/80 text-base leading-relaxed whitespace-pre-line"
+        >
+          {text}
+        </p>
+        {!expanded && (
+          <div
+            aria-hidden="true"
+            className="from-brand-cream pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t to-transparent"
+          />
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        aria-expanded={expanded}
+        aria-controls={contentId}
+        className="text-brand-purple hover:text-brand-purple-dark mt-1 inline-flex min-h-10 cursor-pointer items-center gap-1 text-sm font-semibold transition-colors"
+      >
+        <span>{expanded ? "Ver menos" : "Ver más detalles"}</span>
+        <ChevronDown
+          aria-hidden="true"
+          className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+        />
+      </button>
+    </div>
   );
 }
