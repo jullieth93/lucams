@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { SITE_URL, breadcrumbList, collectionPage, escapeJsonLd } from "./structured-data";
+import {
+  SITE_URL,
+  breadcrumbList,
+  collectionPage,
+  escapeJsonLd,
+  faqPage,
+  stripMarkdownForSchema,
+} from "./structured-data";
 
 describe("escapeJsonLd", () => {
   it("escapa <, > y & para no romper el <script> ni inyectar", () => {
@@ -71,5 +78,39 @@ describe("collectionPage", () => {
     expect(cp.mainEntity.itemListElement[0]).toMatchObject({
       url: `${SITE_URL}/ocasion/cumpleanos`,
     });
+  });
+});
+
+describe("faqPage", () => {
+  it("limpia markdown a texto plano y emite Question/Answer válidos", () => {
+    expect(stripMarkdownForSchema("Usa **Envío Lucams** en [Garantías](/legal/garantias).")).toBe(
+      "Usa Envío Lucams en Garantías.",
+    );
+    const schema = faqPage([
+      {
+        question: "¿Cómo **personalizo**?",
+        answer: "Entra al [Estudio](/productos) y sube tus fotos.",
+      },
+      { question: "   ", answer: "vacía" },
+    ]);
+    expect(schema).toEqual({
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      mainEntity: [
+        {
+          "@type": "Question",
+          name: "¿Cómo personalizo?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Entra al Estudio y sube tus fotos.",
+          },
+        },
+      ],
+    });
+  });
+
+  it("devuelve null cuando no hay preguntas válidas", () => {
+    expect(faqPage([])).toBeNull();
+    expect(faqPage([{ question: "", answer: "" }])).toBeNull();
   });
 });

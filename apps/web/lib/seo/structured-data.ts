@@ -71,3 +71,44 @@ export function collectionPage(opts: {
     },
   };
 }
+
+/**
+ * Convierte markdown ligero de CMS a texto plano limpio para JSON-LD (`FAQPage`),
+ * garantizando alineación con el contenido visible sin exponer sintaxis markdown/HTML.
+ */
+export function stripMarkdownForSchema(raw: string): string {
+  return raw
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[`*_~>#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Schema.org `FAQPage` para `/ayuda`: solo debe recibir las preguntas y respuestas
+ * efectivamente visibles en la página (regla oficial de alineación de Google).
+ * Devuelve `null` si no quedan preguntas válidas.
+ */
+export function faqPage(items: { question: string; answer: string }[]) {
+  const mainEntity = items
+    .map((item) => ({
+      question: stripMarkdownForSchema(item.question),
+      answer: stripMarkdownForSchema(item.answer),
+    }))
+    .filter((item) => item.question.length > 0 && item.answer.length > 0)
+    .map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer,
+      },
+    }));
+  if (mainEntity.length === 0) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity,
+  };
+}
