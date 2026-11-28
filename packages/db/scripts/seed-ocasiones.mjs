@@ -45,11 +45,7 @@ const ocasiones = [
     slug: "cumpleanos",
     name: "Cumpleaños",
     description:
-      "El cumpleaños es ocasión clave para regalos personalizados en Colombia. " +
-      "Lo común es regalar imanes con foto del cumpleañero/a + nombre + edad. " +
-      "Recuerdos para invitados (mesa de dulces, sorpresas) varían según la edad: " +
-      "infantil suele ser x20-x30, adulto puede ser x12-x20 más selectos. " +
-      "Cumpleaños premium o de adulto mayor admite Cuadros con Foto + Box Pareja.",
+      "Regalos y recordatorios personalizados con foto para cumpleaños en Colombia: fotoimanes Polaroid, cuadrados, tiras estilo photobooth y separadores hechos a mano. Ideales como sorpresa para invitados o detalle especial con nombre y fotos favoritas. Para mesas de dulces y fiestas infantiles se suelen pedir packs de 12 a 30 unidades; desde 25 unidades puedes configurar precios escalonados en Empresas y eventos. Preparación en 2 días hábiles y envío a Bogotá y más de 1.100 destinos.",
     monthHint: null, // todo el año
     suggestedQuantityRange: { min: 10, ideal: 20, max: 40 },
     order: 1,
@@ -58,11 +54,7 @@ const ocasiones = [
     slug: "matrimonio",
     name: "Matrimonio",
     description:
-      "Bodas en Colombia mueven volumen alto de recordatorios para invitados. " +
-      "Mínimo común x30, promedio x50-80, bodas grandes hasta x150+. Los novios " +
-      "buscan diseño elegante: floral, minimal o tema personalizado. Box Pareja y " +
-      "Glass Magnets premium funcionan como regalo para padrinos o pareja misma. " +
-      "Cuadros con foto del compromiso son detalle especial para padres.",
+      "Recordatorios de matrimonio personalizados en Colombia: fotoimanes Polaroid, cuadrados, tiras magnéticas y separadores con las fotos de los novios y la fecha de la boda. Un detalle duradero que tus invitados conservan en la nevera o en sus libros, impreso en calidad fotográfica laminada 300 DPI. En bodas es habitual pedir entre 30 y 150+ unidades con muestra digital previa y precios por volumen desde 25 unidades en Empresas y eventos.",
     monthHint: null,
     suggestedQuantityRange: { min: 30, ideal: 80, max: 150 },
     order: 2,
@@ -71,10 +63,7 @@ const ocasiones = [
     slug: "bautizo",
     name: "Bautizo",
     description:
-      "Bautizos en Colombia (tradición católica fuerte) suelen ser celebración íntima " +
-      "con 15-30 invitados. Recordatorios con foto del bebé + fecha + nombres de padres " +
-      "y padrinos. Diseño tierno, pastel, motivo religioso (ángel, cruz, paloma). " +
-      "Recordatorios suelen ser x12-x20 según asistentes.",
+      "Recordatorios de bautizo personalizados en Colombia con la foto del bebé, su nombre y la fecha en fotoimanes Polaroid, cuadrados o separadores magnéticos. Diséñalos en vivo en nuestro Estudio con marcos suaves y acabado fotográfico laminado 300 DPI. Para celebraciones íntimas suele elegirse entre 12 y 30 unidades, con preparación en 2 días hábiles y envío asegurado a toda Colombia.",
     monthHint: null,
     suggestedQuantityRange: { min: 12, ideal: 20, max: 30 },
     order: 3,
@@ -83,9 +72,7 @@ const ocasiones = [
     slug: "baby-shower",
     name: "Baby Shower",
     description:
-      "Baby shower previo al nacimiento, 15-30 invitadas típicamente. Diseños " +
-      "kawaii con animalitos, nubes, lunas. Recordatorios x12-x25 ideal. " +
-      "Box Recién Nacido es regalo principal de la anfitriona.",
+      "Recuerdos personalizados para baby shower en Colombia: fotoimanes Polaroid, cuadrados, tiras fotográficas y separadores hechos a mano para celebrar la llegada del bebé. Personaliza cada detalle en vivo con fotos de ecografía, nombre o diseño especial y vista previa 3D antes de comprar. Se suelen elegir entre 12 y 30 unidades (o precios escalonados desde 25 unidades en Empresas y eventos), con envío a más de 1.100 destinos.",
     monthHint: null,
     suggestedQuantityRange: { min: 12, ideal: 25, max: 50 },
     order: 4,
@@ -94,10 +81,7 @@ const ocasiones = [
     slug: "grado",
     name: "Grado",
     description:
-      "Graduaciones (colegio, técnico, universitario) en Colombia se concentran en " +
-      "Noviembre-Diciembre y Junio-Julio. Recordatorios x20-x30 con foto del/la " +
-      "graduado/a + título obtenido + año. Cuadros con frase motivacional + foto " +
-      "son regalo común para los padres.",
+      "Recordatorios y regalos de grado personalizados en Colombia: fotoimanes con la foto del graduado, tiras magnéticas estilo photobooth, calendarios y separadores para libros. Personalízalos en minutos con título, fecha y colores favoritos en impresión fotográfica laminada 300 DPI. Perfectos para grados de colegio o universidad desde 6 unidades hasta pedidos grupales con tarifa preferencial desde 25 unidades en Empresas y eventos.",
     monthHint: 11,
     suggestedQuantityRange: { min: 12, ideal: 25, max: 50 },
     order: 5,
@@ -106,9 +90,7 @@ const ocasiones = [
     slug: "quinceanera",
     name: "Quinceañera",
     description:
-      "Celebración 15 años — fiesta grande tradición latina. Recordatorios x30-x80 " +
-      "con foto de la quinceañera + fecha + tema de la fiesta. Diseño glamoroso, " +
-      "rosa, dorado, perlado.",
+      "Recordatorios personalizados para 15 años en Colombia: fotoimanes Polaroid, cuadrados, tiras estilo photobooth y separadores con las fotos de la sesión y el color de tu fiesta. Un recuerdo diferente que tus invitados sí guardan, impreso en calidad fotográfica laminada 300 DPI. Para fiestas de quinceañera se acostumbran packs de 30 a 80+ unidades con muestra digital y tarifas por volumen desde 25 unidades en Empresas y eventos.",
     monthHint: null,
     suggestedQuantityRange: { min: 30, ideal: 60, max: 120 },
     order: 6,
@@ -117,9 +99,7 @@ const ocasiones = [
     slug: "aniversario",
     name: "Aniversario",
     description:
-      "Aniversarios de matrimonio o noviazgo. Regalo íntimo, no recordatorio masivo. " +
-      "Fotoimanes Corazón + Cuadros con Foto + Box Pareja son top. Glass Magnets " +
-      "premium para aniversarios significativos (5, 10, 25 años).",
+      "Regalos personalizados de aniversario en Colombia hechos con tus mejores fotos: Fotoimanes Polaroid, Cuadrados, Tiras Magnéticas estilo photobooth y Calendario Set 12 Tarjetas. Diseña tu regalo en vivo en el Estudio con vista previa 3D y elige acabado con imán o sin imán. Hechos a mano en Colombia con preparación en 2 días hábiles y envío a Bogotá y todo el país.",
     monthHint: null,
     suggestedQuantityRange: { min: 1, ideal: 6, max: 12 },
     order: 7,
@@ -128,10 +108,7 @@ const ocasiones = [
     slug: "dia-madre",
     name: "Día de la Madre",
     description:
-      "Día de la Madre en Colombia se celebra el segundo domingo de Mayo. " +
-      "Pico de ventas anual junto con Navidad. Box Día de la Madre + Cuadros con " +
-      "Foto + Fotoimanes Corazón son los top sellers. Anticipar producción 2-3 " +
-      "semanas antes del segundo domingo de Mayo.",
+      "Regalos personalizados para el Día de la Madre en Colombia: fotoimanes Polaroid y cuadrados con fotos en familia, Tiras Magnéticas y Calendario mes a mes de 12 tarjetas. Sube tus fotos desde el celular en nuestro Estudio de personalización y revisa cómo queda antes de pedirlo. Impresión fotográfica laminada 300 DPI, hechos a mano en Colombia con envío a más de 1.100 destinos.",
     monthHint: 5,
     suggestedQuantityRange: { min: 1, ideal: 1, max: 6 },
     order: 8,
@@ -140,9 +117,7 @@ const ocasiones = [
     slug: "dia-padre",
     name: "Día del Padre",
     description:
-      "Día del Padre en Colombia: tercer domingo de Junio. Box Día del Padre + " +
-      "Cuadros con Frase + Imanes Publicitarios para emprendedores. Volumen menor " +
-      "que Día Madre pero igual relevante.",
+      "Regalos personalizados para el Día del Padre en Colombia con sus fotos favoritas: Fotoimanes Cuadrados, Polaroid, Tiras Magnéticas, Separadores para libros y Calendario 12 tarjetas. Personalízalos en vivo en pocos minutos en el Estudio con calidad fotográfica laminada 300 DPI. Hechos a mano en Colombia con preparación en 2 días hábiles y envío a Bogotá y todo el país.",
     monthHint: 6,
     suggestedQuantityRange: { min: 1, ideal: 1, max: 6 },
     order: 9,
@@ -151,9 +126,7 @@ const ocasiones = [
     slug: "dia-nino",
     name: "Día del Niño",
     description:
-      "Día del Niño en Colombia: último sábado de Abril. Coleccionables temáticos " +
-      "(Pokémon, Disney, animalitos kawaii) + Juegos y Aprendizaje. Regalos para " +
-      "niños 4-12 años.",
+      "Regalos didácticos y personalizados para el Día del Niño en Colombia: Abecedario Completo con animales kawaii, Pack Vocales en español o inglés y fotoimanes para decorar. Disponibles en versión con imán o sin imán, impresos en calidad fotográfica laminada 300 DPI para aprender jugando en casa o en el colegio. Hechos a mano en Colombia con envío a más de 1.100 destinos.",
     monthHint: 4,
     suggestedQuantityRange: { min: 1, ideal: 1, max: 4 },
     order: 10,
@@ -162,9 +135,7 @@ const ocasiones = [
     slug: "amor-y-amistad",
     name: "Amor y Amistad",
     description:
-      "Amor y Amistad en Colombia: tercer sábado de Septiembre (equivalente local " +
-      "a San Valentín). Detalles de pareja, amigos cercanos. Fotoimanes Corazón + " +
-      "Cuadros con Foto + Cajas Regalo + Glass Magnets son top. Volumen medio.",
+      "Detalles personalizados para Amor y Amistad en Colombia: Fotoimanes Polaroid, Cuadrados, Tiras Magnéticas estilo photobooth y Separadores Magnéticos con tus fotos favoritas. Diseña tu regalo en vivo en el Estudio eligiendo marcos y colores, con vista previa 3D antes de confirmar. Hechos a mano en Colombia con preparación en 2 días hábiles y envío nacional.",
     monthHint: 9,
     suggestedQuantityRange: { min: 1, ideal: 1, max: 6 },
     order: 11,
@@ -173,9 +144,7 @@ const ocasiones = [
     slug: "halloween",
     name: "Halloween",
     description:
-      "Halloween (31 Octubre) creciente en Colombia, sobre todo entre familias " +
-      "jóvenes y empresas. Coleccionables temáticos (calaveras, fantasmas, dulces). " +
-      "Ediciones limitadas de Octubre.",
+      "Recuerdos y detalles personalizados para Halloween en Colombia: fotoimanes, tiras estilo photobooth y separadores para libros con tus fotos de disfraces o temáticas de octubre. Personalízalos en vivo en nuestro Estudio con marcos de color y acabado fotográfico laminado 300 DPI. Ideales para fiestas en casa, colegios o eventos corporativos con tarifas por volumen desde 25 unidades en Empresas y eventos.",
     monthHint: 10,
     suggestedQuantityRange: { min: 1, ideal: 4, max: 12 },
     order: 12,
@@ -184,10 +153,7 @@ const ocasiones = [
     slug: "navidad",
     name: "Navidad",
     description:
-      "Navidad: pico anual de ventas junto con Día de la Madre. Edición Navidad " +
-      "Kawaii + Calendarios año nuevo + Cajas Regalo + Recordatorios cena familiar. " +
-      "Anticipar producción desde primera semana de Noviembre. Cierre catálogo " +
-      "navideño 20 Diciembre para garantizar entrega antes de 24-25.",
+      "Regalos y decoración personalizada para Navidad en Colombia: Bola Navideña Personalizada dúplex de 8 cm con foto, Calendario Set 12 Tarjetas para el nuevo año y fotoimanes. Personaliza cada pieza en vivo en el Estudio con plantillas navideñas o tus propias fotos y vista previa 3D. Hechos a mano en Colombia con preparación en 2 días hábiles, opción por volumen para empresas desde 25 unidades y envío nacional.",
     monthHint: 12,
     suggestedQuantityRange: { min: 1, ideal: 6, max: 20 },
     order: 13,
@@ -196,9 +162,7 @@ const ocasiones = [
     slug: "ano-nuevo",
     name: "Año Nuevo",
     description:
-      "Año Nuevo + propósitos. Calendarios año nuevo (Foto-Mes, Floral, Mini para " +
-      "regalar) son el producto principal. Volumen medio Enero (resagados que no " +
-      "compraron antes de Diciembre).",
+      "Regalos personalizados para recibir el Año Nuevo en Colombia: Calendario Set 12 Tarjetas con tus fotos y festivos de Colombia marcados, fotoimanes y separadores para nuevos propósitos. Elige el año y tus 12 fotos en el Estudio en vivo, en versión con imán para nevera o sin imán. Hechos a mano en Colombia con impresión fotográfica laminada 300 DPI y envío a más de 1.100 destinos.",
     monthHint: 1,
     suggestedQuantityRange: { min: 1, ideal: 2, max: 12 },
     order: 14,
@@ -207,21 +171,16 @@ const ocasiones = [
     slug: "empresarial",
     name: "Empresarial",
     description:
-      "Eventos corporativos, lanzamientos, regalos para clientes/empleados. " +
-      "Imanes Publicitarios + Pack Empresarial Mixto + Cuadros con Frase. Volumen " +
-      "alto (x50, x100, x200) con descuento por cantidad. Flujo separado vía " +
-      "/mayorista con cotización personalizada por WhatsApp.",
+      "Regalos corporativos y merchandising magnético personalizado en Colombia para empresas, marcas y eventos: fotoimanes, calendarios, tiras, separadores y bolas navideñas con tu logotipo. Configura tu proyecto desde 25 hasta más de 5.000 unidades en Empresas y eventos (/empresas-y-eventos) con tarifas escalonadas, validación de muestra digital previa, propuesta formal y envío asegurado a todo el país.",
     monthHint: null,
-    suggestedQuantityRange: { min: 50, ideal: 100, max: 500 },
+    suggestedQuantityRange: { min: 25, ideal: 100, max: 500 },
     order: 15,
   },
   {
     slug: "para-mi-mismo",
     name: "Para mí mismo",
     description:
-      "Cliente que se autorregala. Organización (Planners, Notas), Coleccionables " +
-      "temáticos (Universos, Lucams propios), Separadores Magnéticos para lectura. " +
-      "Volumen bajo por compra pero alta tasa de recurrencia.",
+      "Detalles personalizados para tu espacio, tus fotos y tus lecturas en Colombia: Separadores Magnéticos y Largos para libros, Fotoimanes Polaroid, Tiras Magnéticas y Calendario 12 tarjetas. Sube tus recuerdos favoritos o elige diseños del catálogo en nuestro Estudio con vista previa 3D e impresión fotográfica laminada 300 DPI. Hechos a mano en Colombia con envío rápido a Bogotá y todo el país.",
     monthHint: null,
     suggestedQuantityRange: { min: 1, ideal: 4, max: 12 },
     order: 16,
