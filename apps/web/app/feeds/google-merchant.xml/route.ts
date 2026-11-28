@@ -50,6 +50,12 @@ export async function GET(): Promise<Response> {
         basePrice: true,
         fulfillmentMode: true,
         images: true,
+        category: {
+          select: {
+            name: true,
+            parent: { select: { name: true } },
+          },
+        },
         // Misma regla de la PDP: solo opciones activas y no archivadas.
         variants: {
           where: { deletedAt: null, isActive: true },
@@ -66,7 +72,21 @@ export async function GET(): Promise<Response> {
         },
       },
     });
-    xml = buildGoogleMerchantFeed(products, { siteUrl: getCanonicalSiteUrl() });
+    xml = buildGoogleMerchantFeed(
+      products.map((p) => ({
+        slug: p.slug,
+        name: p.name,
+        description: p.description,
+        basePrice: p.basePrice,
+        fulfillmentMode: p.fulfillmentMode,
+        categoryPath: p.category.parent
+          ? `${p.category.parent.name} > ${p.category.name}`
+          : p.category.name,
+        images: p.images,
+        variants: p.variants,
+      })),
+      { siteUrl: getCanonicalSiteUrl() },
+    );
   } catch {
     // DB inalcanzable: 503 transitorio, NO cacheable — el CDN no debe retener un error
     // como si fuera el feed (Merchant reintenta el scheduled fetch por su cuenta).

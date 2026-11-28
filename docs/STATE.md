@@ -30,7 +30,7 @@
 
 ### Catálogo, SEO y CMS v2 ([`domains/catalog-and-cms.md`](domains/catalog-and-cms.md))
 
-- Categorías padre/hija, facetas, insignia, 16 ocasiones, búsqueda difusa (incl. SKU de variante), filtro de precio SQL por variantes activas, PDP mayorista con zoom, 404 real, feed Merchant y `/api/catalog|cms`.
+- Categorías padre/hija, facetas, insignia, 16 ocasiones, búsqueda difusa (incl. SKU de variante), filtro de precio SQL por variantes activas, PDP mayorista con zoom, 404 real, `/api/catalog|cms` y SEO/Shopping Graph certificado (GSC 46 URLs, Merchant 31/31 aprobados, `FAQPage` y `Product`/`AggregateOffer`).
 - **CMS v2 (`ADR-187`):** 9 contenedores, 30 secciones y 168 campos (105 `BLOCK` + 63 `SETTING`), paridad AST en CI, versionado append-only, publicación programada y tokens legales dinámicos.
 - **Opciones base y `/admin/mayorista` (`ADR-209`):** `ProductVariant` modela solo `1` unidad base (multi-pack históricos pausados); `WholesaleTier` aplica sombra `opción > producto > global`. Stock omnicanal (`ADR-208` 1A+1B): `MADE_TO_ORDER` en `stock = 0` y `PHYSICAL_STOCK` con `safetyStock` 1:1 y kardex.
 
@@ -62,9 +62,8 @@
 ### Negocio y operación externa
 
 1. **Facturación electrónica DIAN:** faltan NIT/RUT de facturador, acompañamiento contador/abogado y proveedor tecnológico; `BILLING_DOCUMENT_ENABLED = false`. La vigilancia de umbrales ya opera.
-2. **SEO post-indexación:** revisar Search Console y confirmar aprobación del feed en Merchant Center.
-3. **Mercado Libre (`ADR-205`):** arquitectura en pausa en [`integrations/mercadolibre.md`](integrations/mercadolibre.md) (solo `PHYSICAL_STOCK`, `ChannelPack`/`ChannelOrder`, precios `FORMULA`/`MANUAL`, `ME2` + Flex Bogotá). Pendiente habilitación de App en DevCenter `MCO`.
-4. **Meta (`ADR-207`):** arquitectura en pausa en [`integrations/meta.md`](integrations/meta.md) (`Meta Catalog` `PHYSICAL_STOCK`, `System User` `v25.0`, Pixel + CAPI deduplicados con `MetaOrderAttribution` y ajuste previo Ley 1581). Pendiente Fase M0.
+2. **Mercado Libre (`ADR-205`):** arquitectura en pausa en [`integrations/mercadolibre.md`](integrations/mercadolibre.md) (solo `PHYSICAL_STOCK`, `ChannelPack`/`ChannelOrder`, precios `FORMULA`/`MANUAL`, `ME2` + Flex Bogotá). Pendiente habilitación de App en DevCenter `MCO`.
+3. **Meta (`ADR-207`):** arquitectura en pausa en [`integrations/meta.md`](integrations/meta.md) (`Meta Catalog` `PHYSICAL_STOCK`, `System User` `v25.0`, Pixel + CAPI deduplicados con `MetaOrderAttribution` y ajuste previo Ley 1581). Pendiente Fase M0.
 
 ### Higiene técnica diferida (no bloqueante)
 

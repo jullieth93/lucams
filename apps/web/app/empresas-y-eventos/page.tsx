@@ -11,7 +11,9 @@ import Link from "next/link";
 import { Award, Building2, CheckCircle2, Gift, HeartHandshake, PackageCheck } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import { JsonLd } from "@/components/json-ld";
 import { WhatsAppIcon } from "@/components/icons/brand";
+import { breadcrumbList } from "@/lib/seo/structured-data";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { BILLING_DOCUMENT_ENABLED } from "@/features/checkout/billing-document";
 import { getPublicB2bConfiguratorCatalog } from "@/features/opportunities/configurator-catalog";
@@ -82,8 +84,14 @@ export default async function EmpresasYEventosPage({
     getPublicB2bConfiguratorCatalog(),
   ]);
 
+  const breadcrumbSchema = breadcrumbList([
+    { name: "Inicio", path: "/" },
+    { name: "Regalos corporativos y eventos", path: "/empresas-y-eventos" },
+  ]);
+
   return (
     <div className="flex min-h-screen flex-col bg-[#FFF8F0]">
+      <JsonLd data={breadcrumbSchema} />
       <SiteHeader />
 
       <main className="flex-1">
