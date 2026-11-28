@@ -18,10 +18,12 @@ import { ChevronDown, Mail } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { JsonLd } from "@/components/json-ld";
 import { CmsText } from "@/components/cms/cms-text";
 import { CmsMarkdown } from "@/components/cms/cms-markdown";
 import { getCmsBlocksByCategory, getSettingValue } from "@/lib/cms";
 import { getPageSeo, resolveCmsTokens } from "@/lib/cms-tokens";
+import { breadcrumbList, faqPage } from "@/lib/seo/structured-data";
 import { buildWhatsAppUrl } from "@/lib/wa";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -112,7 +114,7 @@ function buildFallbackFaqs(
       slug: "10-regalos-eventos",
       question: "¿Hacen pedidos al por mayor o para eventos corporativos?",
       answer:
-        "¡Sí! Bodas, baby showers, eventos corporativos, recordatorios para regalos. Escríbenos por WhatsApp con tu idea y volumen y te pasamos cotización personalizada.",
+        "¡Sí! Bodas, baby showers, grados y eventos corporativos desde 25 unidades. Configura tu proyecto y recibe una propuesta formal en [Empresas y eventos](/empresas-y-eventos).",
     },
     {
       slug: "11-envio-mismo-dia",
@@ -164,11 +166,24 @@ export default async function AyudaPage() {
     filteredItems.map(async (it) => ({
       ...it,
       question: await resolveCmsTokens(it.question),
+      resolvedAnswer: await resolveCmsTokens(it.answer),
     })),
   );
 
+  const faqSchema = faqPage(
+    visibleItems.map((it) => ({ question: it.question, answer: it.resolvedAnswer })),
+  );
+  const jsonLdData = [
+    breadcrumbList([
+      { name: "Inicio", path: "/" },
+      { name: "Ayuda", path: "/ayuda" },
+    ]),
+    ...(faqSchema ? [faqSchema] : []),
+  ];
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
+      <JsonLd data={jsonLdData} />
       <SiteHeader />
 
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">

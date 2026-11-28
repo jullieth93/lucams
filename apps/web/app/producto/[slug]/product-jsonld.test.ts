@@ -31,10 +31,11 @@ describe("buildProductJsonLd", () => {
     });
   });
 
-  it("emite AggregateOffer con el rango cuando las opciones tienen precios distintos", () => {
+  it("emite AggregateOffer con el rango y offerCount cuando las opciones tienen precios distintos", () => {
     const jsonLd = buildProductJsonLd({ ...BASE, effectivePrices: [1_500_000, 2_500_000] });
     expect(jsonLd.offers).toMatchObject({
       "@type": "AggregateOffer",
+      offerCount: 2,
       lowPrice: "15000",
       highPrice: "25000",
     });
