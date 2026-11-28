@@ -51,6 +51,8 @@ export type GoogleMerchantFeedProduct = {
   /** CENTAVOS COP (Int), jamás float. */
   basePrice: number;
   fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
+  /** Categoría real del producto (ej. "Fotoimanes" o "Padre > Hija") → g:product_type. */
+  categoryPath?: string | null;
   /** URLs absolutas (Supabase Storage). */
   images: string[];
   /** Solo variantes activas y no archivadas (el query del route las filtra). */
@@ -74,6 +76,10 @@ const TRIVIAL_VARIANT_NAMES: ReadonlySet<string> = new Set([
 
 /** Límite de Merchant para g:description. */
 const DESCRIPTION_MAX_CHARS = 5000;
+/** Límite de Merchant para g:product_type (spec Google Merchant Center). */
+const PRODUCT_TYPE_MAX_CHARS = 750;
+/** Límite oficial de Merchant para g:additional_image_link por ítem. */
+const MAX_ADDITIONAL_IMAGES = 10;
 
 /** Escape XML de los 5 caracteres especiales (texto y atributos). */
 export function escapeXml(value: string): string {
@@ -99,18 +105,30 @@ function plainDescription(raw: string): string {
 }
 
 /**
- * Resuelve la imagen del item: la de la variante si tiene, si no la primera del
- * producto. Garantiza URL ABSOLUTA: si llega una relativa (dato legacy), se resuelve
- * contra siteUrl. null si no hay ninguna (el caller omite el tag).
+ * Normaliza una URL de imagen a absoluta. Las imágenes propias de la variante van primero
+ * y luego las de la galería del producto, sin duplicados: la primera alimenta `g:image_link`
+ * y hasta 10 adicionales alimentan `g:additional_image_link` (Shopping Graph / Modo IA).
  */
-function resolveImageUrl(
+function resolveItemImages(
   variantImages: string[],
   productImages: string[],
   siteUrl: string,
-): string | null {
-  const url = variantImages[0] ?? productImages[0];
-  if (!url) return null;
-  return url.startsWith("http://") || url.startsWith("https://") ? url : `${siteUrl}${url}`;
+): { primary: string | null; additional: string[] } {
+  const seen = new Set<string>();
+  const resolved: string[] = [];
+  for (const raw of [...variantImages, ...productImages]) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const abs =
+      trimmed.startsWith("http://") || trimmed.startsWith("https://")
+        ? trimmed
+        : `${siteUrl}${trimmed}`;
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    resolved.push(abs);
+  }
+  const [primary = null, ...rest] = resolved;
+  return { primary, additional: rest.slice(0, MAX_ADDITIONAL_IMAGES) };
 }
 
 /** Item del feed = UNA variante. Devuelve "" si la variante no es publicable (sin sku). */
@@ -124,7 +142,12 @@ function buildItem(
   // Precio efectivo en pesos (entero): override de la variante o basePrice.
   const priceCop = ((variant.price ?? product.basePrice) / 100).toFixed(0);
   const link = `${siteUrl}/producto/${product.slug}?variant=${encodeURIComponent(variant.id)}`;
-  const imageUrl = resolveImageUrl(variant.images, product.images, siteUrl);
+  const { primary: imageUrl, additional: additionalImages } = resolveItemImages(
+    variant.images,
+    product.images,
+    siteUrl,
+  );
+  const productType = product.categoryPath?.trim().slice(0, PRODUCT_TYPE_MAX_CHARS) || null;
 
   const inStock =
     product.fulfillmentMode === "MADE_TO_ORDER" ||
@@ -136,10 +159,14 @@ function buildItem(
     `      <g:description>${escapeXml(plainDescription(product.description))}</g:description>`,
     `      <link>${escapeXml(link)}</link>`,
     ...(imageUrl ? [`      <g:image_link>${escapeXml(imageUrl)}</g:image_link>`] : []),
+    ...additionalImages.map(
+      (url) => `      <g:additional_image_link>${escapeXml(url)}</g:additional_image_link>`,
+    ),
     `      <g:availability>${inStock ? "in stock" : "out of stock"}</g:availability>`,
     `      <g:price>${priceCop} COP</g:price>`,
     `      <g:brand>Lucams Shop</g:brand>`,
     `      <g:condition>new</g:condition>`,
+    ...(productType ? [`      <g:product_type>${escapeXml(productType)}</g:product_type>`] : []),
     // Artesanales/personalizados sin GTIN/MPN — NO inventar identificadores.
     `      <g:identifier_exists>no</g:identifier_exists>`,
     `      <g:item_group_id>${escapeXml(product.slug)}</g:item_group_id>`,

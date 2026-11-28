@@ -80,6 +80,7 @@ function buildOffers(opts: {
     : {
         "@type": "AggregateOffer",
         ...common,
+        offerCount: opts.effectivePrices.length,
         lowPrice: (lowPrice / 100).toFixed(0),
         highPrice: (highPrice / 100).toFixed(0),
       };

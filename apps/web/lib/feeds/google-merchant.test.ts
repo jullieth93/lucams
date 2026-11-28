@@ -316,6 +316,44 @@ describe("buildGoogleMerchantFeed", () => {
     );
   });
 
+  it("emite g:additional_image_link deduplicadas (máx 10) y g:product_type cuando existen", () => {
+    const gallery = Array.from({ length: 12 }, (_, idx) => `https://cdn.example.com/p-${idx}.webp`);
+    const xml = buildGoogleMerchantFeed(
+      [
+        makeProduct({
+          categoryPath: "Fotoimanes > Polaroid",
+          images: gallery,
+          variants: [
+            {
+              id: "v1",
+              sku: "SKU-GAL",
+              name: "6 unidades",
+              price: null,
+              stock: 5,
+              images: ["https://cdn.example.com/v-main.webp", gallery[0]!],
+            },
+          ],
+        }),
+      ],
+      { siteUrl: SITE_URL },
+    );
+    const doc = parseXml(xml);
+    const item = doc.querySelector("item")!;
+    expect(item.querySelector("g\\:image_link, image_link")?.textContent).toBe(
+      "https://cdn.example.com/v-main.webp",
+    );
+    const extras = [
+      ...item.querySelectorAll("g\\:additional_image_link, additional_image_link"),
+    ].map((n) => n.textContent);
+    // Máximo 10 adicionales y sin duplicar gallery[0] (aparece una sola vez).
+    expect(extras).toHaveLength(10);
+    expect(extras[0]).toBe(gallery[0]);
+    expect(new Set(extras).size).toBe(10);
+    expect(item.querySelector("g\\:product_type, product_type")?.textContent).toBe(
+      "Fotoimanes > Polaroid",
+    );
+  });
+
   it("producto sin variantes activas no genera items; canal vacío sigue siendo XML válido", () => {
     const xml = buildGoogleMerchantFeed([makeProduct({ variants: [] })], { siteUrl: SITE_URL });
     const doc = parseXml(xml);
